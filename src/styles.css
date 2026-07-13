@@ -1,5 +1,16 @@
 @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@600;700;800&family=Tajawal:wght@400;500;700&display=swap');
+@import './v22/shared.css';
+@import './v22/projects.css';
+@import './v22/payroll.css';
+@import './v22/dailyLabor.css';
+@import './v22/audit.css';
 
 * { box-sizing: border-box; }
 html, body, #root { margin: 0; padding: 0; min-height: 100vh; background: #1C1916; }
 body { font-family: 'Tajawal', sans-serif; }
+
+@media (max-width: 760px) {
+  #root > div[dir="rtl"] { display: block !important; }
+  #root > div[dir="rtl"] > div:first-child { position: static !important; width: 100% !important; height: auto !important; max-height: 230px; }
+  #root > div[dir="rtl"] > div:last-child { padding: 18px 12px !important; }
+}

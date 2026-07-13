@@ -4,10 +4,19 @@ import {
   LayoutDashboard, Package, Layers, Factory, ShoppingCart, Truck, Users,
   BarChart3, Plus, Trash2, AlertCircle, CheckCircle2, Wallet, Boxes, LogOut,
   CalendarClock, ShieldCheck, Pencil, X, ReceiptText, ClipboardList,
+  BriefcaseBusiness, FolderOpen, UserRoundCog, BadgeDollarSign, HardHat, ScrollText,
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
 } from "recharts";
+import { ACTION_PERMISSIONS, actionPermissions } from "./v22/shared";
+import { ProjectsTab, ProjectFilesHub } from "./v22/projects";
+import { EmployeesTab, PayrollTab } from "./v22/payroll";
+import { DailyLaborTab } from "./v22/dailyLabor";
+import { AuditLogTab, PERMISSION_LABELS } from "./v22/audit";
+import { demoData, demoProfile } from "./v22/demoData";
+
+const V22_DEMO = (import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEMO === "true") && new URLSearchParams(window.location.search).get("demo") === "v22";
 
 /* ---------------------------------- ثيم ---------------------------------- */
 const C = {
@@ -27,32 +36,38 @@ const ROLES = {
 };
 const SIGNUP_ROLES = ["accountant", "production"];
 const NAV_BY_ROLE = {
-  manager: ["dashboard", "inventory", "purchases", "expenses", "materials", "products", "production", "sales", "rentals", "suppliers", "customers", "reports", "team"],
-  accountant: ["inventory", "purchases", "expenses", "materials", "products", "production", "sales", "rentals", "suppliers", "customers"],
-  production: ["inventory", "production"],
+  manager: ["dashboard", "projects", "projectFiles", "inventory", "purchases", "expenses", "materials", "products", "production", "sales", "rentals", "suppliers", "customers", "employees", "payroll", "dailyLabor", "reports", "auditLog", "team"],
+  accountant: ["projects", "projectFiles", "inventory", "purchases", "expenses", "materials", "products", "production", "sales", "rentals", "suppliers", "customers", "employees", "payroll", "dailyLabor"],
+  production: ["projects", "projectFiles", "inventory", "production"],
 };
-const ALL_PAGE_IDS = ["dashboard", "inventory", "purchases", "expenses", "materials", "products", "production", "sales", "rentals", "suppliers", "customers", "reports", "team"];
+const ALL_PAGE_IDS = ["dashboard", "projects", "projectFiles", "inventory", "purchases", "expenses", "materials", "products", "production", "sales", "rentals", "suppliers", "customers", "employees", "payroll", "dailyLabor", "reports", "auditLog", "team"];
 const PAGE_LABELS = {
+  projects: "المشاريع", projectFiles: "ملفات المشاريع", employees: "الموظفون", payroll: "المرتبات", dailyLabor: "العمالة اليومية", auditLog: "سجل التدقيق",
   dashboard: "لوحة التحكم", inventory: "المخزون", purchases: "المشتريات", expenses: "المصروفات", materials: "المواد الخام", products: "المنتجات والتكلفة",
   production: "أوامر الإنتاج", sales: "المبيعات", rentals: "الإيجارات",
   suppliers: "الموردين", customers: "العملاء", reports: "التقارير", team: "الفريق والصلاحيات",
 };
 function permissionsForProfile(profile) {
+  const actions = actionPermissions(profile);
   if (profile?.role === "manager") return {
     pages: ALL_PAGE_IDS,
     can_delete: true,
     view_financials: true,
     can_create_products: true,
-    can_edit_products: true,
+    can_edit_products: true, ...actions,
   };
   const saved = profile?.permissions || {};
   const isAccountant = profile?.role === "accountant";
+  const legacyPages = Array.isArray(saved.pages) && saved.pages.length ? saved.pages : (NAV_BY_ROLE[profile?.role] || []);
+  const modulePages = [actions.projects_view && "projects", actions.project_files_view && "projectFiles", actions.payroll_view && "payroll", actions.daily_labor_view && "dailyLabor"].filter(Boolean);
+  if (profile?.role === "accountant") modulePages.push("employees");
+  if (actions.audit_log_view) modulePages.push("auditLog");
   return {
-    pages: Array.isArray(saved.pages) && saved.pages.length ? saved.pages : (NAV_BY_ROLE[profile?.role] || []),
+    pages: [...new Set([...legacyPages, ...modulePages])],
     can_delete: Boolean(saved.can_delete),
     view_financials: Boolean(saved.view_financials),
     can_create_products: saved.can_create_products ?? isAccountant,
-    can_edit_products: Boolean(saved.can_edit_products),
+    can_edit_products: Boolean(saved.can_edit_products), ...actions,
   };
 }
 const MATERIAL_UNITS = ["قطعة", "متر", "متر مربع", "متر مكعب", "كيلوجرام", "جرام", "لتر", "مللي لتر", "لفة", "طقم", "علبة", "كرتونة", "أخرى"];
@@ -69,10 +84,19 @@ const TABLES = {
   customers: "customers",
   customerReceipts: "customer_receipts",
   expenses: "expenses",
+  projects: "projects",
+  projectFiles: "project_files",
+  projectActivities: "project_activities",
+  employees: "employees",
+  payroll: "payroll",
+  dailyLabor: "daily_labor",
+  projectCosts: "project_costs",
+  auditLog: "audit_log",
 };
 const EMPTY_DATA = {
   materials: [], materialPurchases: [], products: [], productionOrders: [],
   sales: [], rentals: [], suppliers: [], supplierPayments: [], customers: [], customerReceipts: [], expenses: [],
+  projects: [], projectFiles: [], projectActivities: [], employees: [], payroll: [], dailyLabor: [], projectCosts: [], auditLog: [],
 };
 
 /* ------------------------------ دوال الحسابات ------------------------------ */
@@ -280,12 +304,13 @@ function AuthGate() {
 
 /* --------------------------------- التطبيق --------------------------------- */
 export default function App() {
-  const [session, setSession] = useState(undefined);
-  const [profile, setProfile] = useState(undefined);
-  const [data, setData] = useState(null);
-  const [tab, setTab] = useState(null);
+  const [session, setSession] = useState(V22_DEMO ? { user: { id: demoProfile.id } } : undefined);
+  const [profile, setProfile] = useState(V22_DEMO ? demoProfile : undefined);
+  const [data, setData] = useState(V22_DEMO ? demoData : null);
+  const [tab, setTab] = useState(V22_DEMO ? "projects" : null);
 
   useEffect(() => {
+    if (V22_DEMO) return;
     supabase.auth.getSession().then(({ data: { session } }) => setSession(session));
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => setSession(session));
     return () => sub.subscription.unsubscribe();
@@ -297,23 +322,32 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (V22_DEMO) return;
     if (session === undefined) return;
     if (!session) { setProfile(null); return; }
     fetchProfile(session.user.id);
   }, [session, fetchProfile]);
 
   const refetchTable = useCallback(async (key) => {
+    if (V22_DEMO) return;
     const table = TABLES[key];
-    const { data: rows } = await supabase.from(table).select("*").order("created_at", { ascending: true });
+    const { data: rows } = key === "projects"
+      ? await supabase.rpc("get_projects_visible")
+      : key === "payroll" ? await supabase.rpc("get_payroll_visible")
+      : await supabase.from(table).select("*").order("created_at", { ascending: true });
     setData((prev) => ({ ...(prev || EMPTY_DATA), [key]: rows || [] }));
   }, []);
 
   useEffect(() => {
+    if (V22_DEMO) return;
     if (!session) return;
     (async () => {
       const entries = await Promise.all(
         Object.entries(TABLES).map(async ([key, table]) => {
-          const { data: rows } = await supabase.from(table).select("*").order("created_at", { ascending: true });
+          const { data: rows } = key === "projects"
+            ? await supabase.rpc("get_projects_visible")
+            : key === "payroll" ? await supabase.rpc("get_payroll_visible")
+            : await supabase.from(table).select("*").order("created_at", { ascending: true });
           return [key, rows || []];
         })
       );
@@ -340,6 +374,8 @@ export default function App() {
   const activeTab = permissions.pages.includes(tab) ? tab : permissions.pages[0];
   const ALL_NAV = [
     { id: "dashboard", label: "لوحة التحكم", icon: LayoutDashboard },
+    { id: "projects", label: "المشاريع", icon: BriefcaseBusiness },
+    { id: "projectFiles", label: "ملفات المشاريع", icon: FolderOpen },
     { id: "inventory", label: "المخزون", icon: Boxes },
     { id: "purchases", label: "المشتريات", icon: ClipboardList },
     { id: "expenses", label: "المصروفات", icon: ReceiptText },
@@ -350,7 +386,11 @@ export default function App() {
     { id: "rentals", label: "الإيجارات", icon: CalendarClock },
     { id: "suppliers", label: "الموردين", icon: Truck },
     { id: "customers", label: "العملاء", icon: Users },
+    { id: "employees", label: "الموظفون", icon: UserRoundCog },
+    { id: "payroll", label: "المرتبات", icon: BadgeDollarSign },
+    { id: "dailyLabor", label: "العمالة اليومية", icon: HardHat },
     { id: "reports", label: "التقارير", icon: BarChart3 },
+    { id: "auditLog", label: "سجل التدقيق", icon: ScrollText },
     { id: "team", label: "الفريق والصلاحيات", icon: ShieldCheck },
   ];
   const NAV = ALL_NAV.filter((n) => permissions.pages.includes(n.id));
@@ -395,6 +435,8 @@ export default function App() {
 
       <div style={{ flex: 1, padding: 28, maxWidth: 1180 }}>
         {activeTab === "dashboard" && <Dashboard data={data} />}
+        {activeTab === "projects" && <ProjectsTab data={data} profile={profile} permissions={permissions} refresh={refetchTable} />}
+        {activeTab === "projectFiles" && <ProjectFilesHub data={data} permissions={permissions} />}
         {activeTab === "inventory" && <InventoryTab data={data} />}
         {activeTab === "purchases" && <PurchasesTab data={data} insertRow={insertRow} deleteRow={deleteRow} canDelete={permissions.can_delete} />}
         {activeTab === "expenses" && <ExpensesTab data={data} insertRow={insertRow} deleteRow={deleteRow} canDelete={permissions.can_delete} />}
@@ -405,7 +447,11 @@ export default function App() {
         {activeTab === "rentals" && <RentalsTab data={data} insertRow={insertRow} updateRow={updateRow} deleteRow={deleteRow} canManage={role === "manager"} />}
         {activeTab === "suppliers" && <SuppliersTab data={data} insertRow={insertRow} updateRow={updateRow} deleteRow={deleteRow} canManage={role === "manager"} />}
         {activeTab === "customers" && <CustomersTab data={data} insertRow={insertRow} updateRow={updateRow} deleteRow={deleteRow} canManage={role === "manager"} />}
+        {activeTab === "employees" && role !== "production" && <EmployeesTab data={data} profile={profile} refresh={refetchTable} />}
+        {activeTab === "payroll" && permissions.payroll_view && <PayrollTab data={data} profile={profile} permissions={permissions} refresh={refetchTable} />}
+        {activeTab === "dailyLabor" && permissions.daily_labor_view && <DailyLaborTab data={data} profile={profile} permissions={permissions} refresh={refetchTable} />}
         {activeTab === "reports" && permissions.view_financials && <ReportsTab data={data} />}
+        {activeTab === "auditLog" && permissions.audit_log_view && <AuditLogTab data={data} />}
         {activeTab === "team" && <TeamTab />}
       </div>
     </div>
@@ -1396,6 +1442,7 @@ function TeamTab() {
       view_financials: Boolean(current.view_financials),
       can_create_products: Boolean(current.can_create_products),
       can_edit_products: Boolean(current.can_edit_products),
+      ...Object.fromEntries(ACTION_PERMISSIONS.map((key) => [key, Boolean(current[key])])),
     };
     const { error } = await supabase.from("profiles").update({ role, permissions }).eq("id", userId);
     if (error) return setMsg(error.message);
@@ -1433,6 +1480,12 @@ function TeamTab() {
                 <label style={{ display: "flex", alignItems: "center", gap: 8 }}><input type="checkbox" checked={Boolean(current.view_financials)} onChange={(e) => patchUser(p.id, { view_financials: e.target.checked })} />عرض الأرباح والتقارير المالية</label>
                 <label style={{ display: "flex", alignItems: "center", gap: 8 }}><input type="checkbox" checked={Boolean(current.can_create_products)} onChange={(e) => patchUser(p.id, { can_create_products: e.target.checked })} />إضافة منتجات جديدة</label>
                 <label style={{ display: "flex", alignItems: "center", gap: 8 }}><input type="checkbox" checked={Boolean(current.can_edit_products)} onChange={(e) => patchUser(p.id, { can_edit_products: e.target.checked })} />تعديل المنتجات الموجودة</label>
+              </div>
+              <div style={{ color: C.muted, fontSize: 13, margin: "18px 0 8px" }}>صلاحيات V2.2 التفصيلية</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 8 }}>
+                {ACTION_PERMISSIONS.map((key) => <label key={key} style={{ display: "flex", alignItems: "center", gap: 8, background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 10px" }}>
+                  <input type="checkbox" checked={Boolean(current[key])} onChange={(e) => patchUser(p.id, { [key]: e.target.checked })} />{PERMISSION_LABELS[key]}
+                </label>)}
               </div>
             </>}
             <div style={{ marginTop: 16 }}><Btn onClick={() => savePermissions(p.id)}>حفظ الصلاحيات</Btn></div>
