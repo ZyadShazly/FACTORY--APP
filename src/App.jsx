@@ -333,6 +333,7 @@ export default function App() {
     const table = TABLES[key];
     const { data: rows } = key === "projects"
       ? await supabase.rpc("get_projects_visible")
+      : key === "payroll" ? await supabase.rpc("get_payroll_visible")
       : await supabase.from(table).select("*").order("created_at", { ascending: true });
     setData((prev) => ({ ...(prev || EMPTY_DATA), [key]: rows || [] }));
   }, []);
@@ -345,6 +346,7 @@ export default function App() {
         Object.entries(TABLES).map(async ([key, table]) => {
           const { data: rows } = key === "projects"
             ? await supabase.rpc("get_projects_visible")
+            : key === "payroll" ? await supabase.rpc("get_payroll_visible")
             : await supabase.from(table).select("*").order("created_at", { ascending: true });
           return [key, rows || []];
         })
