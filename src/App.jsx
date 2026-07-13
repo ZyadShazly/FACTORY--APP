@@ -3,7 +3,7 @@ import { supabase } from "./supabaseClient";
 import {
   LayoutDashboard, Package, Layers, Factory, ShoppingCart, Truck, Users,
   BarChart3, Plus, Trash2, AlertCircle, CheckCircle2, Wallet, Boxes, LogOut,
-  CalendarClock, ShieldCheck, Pencil, X,
+  CalendarClock, ShieldCheck, Pencil, X, ReceiptText, ClipboardList,
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
@@ -27,13 +27,13 @@ const ROLES = {
 };
 const SIGNUP_ROLES = ["accountant", "production"];
 const NAV_BY_ROLE = {
-  manager: ["dashboard", "inventory", "materials", "products", "production", "sales", "rentals", "suppliers", "customers", "reports", "team"],
-  accountant: ["inventory", "materials", "products", "production", "sales", "rentals", "suppliers", "customers"],
+  manager: ["dashboard", "inventory", "purchases", "expenses", "materials", "products", "production", "sales", "rentals", "suppliers", "customers", "reports", "team"],
+  accountant: ["inventory", "purchases", "expenses", "materials", "products", "production", "sales", "rentals", "suppliers", "customers"],
   production: ["inventory", "production"],
 };
-const ALL_PAGE_IDS = ["dashboard", "inventory", "materials", "products", "production", "sales", "rentals", "suppliers", "customers", "reports", "team"];
+const ALL_PAGE_IDS = ["dashboard", "inventory", "purchases", "expenses", "materials", "products", "production", "sales", "rentals", "suppliers", "customers", "reports", "team"];
 const PAGE_LABELS = {
-  dashboard: "لوحة التحكم", inventory: "المخزون", materials: "المواد الخام", products: "المنتجات والتكلفة",
+  dashboard: "لوحة التحكم", inventory: "المخزون", purchases: "المشتريات", expenses: "المصروفات", materials: "المواد الخام", products: "المنتجات والتكلفة",
   production: "أوامر الإنتاج", sales: "المبيعات", rentals: "الإيجارات",
   suppliers: "الموردين", customers: "العملاء", reports: "التقارير", team: "الفريق والصلاحيات",
 };
@@ -68,10 +68,11 @@ const TABLES = {
   supplierPayments: "supplier_payments",
   customers: "customers",
   customerReceipts: "customer_receipts",
+  expenses: "expenses",
 };
 const EMPTY_DATA = {
   materials: [], materialPurchases: [], products: [], productionOrders: [],
-  sales: [], rentals: [], suppliers: [], supplierPayments: [], customers: [], customerReceipts: [],
+  sales: [], rentals: [], suppliers: [], supplierPayments: [], customers: [], customerReceipts: [], expenses: [],
 };
 
 /* ------------------------------ دوال الحسابات ------------------------------ */
@@ -340,6 +341,8 @@ export default function App() {
   const ALL_NAV = [
     { id: "dashboard", label: "لوحة التحكم", icon: LayoutDashboard },
     { id: "inventory", label: "المخزون", icon: Boxes },
+    { id: "purchases", label: "المشتريات", icon: ClipboardList },
+    { id: "expenses", label: "المصروفات", icon: ReceiptText },
     { id: "materials", label: "المواد الخام", icon: Package },
     { id: "products", label: "المنتجات والتكلفة", icon: Layers },
     { id: "production", label: "أوامر الإنتاج", icon: Factory },
@@ -393,6 +396,8 @@ export default function App() {
       <div style={{ flex: 1, padding: 28, maxWidth: 1180 }}>
         {activeTab === "dashboard" && <Dashboard data={data} />}
         {activeTab === "inventory" && <InventoryTab data={data} />}
+        {activeTab === "purchases" && <PurchasesTab data={data} insertRow={insertRow} deleteRow={deleteRow} canDelete={permissions.can_delete} />}
+        {activeTab === "expenses" && <ExpensesTab data={data} insertRow={insertRow} deleteRow={deleteRow} canDelete={permissions.can_delete} />}
         {activeTab === "materials" && <MaterialsTab data={data} canDelete={permissions.can_delete} insertRow={insertRow} deleteRow={deleteRow} updateRow={updateRow} />}
         {activeTab === "products" && <ProductsTab data={data} canCreate={permissions.can_create_products} canEdit={permissions.can_edit_products} canDelete={permissions.can_delete} hideProfitInfo={!permissions.view_financials} insertRow={insertRow} deleteRow={deleteRow} updateRow={updateRow} />}
         {activeTab === "production" && <ProductionTab data={data} insertRow={insertRow} updateRow={updateRow} deleteRow={deleteRow} canManage={role === "manager"} />}
@@ -461,6 +466,7 @@ function Dashboard({ data }) {
     { label: "مستحق من العملاء", value: `${fmt(stats.totalCustomers)} ج.م`, color: C.green },
     { label: "أوامر إنتاج هذا الشهر", value: stats.ordersThisMonth, color: C.brass },
     { label: "إيجارات نشطة", value: stats.activeRentals, color: C.wood },
+    { label: "إجمالي المصروفات", value: `${fmt(stats.expensesTotal)} ج.م`, color: C.red },
     { label: "صافي الربح التقديري", value: `${fmt(stats.profit)} ج.م`, color: stats.profit >= 0 ? C.green : C.red },
   ];
 
@@ -1207,6 +1213,99 @@ function CustomerLedger({ customerId, data }) {
   return <Table headers={["التاريخ", "النوع", "البيان", "المبلغ"]}>{rows.map((r, i) => <tr key={i}><Td>{r.date}</Td><Td style={{ color: r.type === "تحصيل" ? C.green : C.brass }}>{r.type}</Td><Td>{r.note || "—"}</Td><Td>{fmt(Math.abs(r.amount))} ج.م</Td></tr>)}</Table>;
 }
 
+
+/* -------------------------------- Purchases -------------------------------- */
+function PurchasesTab({ data, insertRow, deleteRow, canDelete }) {
+  const [form, setForm] = useState({ materialId: "", supplierId: "", qty: "", unitCost: "", date: todayStr() });
+  const [err, setErr] = useState("");
+  const [ok, setOk] = useState("");
+
+  async function submit() {
+    setErr(""); setOk("");
+    if (!form.materialId) return setErr("اختر المادة الخام");
+    if (num(form.qty) <= 0) return setErr("أدخل كمية أكبر من صفر");
+    if (num(form.unitCost) < 0) return setErr("سعر الوحدة غير صحيح");
+    const e = await insertRow("materialPurchases", {
+      material_id: form.materialId,
+      supplier_id: form.supplierId || null,
+      qty: num(form.qty),
+      unit_cost: num(form.unitCost),
+      purchase_date: form.date,
+    });
+    if (e) return setErr(e);
+    setOk("تم تسجيل المشتريات وزيادة المخزون بنجاح");
+    setForm({ materialId: "", supplierId: "", qty: "", unitCost: "", date: todayStr() });
+  }
+
+  async function remove(row) {
+    if (!window.confirm("متأكد من حذف عملية الشراء؟ سيتم تخفيض المخزون.")) return;
+    const e = await deleteRow("materialPurchases", row.id);
+    if (e) setErr(e);
+  }
+
+  const total = data.materialPurchases.reduce((sum, p) => sum + num(p.qty) * num(p.unit_cost), 0);
+  return <div>
+    <SectionTitle eyebrow="التوريد" title="المشتريات" icon={<ClipboardList size={14} />} />
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14, marginBottom: 18 }}>
+      <Card><div style={{ color: C.muted, fontSize: 13 }}>إجمالي قيمة المشتريات</div><div style={{ color: C.brass, fontSize: 23, fontWeight: 800, marginTop: 8 }}>{fmt(total)} ج.م</div></Card>
+      <Card><div style={{ color: C.muted, fontSize: 13 }}>عدد عمليات الشراء</div><div style={{ color: C.green, fontSize: 23, fontWeight: 800, marginTop: 8 }}>{data.materialPurchases.length}</div></Card>
+    </div>
+    <Card style={{ marginBottom: 18 }}>
+      <div style={{ fontWeight: 800, marginBottom: 12 }}>عملية شراء جديدة</div>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <Field label="المادة"><Select value={form.materialId} onChange={(e) => setForm({ ...form, materialId: e.target.value })}><option value="">اختر المادة</option>{data.materials.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}</Select></Field>
+        <Field label="المورد"><Select value={form.supplierId} onChange={(e) => setForm({ ...form, supplierId: e.target.value })}><option value="">بدون مورد محدد</option>{data.suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</Select></Field>
+        <Field label="الكمية"><Input type="number" min="0" step="any" value={form.qty} onChange={(e) => setForm({ ...form, qty: e.target.value })} /></Field>
+        <Field label="سعر الوحدة"><Input type="number" min="0" step="any" value={form.unitCost} onChange={(e) => setForm({ ...form, unitCost: e.target.value })} /></Field>
+        <Field label="التاريخ"><Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></Field>
+      </div>
+      <div style={{ marginTop: 12 }}><Btn onClick={submit}><Plus size={15}/> تسجيل الشراء</Btn></div>
+      {err && <Banner type="error">{err}</Banner>}{ok && <Banner type="success">{ok}</Banner>}
+    </Card>
+    <Card>{data.materialPurchases.length === 0 ? <Empty text="لا توجد مشتريات مسجلة" /> : <Table headers={["التاريخ","المادة","المورد","الكمية","سعر الوحدة","الإجمالي",""]}>{[...data.materialPurchases].reverse().map((p) => {
+      const m = data.materials.find((x) => x.id === p.material_id); const sup = data.suppliers.find((x) => x.id === p.supplier_id);
+      return <tr key={p.id}><Td>{p.purchase_date}</Td><Td>{m?.name || "—"}</Td><Td>{sup?.name || "—"}</Td><Td>{p.qty} {m?.unit || ""}</Td><Td>{fmt(p.unit_cost)} ج.م</Td><Td style={{fontWeight:700}}>{fmt(num(p.qty)*num(p.unit_cost))} ج.م</Td><Td>{canDelete && <button onClick={() => remove(p)} style={{background:"none",border:"none",cursor:"pointer",color:C.red}}><Trash2 size={15}/></button>}</Td></tr>
+    })}</Table>}</Card>
+  </div>;
+}
+
+/* -------------------------------- Expenses --------------------------------- */
+function ExpensesTab({ data, insertRow, deleteRow, canDelete }) {
+  const categories = ["كهرباء", "إيجار", "رواتب", "نقل", "صيانة", "إنترنت", "تسويق", "أخرى"];
+  const [form, setForm] = useState({ category: categories[0], amount: "", date: todayStr(), notes: "" });
+  const [err, setErr] = useState(""); const [ok, setOk] = useState("");
+  async function submit() {
+    setErr(""); setOk("");
+    if (num(form.amount) <= 0) return setErr("أدخل مبلغ أكبر من صفر");
+    const { data: authData } = await supabase.auth.getUser();
+    const e = await insertRow("expenses", { category: form.category, amount: num(form.amount), expense_date: form.date, notes: form.notes.trim() || null, created_by: authData?.user?.id || null });
+    if (e) return setErr(e);
+    setOk("تم تسجيل المصروف بنجاح");
+    setForm({ category: categories[0], amount: "", date: todayStr(), notes: "" });
+  }
+  async function remove(row) {
+    if (!window.confirm("متأكد من حذف المصروف؟")) return;
+    const e = await deleteRow("expenses", row.id); if (e) setErr(e);
+  }
+  const total = data.expenses.reduce((sum, e) => sum + num(e.amount), 0);
+  return <div>
+    <SectionTitle eyebrow="المالية" title="المصروفات" icon={<ReceiptText size={14} />} />
+    <Card style={{ marginBottom: 18 }}><div style={{ color: C.muted, fontSize: 13 }}>إجمالي المصروفات المسجلة</div><div style={{ color: C.red, fontSize: 24, fontWeight: 800, marginTop: 8 }}>{fmt(total)} ج.م</div></Card>
+    <Card style={{ marginBottom: 18 }}>
+      <div style={{ fontWeight: 800, marginBottom: 12 }}>مصروف جديد</div>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <Field label="البند"><Select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>{categories.map((c) => <option key={c} value={c}>{c}</option>)}</Select></Field>
+        <Field label="المبلغ"><Input type="number" min="0" step="any" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} /></Field>
+        <Field label="التاريخ"><Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></Field>
+        <Field label="ملاحظات"><Input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></Field>
+      </div>
+      <div style={{ marginTop: 12 }}><Btn onClick={submit}><Plus size={15}/> تسجيل المصروف</Btn></div>
+      {err && <Banner type="error">{err}</Banner>}{ok && <Banner type="success">{ok}</Banner>}
+    </Card>
+    <Card>{data.expenses.length === 0 ? <Empty text="لا توجد مصروفات مسجلة" /> : <Table headers={["التاريخ","البند","الملاحظات","المبلغ",""]}>{[...data.expenses].reverse().map((e) => <tr key={e.id}><Td>{e.expense_date}</Td><Td>{e.category}</Td><Td>{e.notes || "—"}</Td><Td style={{fontWeight:700,color:C.red}}>{fmt(e.amount)} ج.م</Td><Td>{canDelete && <button onClick={() => remove(e)} style={{background:"none",border:"none",cursor:"pointer",color:C.red}}><Trash2 size={15}/></button>}</Td></tr>)}</Table>}</Card>
+  </div>;
+}
+
 /* ---------------------------------- Reports --------------------------------- */
 function ReportsTab({ data }) {
   const rows = data.products.map((p) => {
@@ -1218,7 +1317,9 @@ function ReportsTab({ data }) {
     const margin = revenue > 0 ? (profit / revenue) * 100 : null;
     return { name: p.name, revenue, cogs, profit, margin, qtySold };
   });
-  const totals = rows.reduce((a, r) => ({ revenue: a.revenue + r.revenue, cogs: a.cogs + r.cogs, profit: a.profit + r.profit }), { revenue: 0, cogs: 0, profit: 0 });
+  const baseTotals = rows.reduce((a, r) => ({ revenue: a.revenue + r.revenue, cogs: a.cogs + r.cogs, profit: a.profit + r.profit }), { revenue: 0, cogs: 0, profit: 0 });
+  const expensesTotal = data.expenses.reduce((sum, e) => sum + num(e.amount), 0);
+  const totals = { ...baseTotals, expenses: expensesTotal, profit: baseTotals.profit - expensesTotal };
   const chartData = rows.map((r) => ({ name: r.name.length > 10 ? r.name.slice(0, 10) + "…" : r.name, الربح: Math.round(r.profit) }));
 
   return (
@@ -1227,7 +1328,8 @@ function ReportsTab({ data }) {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14, marginBottom: 18 }}>
         <Card><div style={{ fontSize: 12.5, color: C.muted, marginBottom: 6 }}>إجمالي الإيرادات</div><div style={{ fontFamily: "Cairo, sans-serif", fontWeight: 800, fontSize: 20, color: C.brass }}>{fmt(totals.revenue)} ج.م</div></Card>
         <Card><div style={{ fontSize: 12.5, color: C.muted, marginBottom: 6 }}>إجمالي تكلفة المبيعات</div><div style={{ fontFamily: "Cairo, sans-serif", fontWeight: 800, fontSize: 20, color: C.wood }}>{fmt(totals.cogs)} ج.م</div></Card>
-        <Card><div style={{ fontSize: 12.5, color: C.muted, marginBottom: 6 }}>صافي الربح</div><div style={{ fontFamily: "Cairo, sans-serif", fontWeight: 800, fontSize: 20, color: totals.profit >= 0 ? C.green : C.red }}>{fmt(totals.profit)} ج.م</div></Card>
+        <Card><div style={{ fontSize: 12.5, color: C.muted, marginBottom: 6 }}>إجمالي المصروفات</div><div style={{ fontFamily: "Cairo, sans-serif", fontWeight: 800, fontSize: 20, color: C.red }}>{fmt(totals.expenses)} ج.م</div></Card>
+        <Card><div style={{ fontSize: 12.5, color: C.muted, marginBottom: 6 }}>صافي الربح بعد المصروفات</div><div style={{ fontFamily: "Cairo, sans-serif", fontWeight: 800, fontSize: 20, color: totals.profit >= 0 ? C.green : C.red }}>{fmt(totals.profit)} ج.م</div></Card>
       </div>
       <Card style={{ marginBottom: 18 }}>
         <div style={{ fontSize: 13.5, color: C.muted, marginBottom: 12, fontWeight: 700 }}>الربح لكل منتج</div>
