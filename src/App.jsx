@@ -233,7 +233,13 @@ function AuthGate() {
   return (
     <div dir="rtl" style={{ fontFamily: "Tajawal, sans-serif", background: C.bg, minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: C.text, padding: 24 }}>
       <div style={{ marginBottom: 22 }}>
-        <img src="/logo.png" alt="Logo" style={{ height: 64, borderRadius: 10 }} />
+        <img src="/logo.png" alt="Logo" style={{
+  width: 320,
+  height: "auto",
+  objectFit: "contain",
+  display: "block",
+  margin: "0 auto",
+}} />
       </div>
       <Card style={{ width: 340 }}>
         <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
