@@ -233,7 +233,7 @@ function AuthGate() {
   return (
     <div dir="rtl" style={{ fontFamily: "Tajawal, sans-serif", background: C.bg, minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: C.text, padding: 24 }}>
       <div style={{ marginBottom: 22 }}>
-        <img src="/logo.png" alt="Logo" style={{ height: 64, borderRadius: 10 }} />
+        <img src="/logo.png" alt="NEXTEP" style={{ width: 300, maxWidth: "82vw", height: 110, objectFit: "contain", display: "block" }} />
       </div>
       <Card style={{ width: 340 }}>
         <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
@@ -370,9 +370,9 @@ export default function App() {
 
   return (
     <div dir="rtl" style={{ fontFamily: "Tajawal, sans-serif", background: C.bg, minHeight: "100vh", display: "flex", color: C.text }}>
-      <div style={{ width: 210, flexShrink: 0, background: "#191612", borderLeft: `1px solid ${C.border}`, padding: "20px 12px", display: "flex", flexDirection: "column", gap: 4, position: "sticky", top: 0, height: "100vh", overflowY: "auto" }}>
+      <div style={{ width: 235, flexShrink: 0, background: "linear-gradient(180deg, #191612 0%, #211B15 100%)", borderLeft: `1px solid ${C.border}`, padding: "20px 12px", display: "flex", flexDirection: "column", gap: 4, position: "sticky", top: 0, height: "100vh", overflowY: "auto" }}>
         <div style={{ padding: "0 8px 18px 8px" }}>
-          <img src="/logo.png" alt="Logo" style={{ height: 40, borderRadius: 6, marginBottom: 10 }} />
+          <img src="/logo.png" alt="NEXTEP" style={{ width: 195, height: 82, objectFit: "contain", display: "block", margin: "0 auto 12px" }} />
           <div style={{ fontSize: 11.5, color: C.muted, marginTop: 2 }}>{profile.full_name}</div>
           <div style={{ fontSize: 11.5, color: C.brass, marginTop: 2, fontWeight: 700 }}>{ROLES[role]?.label}</div>
         </div>
@@ -419,50 +419,100 @@ function LoadingScreen({ text }) {
 function Dashboard({ data }) {
   const stats = useMemo(() => {
     const materialsValue = data.materials.reduce((s, m) => s + materialStock(m.id, data) * m.unit_cost, 0);
-    const finishedValue = data.products.reduce((s, p) => s + finishedStock(p.id, data) * avgProductionUnitCost(p.id, data), 0);
+    const finishedValue = data.products.reduce((s, p) => s + finishedStock(p.id, data) * (avgProductionUnitCost(p.id, data) || productUnitCost(p, data)), 0);
     const totalSuppliers = data.suppliers.reduce((s, sup) => s + supplierBalance(sup.id, data), 0);
     const totalCustomers = data.customers.reduce((s, c) => s + customerBalance(c.id, data), 0);
     const monthKey = todayStr().slice(0, 7);
+    const today = todayStr();
     const ordersThisMonth = data.productionOrders.filter((o) => (o.order_date || "").slice(0, 7) === monthKey).length;
+    const todayProduction = data.productionOrders.filter((o) => o.order_date === today).reduce((sum, o) => sum + num(o.qty), 0);
+    const todaySales = data.sales.filter((o) => o.sale_date === today).reduce((sum, o) => sum + num(o.total), 0);
     let revenue = 0, cogs = 0;
-    for (const s of data.sales) {
-      revenue += s.total;
-      const p = data.products.find((x) => x.id === s.product_id);
-      cogs += p ? s.qty * avgProductionUnitCost(p.id, data) : 0;
+    for (const sale of data.sales) {
+      revenue += num(sale.total);
+      const product = data.products.find((x) => x.id === sale.product_id);
+      cogs += product ? num(sale.qty) * (avgProductionUnitCost(product.id, data) || productUnitCost(product, data)) : 0;
     }
-    return { materialsValue, finishedValue, totalSuppliers, totalCustomers, ordersThisMonth, profit: revenue - cogs };
+    const lowMaterials = data.materials
+      .map((m) => ({ ...m, stock: materialStock(m.id, data) }))
+      .filter((m) => m.stock <= 10)
+      .sort((a, b) => a.stock - b.stock);
+    const lowProducts = data.products
+      .map((p) => ({ ...p, stock: finishedStock(p.id, data) }))
+      .filter((p) => p.stock <= 5)
+      .sort((a, b) => a.stock - b.stock);
+    const activeRentals = data.rentals.filter((r) => r.status === "active").length;
+    return { materialsValue, finishedValue, totalSuppliers, totalCustomers, ordersThisMonth, todayProduction, todaySales, profit: revenue - cogs, lowMaterials, lowProducts, activeRentals };
   }, [data]);
 
   const chartData = data.products.slice(0, 8).map((p) => {
-    const revenue = data.sales.filter((s) => s.product_id === p.id).reduce((s, o) => s + o.total, 0);
-    const cost = data.sales.filter((s) => s.product_id === p.id).reduce((s, o) => s + o.qty * avgProductionUnitCost(p.id, data), 0);
+    const revenue = data.sales.filter((s) => s.product_id === p.id).reduce((sum, row) => sum + num(row.total), 0);
+    const unitCost = avgProductionUnitCost(p.id, data) || productUnitCost(p, data);
+    const cost = data.sales.filter((s) => s.product_id === p.id).reduce((sum, row) => sum + num(row.qty) * unitCost, 0);
     return { name: p.name.length > 10 ? p.name.slice(0, 10) + "…" : p.name, الإيراد: Math.round(revenue), التكلفة: Math.round(cost) };
   });
 
   const cards = [
+    { label: "مبيعات اليوم", value: `${fmt(stats.todaySales)} ج.م`, color: C.green },
+    { label: "إنتاج اليوم", value: `${fmt(stats.todayProduction)} وحدة`, color: C.brass },
     { label: "قيمة مخزون الخامات", value: `${fmt(stats.materialsValue)} ج.م`, color: C.brass },
     { label: "قيمة مخزون الإنتاج التام", value: `${fmt(stats.finishedValue)} ج.م`, color: C.wood },
     { label: "مستحق للموردين", value: `${fmt(stats.totalSuppliers)} ج.م`, color: C.red },
     { label: "مستحق من العملاء", value: `${fmt(stats.totalCustomers)} ج.م`, color: C.green },
     { label: "أوامر إنتاج هذا الشهر", value: stats.ordersThisMonth, color: C.brass },
+    { label: "إيجارات نشطة", value: stats.activeRentals, color: C.wood },
     { label: "صافي الربح التقديري", value: `${fmt(stats.profit)} ج.م`, color: stats.profit >= 0 ? C.green : C.red },
   ];
 
   return (
     <div>
-      <SectionTitle eyebrow="نظرة عامة" title="لوحة التحكم" icon={<LayoutDashboard size={14} />} />
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14, marginBottom: 22 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 18 }}>
+        <SectionTitle eyebrow="نظرة عامة" title="لوحة التحكم التنفيذية" icon={<LayoutDashboard size={14} />} />
+        <div style={{ color: C.muted, fontSize: 13, background: C.panel, border: `1px solid ${C.border}`, borderRadius: 10, padding: "9px 12px" }}>
+          آخر تحديث: {new Date().toLocaleString("ar-EG")}
+        </div>
+      </div>
+
+      {(stats.lowMaterials.length > 0 || stats.lowProducts.length > 0) && (
+        <Card style={{ marginBottom: 18, borderColor: `${C.red}66`, background: `${C.red}10` }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, color: C.red, fontWeight: 800, marginBottom: 10 }}>
+            <AlertCircle size={18} /> تنبيهات تحتاج تدخل
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 10 }}>
+            {stats.lowMaterials.slice(0, 5).map((m) => (
+              <div key={`m-${m.id}`} style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 9, padding: 10 }}>
+                <div style={{ fontWeight: 700 }}>{m.name}</div>
+                <div style={{ color: m.stock <= 0 ? C.red : C.brass, fontSize: 12.5, marginTop: 3 }}>
+                  خامة {m.stock <= 0 ? "نافدة" : "منخفضة"}: {fmt(m.stock)} {m.unit}
+                </div>
+              </div>
+            ))}
+            {stats.lowProducts.slice(0, 5).map((p) => (
+              <div key={`p-${p.id}`} style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 9, padding: 10 }}>
+                <div style={{ fontWeight: 700 }}>{p.name}</div>
+                <div style={{ color: p.stock <= 0 ? C.red : C.brass, fontSize: 12.5, marginTop: 3 }}>
+                  منتج {p.stock <= 0 ? "غير متوفر" : "قرب يخلص"}: {fmt(p.stock)} وحدة
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 14, marginBottom: 22 }}>
         {cards.map((c, i) => (
-          <Card key={i}>
+          <Card key={i} style={{ minHeight: 102, position: "relative", overflow: "hidden" }}>
+            <div style={{ position: "absolute", insetInlineStart: 0, top: 0, bottom: 0, width: 4, background: c.color }} />
             <div style={{ fontSize: 12.5, color: C.muted, marginBottom: 8 }}>{c.label}</div>
-            <div style={{ fontFamily: "Cairo, sans-serif", fontWeight: 800, fontSize: 22, color: c.color }}>{c.value}</div>
+            <div style={{ fontFamily: "Cairo, sans-serif", fontWeight: 800, fontSize: 21, color: c.color }}>{c.value}</div>
           </Card>
         ))}
       </div>
+
       <Card>
         <div style={{ fontSize: 13.5, color: C.muted, marginBottom: 12, fontWeight: 700 }}>الإيراد مقابل التكلفة لكل منتج</div>
         {chartData.length === 0 ? <Empty text="لا توجد بيانات مبيعات بعد لعرض الرسم البياني" /> : (
-          <ResponsiveContainer width="100%" height={280}>
+          <ResponsiveContainer width="100%" height={300}>
             <BarChart data={chartData}>
               <CartesianGrid stroke={C.border} strokeDasharray="3 3" />
               <XAxis dataKey="name" stroke={C.muted} fontSize={12} />
