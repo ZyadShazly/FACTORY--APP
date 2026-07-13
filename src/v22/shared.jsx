@@ -1,0 +1,91 @@
+import React from "react";
+import { AlertCircle, CheckCircle2, Loader2, X } from "lucide-react";
+
+export const theme = {
+  bg: "#1C1916", panel: "#242019", panelAlt: "#2C2620", border: "#3D3527",
+  wood: "#B8703A", woodDark: "#8C5527", brass: "#D9A441", text: "#EDE6D8",
+  muted: "#A69C8A", green: "#7FA35C", red: "#C1543A", blue: "#5796B8",
+};
+
+export const money = (value) => `${Number(value || 0).toLocaleString("ar-EG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ج.م`;
+export const number = (value) => Number.isFinite(Number(value)) ? Number(value) : 0;
+export const today = () => new Date().toISOString().slice(0, 10);
+
+export const ACTION_PERMISSIONS = [
+  "projects_view", "projects_create", "projects_edit", "projects_delete", "project_files_view",
+  "project_files_upload", "project_files_delete", "project_financials_view", "payroll_view",
+  "payroll_create", "payroll_edit", "payroll_approve", "payroll_bonus_manage", "payroll_mark_paid",
+  "daily_labor_view", "daily_labor_create", "daily_labor_edit", "daily_labor_delete",
+  "daily_labor_pay", "audit_log_view",
+];
+
+const ACCOUNTANT_DEFAULTS = [
+  "projects_view", "projects_create", "project_financials_view", "project_files_view", "project_files_upload",
+  "payroll_view", "payroll_create", "payroll_edit", "payroll_mark_paid", "daily_labor_view",
+  "daily_labor_create", "daily_labor_edit", "daily_labor_pay",
+];
+const PRODUCTION_DEFAULTS = ["projects_view", "project_files_view"];
+
+export function actionPermissions(profile) {
+  if (profile?.role === "manager") return Object.fromEntries(ACTION_PERMISSIONS.map((key) => [key, true]));
+  const defaults = profile?.role === "accountant" ? ACCOUNTANT_DEFAULTS : PRODUCTION_DEFAULTS;
+  const saved = profile?.permissions || {};
+  return Object.fromEntries(ACTION_PERMISSIONS.map((key) => [key, saved[key] ?? defaults.includes(key)]));
+}
+
+export function PermissionGuard({ allow, children, fallback = null }) {
+  return allow ? children : fallback;
+}
+
+export function Panel({ children, className = "", ...props }) {
+  return <section className={`v22-panel ${className}`} {...props}>{children}</section>;
+}
+
+export function PageTitle({ eyebrow, title, description, actions }) {
+  return <div className="v22-page-title">
+    <div><div className="v22-eyebrow">{eyebrow}</div><h2>{title}</h2>{description && <p>{description}</p>}</div>
+    {actions && <div className="v22-actions">{actions}</div>}
+  </div>;
+}
+
+export function Field({ label, children, wide = false }) {
+  return <label className={`v22-field ${wide ? "wide" : ""}`}><span>{label}</span>{children}</label>;
+}
+export function Input(props) { return <input {...props} className={`v22-input ${props.className || ""}`} />; }
+export function Select({ children, ...props }) { return <select {...props} className={`v22-input ${props.className || ""}`}>{children}</select>; }
+export function TextArea(props) { return <textarea {...props} className={`v22-input v22-textarea ${props.className || ""}`} />; }
+export function Button({ children, variant = "primary", ...props }) {
+  return <button {...props} className={`v22-button ${variant}`}>{children}</button>;
+}
+
+export function EmptyState({ title = "لا توجد بيانات", description = "أضف أول سجل للبدء." }) {
+  return <div className="v22-state"><div className="v22-state-icon">＋</div><strong>{title}</strong><span>{description}</span></div>;
+}
+export function LoadingState({ text = "جارِ التحميل..." }) {
+  return <div className="v22-state"><Loader2 className="spin" size={25} /><span>{text}</span></div>;
+}
+export function ErrorState({ error }) {
+  return error ? <div className="v22-alert error"><AlertCircle size={17} />{error}</div> : null;
+}
+export function SuccessState({ message }) {
+  return message ? <div className="v22-alert success"><CheckCircle2 size={17} />{message}</div> : null;
+}
+
+export function ConfirmDialog({ open, title, description, confirmLabel = "تأكيد", danger = false, onConfirm, onCancel }) {
+  if (!open) return null;
+  return <div className="v22-modal-backdrop" role="presentation" onMouseDown={onCancel}>
+    <div className="v22-modal" role="dialog" aria-modal="true" aria-labelledby="confirm-title" onMouseDown={(e) => e.stopPropagation()}>
+      <button className="v22-icon-button close" onClick={onCancel} aria-label="إغلاق"><X size={18} /></button>
+      <h3 id="confirm-title">{title}</h3><p>{description}</p>
+      <div className="v22-actions"><Button variant="ghost" onClick={onCancel}>إلغاء</Button><Button variant={danger ? "danger" : "primary"} onClick={onConfirm}>{confirmLabel}</Button></div>
+    </div>
+  </div>;
+}
+
+export function StatCard({ label, value, hint, tone = "normal" }) {
+  return <Panel className={`v22-stat ${tone}`}><span>{label}</span><strong>{value}</strong>{hint && <small>{hint}</small>}</Panel>;
+}
+
+export function DataTable({ headers, children }) {
+  return <div className="v22-table-wrap"><table className="v22-table"><thead><tr>{headers.map((h) => <th key={h}>{h}</th>)}</tr></thead><tbody>{children}</tbody></table></div>;
+}
