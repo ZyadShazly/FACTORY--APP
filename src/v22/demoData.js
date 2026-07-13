@@ -1,0 +1,13 @@
+const now = new Date().toISOString();
+export const demoProfile = { id: "00000000-0000-0000-0000-000000000001", full_name: "مدير النظام", role: "manager", permissions: {} };
+export const demoData = {
+  materials: [], materialPurchases: [], products: [], productionOrders: [], sales: [], rentals: [], suppliers: [], supplierPayments: [], customerReceipts: [], expenses: [], employees: [], payroll: [], dailyLabor: [], projectCosts: [], auditLog: [],
+  customers: [{ id:"c1", name:"شركة آفاق للتطوير" }, { id:"c2", name:"مجموعة رواسي" }],
+  projects: [
+    { id:"p1",project_code:"NXT-26031",project_name:"تجهيز مكاتب آفاق",customer_id:"c1",location:"الرياض · حي الياسمين",start_date:"2026-06-15",delivery_date:"2026-08-28",status:"manufacturing",progress_percentage:68,expected_cost:420000,actual_cost:281500,revenue:610000,profit:328500,notes:"" },
+    { id:"p2",project_code:"NXT-26034",project_name:"أثاث فندق رواسي",customer_id:"c2",location:"جدة · الكورنيش",start_date:"2026-07-01",delivery_date:"2026-10-12",status:"approval",progress_percentage:24,expected_cost:780000,actual_cost:146000,revenue:1120000,profit:974000,notes:"" },
+    { id:"p3",project_code:"NXT-26028",project_name:"معرض NEXTEP الرئيسي",customer_id:null,location:"الرياض · الصناعية الثانية",start_date:"2026-05-05",delivery_date:"2026-07-20",status:"installation",progress_percentage:91,expected_cost:235000,actual_cost:218700,revenue:360000,profit:141300,notes:"" },
+  ],
+  projectFiles: [{ id:"f1",project_id:"p1",file_name:"shop-drawings-approved.pdf",file_path:"p1/demo.pdf",file_type:"application/pdf",file_size:2480000,category:"approvals",description:"النسخة المعتمدة" }],
+  projectActivities: [{ id:"a1",project_id:"p1",action_type:"progress_updated",description:"تم تحديث نسبة الإنجاز إلى 68%",created_at:now }, { id:"a2",project_id:"p1",action_type:"status_changed",description:"انتقل المشروع إلى مرحلة التصنيع",created_at:"2026-07-10T09:00:00Z" }],
+};
