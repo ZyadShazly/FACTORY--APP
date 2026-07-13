@@ -377,7 +377,13 @@ export default function App() {
     <div dir="rtl" style={{ fontFamily: "Tajawal, sans-serif", background: C.bg, minHeight: "100vh", display: "flex", color: C.text }}>
       <div style={{ width: 210, flexShrink: 0, background: "#191612", borderLeft: `1px solid ${C.border}`, padding: "20px 12px", display: "flex", flexDirection: "column", gap: 4, position: "sticky", top: 0, height: "100vh", overflowY: "auto" }}>
         <div style={{ padding: "0 8px 18px 8px" }}>
-          <img src="/logo.png" alt="Logo" style={{ height: 40, borderRadius: 6, marginBottom: 10 }} />
+          <img src="/logo.png" alt="Logo" style={{
+  width: 170,
+  height: "auto",
+  objectFit: "contain",
+  display: "block",
+  margin: "0 auto 15px",
+}} />
           <div style={{ fontSize: 11.5, color: C.muted, marginTop: 2 }}>{profile.full_name}</div>
           <div style={{ fontSize: 11.5, color: C.brass, marginTop: 2, fontWeight: 700 }}>{ROLES[role]?.label}</div>
         </div>
