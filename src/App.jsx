@@ -27,13 +27,13 @@ const ROLES = {
 };
 const SIGNUP_ROLES = ["accountant", "production"];
 const NAV_BY_ROLE = {
-  manager: ["dashboard", "materials", "products", "production", "sales", "rentals", "suppliers", "customers", "reports", "team"],
-  accountant: ["materials", "products", "production", "sales", "rentals", "suppliers", "customers"],
-  production: ["production"],
+  manager: ["dashboard", "inventory", "materials", "products", "production", "sales", "rentals", "suppliers", "customers", "reports", "team"],
+  accountant: ["inventory", "materials", "products", "production", "sales", "rentals", "suppliers", "customers"],
+  production: ["inventory", "production"],
 };
-const ALL_PAGE_IDS = ["dashboard", "materials", "products", "production", "sales", "rentals", "suppliers", "customers", "reports", "team"];
+const ALL_PAGE_IDS = ["dashboard", "inventory", "materials", "products", "production", "sales", "rentals", "suppliers", "customers", "reports", "team"];
 const PAGE_LABELS = {
-  dashboard: "لوحة التحكم", materials: "المواد الخام", products: "المنتجات والتكلفة",
+  dashboard: "لوحة التحكم", inventory: "المخزون", materials: "المواد الخام", products: "المنتجات والتكلفة",
   production: "أوامر الإنتاج", sales: "المبيعات", rentals: "الإيجارات",
   suppliers: "الموردين", customers: "العملاء", reports: "التقارير", team: "الفريق والصلاحيات",
 };
@@ -233,13 +233,7 @@ function AuthGate() {
   return (
     <div dir="rtl" style={{ fontFamily: "Tajawal, sans-serif", background: C.bg, minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: C.text, padding: 24 }}>
       <div style={{ marginBottom: 22 }}>
-        <img src="/logo.png" alt="Logo" style={{
-  width: 320,
-  height: "auto",
-  objectFit: "contain",
-  display: "block",
-  margin: "0 auto",
-}} />
+        <img src="/logo.png" alt="Logo" style={{ height: 64, borderRadius: 10 }} />
       </div>
       <Card style={{ width: 340 }}>
         <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
@@ -345,6 +339,7 @@ export default function App() {
   const activeTab = permissions.pages.includes(tab) ? tab : permissions.pages[0];
   const ALL_NAV = [
     { id: "dashboard", label: "لوحة التحكم", icon: LayoutDashboard },
+    { id: "inventory", label: "المخزون", icon: Boxes },
     { id: "materials", label: "المواد الخام", icon: Package },
     { id: "products", label: "المنتجات والتكلفة", icon: Layers },
     { id: "production", label: "أوامر الإنتاج", icon: Factory },
@@ -377,13 +372,7 @@ export default function App() {
     <div dir="rtl" style={{ fontFamily: "Tajawal, sans-serif", background: C.bg, minHeight: "100vh", display: "flex", color: C.text }}>
       <div style={{ width: 210, flexShrink: 0, background: "#191612", borderLeft: `1px solid ${C.border}`, padding: "20px 12px", display: "flex", flexDirection: "column", gap: 4, position: "sticky", top: 0, height: "100vh", overflowY: "auto" }}>
         <div style={{ padding: "0 8px 18px 8px" }}>
-          <img src="/logo.png" alt="Logo" style={{
-  width: 170,
-  height: "auto",
-  objectFit: "contain",
-  display: "block",
-  margin: "0 auto 15px",
-}} />
+          <img src="/logo.png" alt="Logo" style={{ height: 40, borderRadius: 6, marginBottom: 10 }} />
           <div style={{ fontSize: 11.5, color: C.muted, marginTop: 2 }}>{profile.full_name}</div>
           <div style={{ fontSize: 11.5, color: C.brass, marginTop: 2, fontWeight: 700 }}>{ROLES[role]?.label}</div>
         </div>
@@ -403,6 +392,7 @@ export default function App() {
 
       <div style={{ flex: 1, padding: 28, maxWidth: 1180 }}>
         {activeTab === "dashboard" && <Dashboard data={data} />}
+        {activeTab === "inventory" && <InventoryTab data={data} />}
         {activeTab === "materials" && <MaterialsTab data={data} canDelete={permissions.can_delete} insertRow={insertRow} deleteRow={deleteRow} updateRow={updateRow} />}
         {activeTab === "products" && <ProductsTab data={data} canCreate={permissions.can_create_products} canEdit={permissions.can_edit_products} canDelete={permissions.can_delete} hideProfitInfo={!permissions.view_financials} insertRow={insertRow} deleteRow={deleteRow} updateRow={updateRow} />}
         {activeTab === "production" && <ProductionTab data={data} insertRow={insertRow} updateRow={updateRow} deleteRow={deleteRow} canManage={role === "manager"} />}
@@ -483,6 +473,62 @@ function Dashboard({ data }) {
               <Bar dataKey="التكلفة" fill={C.wood} radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+
+/* -------------------------------- Inventory --------------------------------- */
+function InventoryTab({ data }) {
+  const [search, setSearch] = useState("");
+  const rawMaterials = data.materials.map((material) => {
+    const stock = materialStock(material.id, data);
+    return { ...material, stock, value: stock * num(material.unit_cost) };
+  });
+  const finishedProducts = data.products.map((product) => {
+    const stock = finishedStock(product.id, data);
+    const unitCost = avgProductionUnitCost(product.id, data) || productUnitCost(product, data);
+    return { ...product, stock, unitCost, value: stock * unitCost };
+  });
+  const filteredMaterials = rawMaterials.filter((row) => row.name.toLowerCase().includes(search.toLowerCase()));
+  const filteredProducts = finishedProducts.filter((row) => row.name.toLowerCase().includes(search.toLowerCase()));
+  const rawValue = rawMaterials.reduce((sum, row) => sum + row.value, 0);
+  const finishedValue = finishedProducts.reduce((sum, row) => sum + row.value, 0);
+  const lowRaw = rawMaterials.filter((row) => row.stock > 0 && row.stock <= 10).length;
+  const outRaw = rawMaterials.filter((row) => row.stock <= 0).length;
+
+  function stockMeta(stock) {
+    if (stock <= 0) return { label: "نافد", color: C.red };
+    if (stock <= 10) return { label: "منخفض", color: C.brass };
+    return { label: "متوفر", color: C.green };
+  }
+
+  return (
+    <div>
+      <SectionTitle eyebrow="المخزون الحالي" title="المخزون" icon={<Boxes size={14} />} />
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 14, marginBottom: 18 }}>
+        <Card><div style={{ color: C.muted, fontSize: 13 }}>قيمة مخزون الخامات</div><div style={{ color: C.brass, fontSize: 22, fontWeight: 800, marginTop: 8 }}>{fmt(rawValue)} ج.م</div></Card>
+        <Card><div style={{ color: C.muted, fontSize: 13 }}>قيمة الإنتاج التام</div><div style={{ color: C.green, fontSize: 22, fontWeight: 800, marginTop: 8 }}>{fmt(finishedValue)} ج.م</div></Card>
+        <Card><div style={{ color: C.muted, fontSize: 13 }}>خامات منخفضة</div><div style={{ color: C.brass, fontSize: 22, fontWeight: 800, marginTop: 8 }}>{lowRaw}</div></Card>
+        <Card><div style={{ color: C.muted, fontSize: 13 }}>خامات نافدة</div><div style={{ color: C.red, fontSize: 22, fontWeight: 800, marginTop: 8 }}>{outRaw}</div></Card>
+      </div>
+      <SearchBox value={search} onChange={setSearch} placeholder="ابحث في المخزون..." />
+      <Card style={{ marginBottom: 18 }}>
+        <div style={{ fontWeight: 800, marginBottom: 12 }}>مخزون المواد الخام</div>
+        {filteredMaterials.length === 0 ? <Empty text="لا توجد مواد خام مطابقة" /> : (
+          <Table headers={["المادة", "الوحدة", "الرصيد", "سعر الوحدة", "القيمة", "الحالة"]}>
+            {filteredMaterials.map((row) => { const meta = stockMeta(row.stock); return <tr key={row.id}><Td>{row.name}</Td><Td>{row.unit}</Td><Td style={{ color: meta.color, fontWeight: 700 }}>{fmt(row.stock)}</Td><Td>{fmt(row.unit_cost)} ج.م</Td><Td>{fmt(row.value)} ج.م</Td><Td style={{ color: meta.color, fontWeight: 700 }}>{meta.label}</Td></tr>; })}
+          </Table>
+        )}
+      </Card>
+      <Card>
+        <div style={{ fontWeight: 800, marginBottom: 12 }}>مخزون المنتجات التامة</div>
+        {filteredProducts.length === 0 ? <Empty text="لا توجد منتجات مطابقة" /> : (
+          <Table headers={["المنتج", "الكود", "الرصيد", "متوسط التكلفة", "القيمة", "الحالة"]}>
+            {filteredProducts.map((row) => { const meta = stockMeta(row.stock); return <tr key={row.id}><Td>{row.name}</Td><Td>{row.sku || "—"}</Td><Td style={{ color: meta.color, fontWeight: 700 }}>{fmt(row.stock)}</Td><Td>{fmt(row.unitCost)} ج.م</Td><Td>{fmt(row.value)} ج.م</Td><Td style={{ color: meta.color, fontWeight: 700 }}>{meta.label}</Td></tr>; })}
+          </Table>
         )}
       </Card>
     </div>
