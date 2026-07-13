@@ -2,15 +2,13 @@ import React, { useMemo, useState } from "react";
 import { ArrowRight, Calendar, Download, Eye, File, FolderOpen, MapPin, Paperclip, Pencil, Plus, Trash2, Upload } from "lucide-react";
 import { supabase } from "../supabaseClient";
 import { Button, ConfirmDialog, DataTable, EmptyState, ErrorState, Field, Input, money, number, PageTitle, Panel, PermissionGuard, Select, StatCard, SuccessState, TextArea, today } from "./shared";
+import { FILE_CATEGORIES, isSupportedProjectFile, PROJECT_FILES_ACCEPT } from "./fileTypes";
 
 export const PROJECT_STATUSES = {
   design: "التصميم", approval: "الاعتماد", manufacturing: "التصنيع", painting: "الدهان",
   installation: "التركيب", delivered: "تم التسليم", on_hold: "متوقف", cancelled: "ملغي",
 };
-export const FILE_CATEGORIES = {
-  "2d": "رسومات 2D", "3d": "تصميمات 3D", measurements: "المقاسات", cutting_list: "قوائم التقطيع",
-  approvals: "الاعتمادات", site_photos: "صور الموقع", other: "أخرى",
-};
+export { FILE_CATEGORIES } from "./fileTypes";
 
 export function ProjectStatusBadge({ status }) {
   return <span className={`project-status status-${status}`}>{PROJECT_STATUSES[status] || status}</span>;
@@ -133,8 +131,8 @@ export function FileUploader({ project, files, permissions, profile, refresh }) 
   const [file, setFile] = useState(null); const [category, setCategory] = useState("other"); const [description, setDescription] = useState(""); const [busy, setBusy] = useState(false); const [error, setError] = useState("");
   async function upload(e) {
     e.preventDefault(); if (!file) return; setError(""); setBusy(true);
-    const ext = file.name.split(".").pop()?.toLowerCase(); const allowed = ["pdf","jpg","jpeg","png","webp","dwg","dxf","xls","xlsx","doc","docx","zip"];
-    if (!allowed.includes(ext)) { setBusy(false); return setError("نوع الملف غير مدعوم"); }
+    const ext = file.name.split(".").pop()?.toLowerCase();
+    if (!isSupportedProjectFile(file.name)) { setBusy(false); return setError("نوع الملف غير مدعوم"); }
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "-"); const path = `${project.id}/${crypto.randomUUID()}-${safeName}`;
     const { error: storageError } = await supabase.storage.from("project-files").upload(path, file, { contentType: file.type || "application/octet-stream" });
     if (storageError) { setBusy(false); return setError(storageError.message); }
@@ -144,7 +142,7 @@ export function FileUploader({ project, files, permissions, profile, refresh }) 
     setFile(null); setDescription(""); setBusy(false); await refresh("projectFiles"); await refresh("projectActivities");
   }
   return <Panel><div className="files-heading"><h3 className="v22-section-title"><Paperclip size={17} /> ملفات المشروع</h3><span>{files.length} ملف</span></div>
-    <PermissionGuard allow={permissions.project_files_upload}><form className="file-upload-form" onSubmit={upload}><label className="file-drop"><Upload size={22} /><span>{file?.name || "اختر ملفًا أو اسحبه هنا"}</span><input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.dwg,.dxf,.xls,.xlsx,.doc,.docx,.zip" onChange={(e) => setFile(e.target.files?.[0] || null)} /></label><Select value={category} onChange={(e) => setCategory(e.target.value)}>{Object.entries(FILE_CATEGORIES).map(([k,v]) => <option key={k} value={k}>{v}</option>)}</Select><Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="وصف اختياري" /><Button disabled={!file || busy}>{busy ? "جارِ الرفع..." : "رفع الملف"}</Button></form></PermissionGuard>
+    <PermissionGuard allow={permissions.project_files_upload}><form className="file-upload-form" onSubmit={upload}><label className="file-drop"><Upload size={22} /><span>{file?.name || "اختر ملفًا أو اسحبه هنا"}</span><small>PDF · صور · DWG/DXF · Office · ZIP (حتى 50 MB)</small><input type="file" accept={PROJECT_FILES_ACCEPT} onChange={(e) => setFile(e.target.files?.[0] || null)} /></label><Select value={category} onChange={(e) => setCategory(e.target.value)}>{Object.entries(FILE_CATEGORIES).map(([k,v]) => <option key={k} value={k}>{v}</option>)}</Select><Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="وصف اختياري" /><Button disabled={!file || busy}>{busy ? "جارِ الرفع..." : "رفع الملف"}</Button></form></PermissionGuard>
     <ErrorState error={error} /><FileList files={files} canDelete={permissions.project_files_delete} onRefresh={() => refresh("projectFiles")} />
   </Panel>;
 }
