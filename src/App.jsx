@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Package, Layers, Factory, ShoppingCart, Truck, Users,
   BarChart3, Plus, Trash2, AlertCircle, CheckCircle2, Wallet, Boxes, LogOut,
   CalendarClock, ShieldCheck, Pencil, X, ReceiptText, ClipboardList,
-  BriefcaseBusiness, FolderOpen, UserRoundCog, BadgeDollarSign, HardHat, ScrollText,
+  BriefcaseBusiness, FolderOpen, UserRoundCog, BadgeDollarSign, HardHat, ScrollText, ChevronDown,
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
@@ -17,14 +17,16 @@ import { AuditLogTab, PERMISSION_LABELS } from "./v22/audit";
 import { demoData, demoProfile } from "./v22/demoData";
 import { PROJECT_FILES_TABLE } from "./v22/fileTypes";
 import { syncMutation } from "./v22/mutations";
+import { combinedRealtimeStatus, isActiveProfile, REALTIME_TABLE_TO_KEY, resolveAllowedTab, TABLES } from "./realtime";
+import { buildNavigationGroups, loadNavigationState, NAV_GROUP_STORAGE_KEY } from "./navigation";
 
 const V22_DEMO = (import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEMO === "true") && new URLSearchParams(window.location.search).get("demo") === "v22";
 
 /* ---------------------------------- ثيم ---------------------------------- */
 const C = {
-  bg: "#1C1916", panel: "#242019", panelAlt: "#2C2620", border: "#3D3527",
-  wood: "#B8703A", woodDark: "#8C5527", brass: "#D9A441",
-  text: "#EDE6D8", muted: "#A69C8A", green: "#7FA35C", red: "#C1543A",
+  bg: "var(--color-app-bg)", panel: "var(--color-surface)", panelAlt: "var(--color-surface-muted)", border: "var(--color-border)",
+  wood: "var(--color-wood)", woodDark: "var(--color-wood-dark)", brass: "var(--color-gold)",
+  text: "var(--color-text)", muted: "var(--color-text-muted)", green: "var(--color-success)", red: "var(--color-danger)", blue: "var(--color-info)",
 };
 
 const num = (v) => { const n = parseFloat(v); return isFinite(n) ? n : 0; };
@@ -74,31 +76,31 @@ function permissionsForProfile(profile) {
 }
 const MATERIAL_UNITS = ["قطعة", "متر", "متر مربع", "متر مكعب", "كيلوجرام", "جرام", "لتر", "مللي لتر", "لفة", "طقم", "علبة", "كرتونة", "أخرى"];
 
-const TABLES = {
-  materials: "materials",
-  materialPurchases: "material_purchases",
-  products: "products",
-  productionOrders: "production_orders",
-  sales: "sales",
-  rentals: "rentals",
-  suppliers: "suppliers",
-  supplierPayments: "supplier_payments",
-  customers: "customers",
-  customerReceipts: "customer_receipts",
-  expenses: "expenses",
-  projects: "projects",
-  projectFiles: PROJECT_FILES_TABLE,
-  projectActivities: "project_activities",
-  employees: "employees",
-  payroll: "payroll",
-  dailyLabor: "daily_labor",
-  projectCosts: "project_costs",
-  auditLog: "audit_log",
-};
 const EMPTY_DATA = {
   materials: [], materialPurchases: [], products: [], productionOrders: [],
   sales: [], rentals: [], suppliers: [], supplierPayments: [], customers: [], customerReceipts: [], expenses: [],
-  projects: [], projectFiles: [], projectActivities: [], employees: [], payroll: [], dailyLabor: [], projectCosts: [], auditLog: [],
+  profiles: [], projects: [], projectFiles: [], projectActivities: [], employees: [], payroll: [], dailyLabor: [], projectCosts: [], auditLog: [],
+};
+const PAGE_DESCRIPTIONS = {
+  dashboard: "ملخص تنفيذي لأهم مؤشرات العمل والتنبيهات والأنشطة الحديثة.",
+  projects: "متابعة المشاريع ونسب الإنجاز والعملاء والملفات المرتبطة.",
+  projectFiles: "الوصول المنظم إلى مستندات المشاريع ومرفقاتها.",
+  inventory: "رؤية فورية لأرصدة الخامات والمنتجات وحالات النقص.",
+  purchases: "تسجيل ومراجعة مشتريات التشغيل وتكاليف التوريد.",
+  expenses: "إدارة المصروفات وتصنيفها ومتابعة أثرها المالي.",
+  materials: "تعريف الخامات ومتابعة التكلفة والرصيد المتاح.",
+  products: "إدارة المنتجات ومكونات التصنيع والتكلفة التقديرية.",
+  production: "تخطيط أوامر الإنتاج ومتابعة التنفيذ والكميات.",
+  sales: "تسجيل المبيعات ومتابعة حركة المنتجات والعملاء.",
+  rentals: "إدارة عمليات الإيجار وحالة الوحدات المستأجرة.",
+  suppliers: "متابعة الموردين والمستحقات والمدفوعات.",
+  customers: "إدارة بيانات العملاء والأرصدة والتحصيلات.",
+  employees: "إدارة فريق العمل والبيانات الوظيفية.",
+  payroll: "إعداد الرواتب ومراجعتها واعتماد دورة الصرف.",
+  dailyLabor: "تسجيل العمالة اليومية والتكلفة والحضور.",
+  reports: "تحليل الأداء المالي والتشغيلي لاتخاذ قرارات أوضح.",
+  auditLog: "تتبع العمليات والتغييرات الحساسة داخل النظام.",
+  team: "إدارة المستخدمين والأدوار والصلاحيات بأمان.",
 };
 
 async function fetchTableRows(key, table) {
@@ -191,8 +193,8 @@ function customerRentalTotal(customerId, data) {
 function customerBalance(customerId, data) { return customerSaleTotal(customerId, data) + customerRentalTotal(customerId, data) - customerReceiptTotal(customerId, data); }
 
 /* ------------------------------- عناصر عامة ------------------------------- */
-function Card({ children, style, ...rest }) {
-  return <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 12, padding: 18, ...style }} {...rest}>{children}</div>;
+function Card({ children, style, className = "", ...rest }) {
+  return <div className={`legacy-card ${className}`} style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: "var(--radius-lg)", boxShadow: "var(--shadow-sm)", padding: 18, ...style }} {...rest}>{children}</div>;
 }
 function Field({ label, children, style }) {
   return <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13, color: C.muted, flex: 1, minWidth: 140, ...style }}>{label}{children}</label>;
@@ -204,24 +206,28 @@ function Btn({ children, variant = "primary", ...rest }) {
   const styles = {
     primary: { background: C.wood, color: "#fff" },
     ghost: { background: "transparent", color: C.text, border: `1px solid ${C.border}` },
-    danger: { background: "transparent", color: C.red, border: `1px solid ${C.red}55` },
+    danger: { background: "var(--color-danger-soft)", color: C.red, border: "1px solid color-mix(in srgb, var(--color-danger) 25%, transparent)" },
   };
   return <button {...rest} disabled={rest.disabled} style={{ display: "inline-flex", alignItems: "center", gap: 6, border: "none", borderRadius: 8, padding: "9px 16px", fontFamily: "Tajawal, sans-serif", fontWeight: 700, fontSize: 13.5, cursor: rest.disabled ? "default" : "pointer", opacity: rest.disabled ? 0.6 : 1, ...styles[variant], ...(rest.style || {}) }}>{children}</button>;
 }
-function SectionTitle({ eyebrow, title, icon }) {
+function SectionTitle({ eyebrow, title, icon, description }) {
+  const pageId = Object.keys(PAGE_LABELS).find((id) => PAGE_LABELS[id] === title);
   return (
-    <div style={{ marginBottom: 18 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, color: C.brass, fontSize: 12.5, fontWeight: 700, letterSpacing: 0.5, marginBottom: 4 }}>
+    <header className="page-header">
+      <div className="page-header-copy">
+      <div className="page-eyebrow">
         {icon}<span>{eyebrow}</span>
       </div>
-      <h2 style={{ fontFamily: "Cairo, sans-serif", fontWeight: 800, fontSize: 22, color: C.text, margin: 0 }}>{title}</h2>
-    </div>
+      <h2>{title}</h2>
+      <p>{description || PAGE_DESCRIPTIONS[pageId] || "إدارة البيانات والعمليات المرتبطة بهذا القسم."}</p>
+      </div>
+    </header>
   );
 }
 function Banner({ type = "error", children }) {
   const isErr = type === "error";
   return (
-    <div style={{ display: "flex", alignItems: "flex-start", gap: 8, background: isErr ? `${C.red}1a` : `${C.green}1a`, border: `1px solid ${isErr ? C.red : C.green}55`, color: isErr ? "#E28468" : "#9CC17A", borderRadius: 8, padding: "10px 12px", fontSize: 13, marginTop: 10 }}>
+    <div style={{ display: "flex", alignItems: "flex-start", gap: 8, background: isErr ? "var(--color-danger-soft)" : "var(--color-success-soft)", border: `1px solid ${isErr ? C.red : C.green}`, color: isErr ? C.red : C.green, borderRadius: 8, padding: "10px 12px", fontSize: 13, marginTop: 10 }}>
       {isErr ? <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} /> : <CheckCircle2 size={16} style={{ flexShrink: 0, marginTop: 2 }} />}
       <span>{children}</span>
     </div>
@@ -229,8 +235,8 @@ function Banner({ type = "error", children }) {
 }
 function Table({ headers, children }) {
   return (
-    <div style={{ overflowX: "auto" }}>
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5 }}>
+    <div className="legacy-table-wrap" style={{ overflowX: "auto" }}>
+      <table className="legacy-table" style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5 }}>
         <thead><tr>{headers.map((h, i) => <th key={i} style={{ textAlign: "right", color: C.muted, fontWeight: 700, padding: "8px 10px", borderBottom: `1px solid ${C.border}`, whiteSpace: "nowrap" }}>{h}</th>)}</tr></thead>
         <tbody>{children}</tbody>
       </table>
@@ -248,7 +254,7 @@ function SearchBox({ value, onChange, placeholder }) {
 }
 
 /* ----------------------------- شاشة الدخول والتسجيل ----------------------------- */
-function AuthGate() {
+function AuthGate({ notice = "" }) {
   const [mode, setMode] = useState("login");
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
@@ -324,6 +330,7 @@ function AuthGate() {
           </Btn>
         </div>
         {err && <Banner type="error">{err}</Banner>}
+        {notice && <Banner type="error">{notice}</Banner>}
         {info && <Banner type="success">{info}</Banner>}
       </Card>
       <div style={{ fontSize: 11.5, color: C.muted, marginTop: 16, maxWidth: 340, textAlign: "center" }}>
@@ -339,6 +346,17 @@ export default function App() {
   const [profile, setProfile] = useState(V22_DEMO ? demoProfile : undefined);
   const [data, setData] = useState(V22_DEMO ? demoData : null);
   const [tab, setTab] = useState(V22_DEMO ? "projects" : null);
+  const [authNotice, setAuthNotice] = useState("");
+  const [realtimeStatus, setRealtimeStatus] = useState(V22_DEMO ? "DEMO" : "CONNECTING");
+  const [openNavGroups, setOpenNavGroups] = useState(loadNavigationState);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(NAV_GROUP_STORAGE_KEY, JSON.stringify(openNavGroups));
+    } catch (error) {
+      console.warn("[Navigation] Could not persist sidebar state", error);
+    }
+  }, [openNavGroups]);
 
   useEffect(() => {
     if (V22_DEMO) return;
@@ -348,14 +366,28 @@ export default function App() {
   }, []);
 
   const fetchProfile = useCallback(async (userId) => {
-    const { data: rows } = await supabase.from("profiles").select("*").eq("id", userId).limit(1);
-    setProfile(rows && rows.length ? rows[0] : null);
+    const fetchResult = await supabase.from("profiles").select("*").eq("id", userId).maybeSingle();
+    if (fetchResult.error) {
+      console.error("[Realtime:profile] refetch failed", fetchResult.error);
+      return fetchResult;
+    }
+    const nextProfile = fetchResult.data;
+    if (nextProfile && !isActiveProfile(nextProfile)) {
+      console.warn("[Realtime:profile] account suspended", { userId, status: nextProfile.status });
+      setAuthNotice("تم إيقاف حسابك. تواصل مع مدير النظام لإعادة تفعيله.");
+      setProfile(null);
+      await supabase.auth.signOut({ scope: "local" });
+      return fetchResult;
+    }
+    setProfile(nextProfile || null);
+    return fetchResult;
   }, []);
 
   useEffect(() => {
     if (V22_DEMO) return;
     if (session === undefined) return;
-    if (!session) { setProfile(null); return; }
+    if (!session) { setProfile(null); setData(null); return; }
+    setAuthNotice("");
     fetchProfile(session.user.id);
   }, [session, fetchProfile]);
 
@@ -370,6 +402,15 @@ export default function App() {
   useEffect(() => {
     if (V22_DEMO) return;
     if (!session) return;
+    let disposed = false;
+    let reconnectTimer = null;
+    let reconnectAttempt = 0;
+    let connectGeneration = 0;
+    let synchronizedGeneration = 0;
+    let channels = [];
+    const channelStatuses = { data: "CONNECTING", profile: "CONNECTING" };
+    const tableRefreshState = new Map();
+
     (async () => {
       const entries = await Promise.all(
         Object.entries(TABLES).map(async ([key, table]) => {
@@ -377,27 +418,143 @@ export default function App() {
           return [key, fetchResult.error ? [] : (fetchResult.data || [])];
         })
       );
-      setData(Object.fromEntries(entries));
+      if (!disposed) setData(Object.fromEntries(entries));
     })();
 
-    const channel = supabase.channel("factory-realtime");
-    Object.entries(TABLES).forEach(([key, table]) => {
-      channel.on("postgres_changes", { event: "*", schema: "public", table }, () => refetchTable(key));
-    });
-    channel.subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [session, refetchTable]);
+    const updateConnectionStatus = (channelName, status) => {
+      channelStatuses[channelName] = status;
+      const combined = combinedRealtimeStatus(channelStatuses);
+      setRealtimeStatus(combined);
+      console.info(`[Realtime:${channelName}] ${status}`, { combined });
+      if (combined === "CONNECTED") {
+        reconnectAttempt = 0;
+        if (synchronizedGeneration !== connectGeneration) {
+          synchronizedGeneration = connectGeneration;
+          console.info("[Realtime] connected; reconciling missed changes");
+          void Promise.all([
+            ...Object.keys(TABLES).map((key) => refetchTable(key)),
+            fetchProfile(session.user.id),
+          ]);
+        }
+      }
+      if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") scheduleReconnect();
+    };
+
+    const removeChannels = async () => {
+      const staleChannels = channels;
+      channels = [];
+      await Promise.all(staleChannels.map((channel) => supabase.removeChannel(channel)));
+    };
+
+    const requestTableRefresh = (key) => {
+      const state = tableRefreshState.get(key) || { running: false, queued: false };
+      if (state.running) {
+        state.queued = true;
+        tableRefreshState.set(key, state);
+        return;
+      }
+      state.running = true;
+      tableRefreshState.set(key, state);
+      void (async () => {
+        try {
+          do {
+            state.queued = false;
+            await refetchTable(key);
+          } while (!disposed && state.queued);
+        } catch (error) {
+          console.error("[Realtime] table reconciliation failed", { key, error });
+        } finally {
+          state.running = false;
+        }
+      })();
+    };
+
+    const connect = async () => {
+      if (disposed) return;
+      const generation = ++connectGeneration;
+      await removeChannels();
+      if (disposed || generation !== connectGeneration) return;
+      channelStatuses.data = "CONNECTING";
+      channelStatuses.profile = "CONNECTING";
+      setRealtimeStatus("CONNECTING");
+
+      const dataChannel = supabase.channel(`factory-data-${session.user.id}`);
+      Object.entries(REALTIME_TABLE_TO_KEY).forEach(([table, key]) => {
+        dataChannel.on("postgres_changes", { event: "*", schema: "public", table }, (payload) => {
+          if (disposed || generation !== connectGeneration) return;
+          console.info("[Realtime:data] postgres_changes", { table, key, event: payload.eventType });
+          requestTableRefresh(key);
+        });
+      });
+
+      const profileChannel = supabase
+        .channel(`factory-profile-${session.user.id}`)
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "profiles", filter: `id=eq.${session.user.id}` },
+          async (payload) => {
+            if (disposed || generation !== connectGeneration) return;
+            console.info("[Realtime:profile] postgres_changes", { event: payload.eventType, userId: session.user.id });
+            if (payload.eventType === "DELETE") {
+              setAuthNotice("تم حذف أو تعطيل حسابك. تواصل مع مدير النظام.");
+              setProfile(null);
+              await supabase.auth.signOut({ scope: "local" });
+              return;
+            }
+            await fetchProfile(session.user.id);
+          }
+        );
+
+      channels = [dataChannel, profileChannel];
+      dataChannel.subscribe((status) => { if (generation === connectGeneration) updateConnectionStatus("data", status); });
+      profileChannel.subscribe((status) => { if (generation === connectGeneration) updateConnectionStatus("profile", status); });
+    };
+
+    function scheduleReconnect() {
+      if (disposed || reconnectTimer) return;
+      const delay = Math.min(1000 * (2 ** reconnectAttempt), 30000);
+      reconnectAttempt += 1;
+      console.warn("[Realtime] reconnect scheduled", { delay, reconnectAttempt });
+      setRealtimeStatus("RECONNECTING");
+      reconnectTimer = window.setTimeout(() => {
+        reconnectTimer = null;
+        void connect();
+      }, delay);
+    }
+
+    const handleOnline = () => {
+      console.info("[Realtime] browser is online; reconnecting");
+      if (reconnectTimer) window.clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+      void connect();
+    };
+
+    void connect();
+    window.addEventListener("online", handleOnline);
+    return () => {
+      disposed = true;
+      if (reconnectTimer) window.clearTimeout(reconnectTimer);
+      window.removeEventListener("online", handleOnline);
+      connectGeneration += 1;
+      void removeChannels();
+    };
+  }, [session?.user?.id, refetchTable, fetchProfile]);
+
+  const permissions = useMemo(() => profile ? permissionsForProfile(profile) : null, [profile]);
+  useEffect(() => {
+    if (!permissions?.pages?.length) return;
+    setTab((currentTab) => resolveAllowedTab(currentTab, permissions.pages));
+  }, [permissions]);
 
   if (session === undefined || (session && profile === undefined)) {
     return <LoadingScreen text="جارِ التحميل..." />;
   }
-  if (!session) return <AuthGate />;
+  if (!session) return <AuthGate notice={authNotice} />;
   if (profile === null) return <LoadingScreen text="جارِ إعداد حسابك..." />;
   if (!data) return <LoadingScreen text="جارِ تحميل البيانات..." />;
 
   const role = profile.role;
-  const permissions = permissionsForProfile(profile);
-  const activeTab = permissions.pages.includes(tab) ? tab : permissions.pages[0];
+  const activeTab = resolveAllowedTab(tab, permissions.pages);
   const ALL_NAV = [
     { id: "dashboard", label: "لوحة التحكم", icon: LayoutDashboard },
     { id: "projects", label: "المشاريع", icon: BriefcaseBusiness },
@@ -420,6 +577,9 @@ export default function App() {
     { id: "team", label: "الفريق والصلاحيات", icon: ShieldCheck },
   ];
   const NAV = ALL_NAV.filter((n) => permissions.pages.includes(n.id));
+  const navigationGroups = buildNavigationGroups(NAV, permissions.pages);
+  const activeGroup = navigationGroups.find((group) => group.items.some((item) => item.id === activeTab));
+  const activePage = NAV.find((item) => item.id === activeTab);
 
   async function insertRow(key, payload) {
     const mutationResult = await supabase.from(TABLES[key]).insert(payload);
@@ -438,29 +598,46 @@ export default function App() {
   }
 
   return (
-    <div dir="rtl" style={{ fontFamily: "Tajawal, sans-serif", background: C.bg, minHeight: "100vh", display: "flex", color: C.text }}>
-      <div style={{ width: 235, flexShrink: 0, background: "linear-gradient(180deg, #191612 0%, #211B15 100%)", borderLeft: `1px solid ${C.border}`, padding: "20px 12px", display: "flex", flexDirection: "column", gap: 4, position: "sticky", top: 0, height: "100vh", overflowY: "auto" }}>
-        <div style={{ padding: "0 8px 18px 8px" }}>
-          <img src="/logo.png" alt="NEXTEP" style={{ width: 195, height: 82, objectFit: "contain", display: "block", margin: "0 auto 12px" }} />
-          <div style={{ fontSize: 11.5, color: C.muted, marginTop: 2 }}>{profile.full_name}</div>
-          <div style={{ fontSize: 11.5, color: C.brass, marginTop: 2, fontWeight: 700 }}>{ROLES[role]?.label}</div>
+    <div dir="rtl" className="app-shell">
+      <aside className="app-sidebar">
+        <div className="sidebar-brand">
+          <img src="/logo.png" alt="NEXTEP" />
+          <div className="sidebar-user">
+            <div className="sidebar-avatar">{(profile.full_name || profile.email || "N").trim().charAt(0)}</div>
+            <div className="sidebar-user-copy"><strong>{profile.full_name || profile.email}</strong><span>{ROLES[role]?.label}</span></div>
+          </div>
+          {import.meta.env.DEV && <div className="realtime-indicator"><span className={`realtime-dot ${realtimeStatus === "CONNECTED" ? "connected" : ""}`} />Realtime: {realtimeStatus}</div>}
         </div>
-        {NAV.map((n) => {
-          const Icon = n.icon;
-          const active = activeTab === n.id;
-          return (
-            <button key={n.id} onClick={() => setTab(n.id)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 8, border: "none", cursor: "pointer", background: active ? C.wood : "transparent", color: active ? "#fff" : C.muted, fontFamily: "Tajawal, sans-serif", fontWeight: active ? 700 : 500, fontSize: 14, textAlign: "right", width: "100%" }}>
-              <Icon size={17} />{n.label}
-            </button>
-          );
-        })}
-        <button onClick={() => supabase.auth.signOut()} style={{ marginTop: "auto", display: "flex", alignItems: "center", gap: 8, background: "none", border: `1px solid ${C.border}`, borderRadius: 8, color: C.muted, fontSize: 13, padding: "8px 10px", cursor: "pointer", fontFamily: "Tajawal, sans-serif" }}>
+        <nav className="sidebar-nav" aria-label="التنقل الرئيسي">
+          {navigationGroups.map((group) => {
+            const isOpen = openNavGroups[group.id] !== false;
+            return (
+              <section className={`nav-group ${group.id === activeGroup?.id ? "active" : ""}`} key={group.id}>
+                <button className="nav-group-toggle" type="button" aria-expanded={isOpen} onClick={() => setOpenNavGroups((current) => ({ ...current, [group.id]: !isOpen }))}>
+                  <span>{group.label}</span><ChevronDown size={15} className={isOpen ? "open" : ""} />
+                </button>
+                {isOpen && <div className="nav-group-items">
+                  {group.items.map((item) => {
+                    const Icon = item.icon;
+                    const itemActive = activeTab === item.id;
+                    return <button key={item.id} className={`nav-item ${itemActive ? "active" : ""}`} aria-current={itemActive ? "page" : undefined} onClick={() => setTab(item.id)}>
+                      <Icon size={17} /><span>{item.label}</span>
+                    </button>;
+                  })}
+                </div>}
+              </section>
+            );
+          })}
+        </nav>
+        <button className="sidebar-signout" onClick={() => supabase.auth.signOut()}>
           <LogOut size={15} /> تسجيل الخروج
         </button>
-      </div>
+      </aside>
 
-      <div style={{ flex: 1, padding: 28, maxWidth: 1180 }}>
-        {activeTab === "dashboard" && <Dashboard data={data} />}
+      <main className="app-main">
+        <div className="app-context-bar"><span>{activeGroup?.label}</span><strong>{activePage?.label}</strong></div>
+        <div className="app-content">
+        {activeTab === "dashboard" && <Dashboard data={data} navigate={setTab} permissions={permissions} />}
         {activeTab === "projects" && <ProjectsTab data={data} profile={profile} permissions={permissions} refresh={refetchTable} />}
         {activeTab === "projectFiles" && <ProjectFilesHub data={data} permissions={permissions} refresh={refetchTable} />}
         {activeTab === "inventory" && <InventoryTab data={data} />}
@@ -478,8 +655,9 @@ export default function App() {
         {activeTab === "dailyLabor" && permissions.daily_labor_view && <DailyLaborTab data={data} profile={profile} permissions={permissions} refresh={refetchTable} />}
         {activeTab === "reports" && permissions.view_financials && <ReportsTab data={data} />}
         {activeTab === "auditLog" && permissions.audit_log_view && <AuditLogTab data={data} />}
-        {activeTab === "team" && <TeamTab />}
-      </div>
+        {activeTab === "team" && <TeamTab profiles={data.profiles} refresh={refetchTable} currentUserId={profile.id} />}
+        </div>
+      </main>
     </div>
   );
 }
@@ -493,118 +671,95 @@ function LoadingScreen({ text }) {
 }
 
 /* --------------------------------- Dashboard -------------------------------- */
-function Dashboard({ data }) {
+function DashboardMetric({ label, value, tone = "wood" }) {
+  return <div className={`dashboard-metric ${tone}`}><span>{label}</span><strong>{value}</strong></div>;
+}
+
+function DashboardSection({ title, description, action, children, className = "" }) {
+  return <section className={`dashboard-section ${className}`}>
+    <div className="dashboard-section-head"><div><h3>{title}</h3><p>{description}</p></div>{action}</div>
+    <div className="dashboard-metrics">{children}</div>
+  </section>;
+}
+
+function Dashboard({ data, navigate, permissions }) {
   const stats = useMemo(() => {
-    const materialsValue = data.materials.reduce((s, m) => s + materialStock(m.id, data) * m.unit_cost, 0);
-    const finishedValue = data.products.reduce((s, p) => s + finishedStock(p.id, data) * (avgProductionUnitCost(p.id, data) || productUnitCost(p, data)), 0);
-    const totalSuppliers = data.suppliers.reduce((s, sup) => s + supplierBalance(sup.id, data), 0);
-    const totalCustomers = data.customers.reduce((s, c) => s + customerBalance(c.id, data), 0);
-    const monthKey = todayStr().slice(0, 7);
     const today = todayStr();
-    const ordersThisMonth = data.productionOrders.filter((o) => (o.order_date || "").slice(0, 7) === monthKey).length;
-    const todayProduction = data.productionOrders.filter((o) => o.order_date === today).reduce((sum, o) => sum + num(o.qty), 0);
-    const todaySales = data.sales.filter((o) => o.sale_date === today).reduce((sum, o) => sum + num(o.total), 0);
-    let revenue = 0, cogs = 0;
-    for (const sale of data.sales) {
-      revenue += num(sale.total);
-      const product = data.products.find((x) => x.id === sale.product_id);
-      cogs += product ? num(sale.qty) * (avgProductionUnitCost(product.id, data) || productUnitCost(product, data)) : 0;
-    }
-    const lowMaterials = data.materials
-      .map((m) => ({ ...m, stock: materialStock(m.id, data) }))
-      .filter((m) => m.stock <= 10)
-      .sort((a, b) => a.stock - b.stock);
-    const lowProducts = data.products
-      .map((p) => ({ ...p, stock: finishedStock(p.id, data) }))
-      .filter((p) => p.stock <= 5)
-      .sort((a, b) => a.stock - b.stock);
-    const activeRentals = data.rentals.filter((r) => r.status === "active").length;
-    return { materialsValue, finishedValue, totalSuppliers, totalCustomers, ordersThisMonth, todayProduction, todaySales, profit: revenue - cogs, lowMaterials, lowProducts, activeRentals };
+    const monthKey = today.slice(0, 7);
+    const activeProjects = data.projects.filter((project) => !["delivered", "cancelled"].includes(project.status));
+    const delayedProjects = activeProjects.filter((project) => project.delivery_date && project.delivery_date < today);
+    const averageProgress = activeProjects.length ? activeProjects.reduce((sum, project) => sum + num(project.progress), 0) / activeProjects.length : 0;
+    const lowMaterials = data.materials.map((material) => ({ ...material, stock: materialStock(material.id, data) })).filter((material) => material.stock <= 10).sort((a, b) => a.stock - b.stock);
+    const lowProducts = data.products.map((product) => ({ ...product, stock: finishedStock(product.id, data) })).filter((product) => product.stock <= 5).sort((a, b) => a.stock - b.stock);
+    const revenue = data.sales.reduce((sum, sale) => sum + num(sale.total), 0);
+    const cogs = data.sales.reduce((sum, sale) => {
+      const product = data.products.find((row) => row.id === sale.product_id);
+      return sum + (product ? num(sale.qty) * (avgProductionUnitCost(product.id, data) || productUnitCost(product, data)) : 0);
+    }, 0);
+    return {
+      activeProjects: activeProjects.length,
+      delayedProjects: delayedProjects.length,
+      averageProgress,
+      ordersThisMonth: data.productionOrders.filter((order) => (order.order_date || "").slice(0, 7) === monthKey).length,
+      todayProduction: data.productionOrders.filter((order) => order.order_date === today).reduce((sum, order) => sum + num(order.qty), 0),
+      lowMaterials,
+      lowProducts,
+      todaySales: data.sales.filter((sale) => sale.sale_date === today).reduce((sum, sale) => sum + num(sale.total), 0),
+      profit: revenue - cogs,
+      receivables: data.customers.reduce((sum, customer) => sum + customerBalance(customer.id, data), 0),
+      activeEmployees: data.employees.filter((employee) => !["inactive", "suspended"].includes(employee.status)).length,
+      pendingPayroll: data.payroll.filter((row) => row.status !== "paid").length,
+      todayLabor: data.dailyLabor.filter((row) => row.work_date === today).length,
+    };
   }, [data]);
 
-  const chartData = data.products.slice(0, 8).map((p) => {
-    const revenue = data.sales.filter((s) => s.product_id === p.id).reduce((sum, row) => sum + num(row.total), 0);
-    const unitCost = avgProductionUnitCost(p.id, data) || productUnitCost(p, data);
-    const cost = data.sales.filter((s) => s.product_id === p.id).reduce((sum, row) => sum + num(row.qty) * unitCost, 0);
-    return { name: p.name.length > 10 ? p.name.slice(0, 10) + "…" : p.name, الإيراد: Math.round(revenue), التكلفة: Math.round(cost) };
-  });
+  const recentActivities = [...data.projectActivities].sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || ""))).slice(0, 6);
+  const canGo = (page) => permissions.pages.includes(page);
+  const quickAction = (page, label) => canGo(page) ? <button className="section-link" onClick={() => navigate(page)}>{label}</button> : null;
 
-  const cards = [
-    { label: "مبيعات اليوم", value: `${fmt(stats.todaySales)} ج.م`, color: C.green },
-    { label: "إنتاج اليوم", value: `${fmt(stats.todayProduction)} وحدة`, color: C.brass },
-    { label: "قيمة مخزون الخامات", value: `${fmt(stats.materialsValue)} ج.م`, color: C.brass },
-    { label: "قيمة مخزون الإنتاج التام", value: `${fmt(stats.finishedValue)} ج.م`, color: C.wood },
-    { label: "مستحق للموردين", value: `${fmt(stats.totalSuppliers)} ج.م`, color: C.red },
-    { label: "مستحق من العملاء", value: `${fmt(stats.totalCustomers)} ج.م`, color: C.green },
-    { label: "أوامر إنتاج هذا الشهر", value: stats.ordersThisMonth, color: C.brass },
-    { label: "إيجارات نشطة", value: stats.activeRentals, color: C.wood },
-    { label: "إجمالي المصروفات", value: `${fmt(stats.expensesTotal)} ج.م`, color: C.red },
-    { label: "صافي الربح التقديري", value: `${fmt(stats.profit)} ج.م`, color: stats.profit >= 0 ? C.green : C.red },
-  ];
+  return <div>
+    <SectionTitle eyebrow="مركز العمل" title="لوحة التحكم" icon={<LayoutDashboard size={14} />} description="المعلومات الأهم مرتبة حسب أقسام العمل لتصل إلى القرار والإجراء بسرعة." />
+    <div className="dashboard-layout">
+      <DashboardSection title="المشاريع" description="التقدم والمواعيد والمخاطر الحالية" action={quickAction("projects", "فتح المشاريع")}>
+        <DashboardMetric label="مشاريع نشطة" value={stats.activeProjects} />
+        <DashboardMetric label="متوسط الإنجاز" value={`${Math.round(stats.averageProgress)}%`} tone="gold" />
+        <DashboardMetric label="مشاريع متأخرة" value={stats.delayedProjects} tone={stats.delayedProjects ? "danger" : "success"} />
+      </DashboardSection>
 
-  return (
-    <div>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 18 }}>
-        <SectionTitle eyebrow="نظرة عامة" title="لوحة التحكم التنفيذية" icon={<LayoutDashboard size={14} />} />
-        <div style={{ color: C.muted, fontSize: 13, background: C.panel, border: `1px solid ${C.border}`, borderRadius: 10, padding: "9px 12px" }}>
-          آخر تحديث: {new Date().toLocaleString("ar-EG")}
+      <DashboardSection title="التشغيل والإنتاج" description="حركة الإنتاج وحالة المخزون" action={quickAction("production", "فتح الإنتاج")}>
+        <DashboardMetric label="إنتاج اليوم" value={`${fmt(stats.todayProduction)} وحدة`} tone="info" />
+        <DashboardMetric label="أوامر هذا الشهر" value={stats.ordersThisMonth} />
+        <DashboardMetric label="أصناف منخفضة" value={stats.lowMaterials.length + stats.lowProducts.length} tone={(stats.lowMaterials.length + stats.lowProducts.length) ? "warning" : "success"} />
+      </DashboardSection>
+
+      {permissions.view_financials && <DashboardSection title="المالية" description="السيولة والربحية والتحصيلات" action={quickAction("reports", "فتح التقارير")}>
+        <DashboardMetric label="مبيعات اليوم" value={`${fmt(stats.todaySales)} ج.م`} tone="success" />
+        <DashboardMetric label="صافي الربح التقديري" value={`${fmt(stats.profit)} ج.م`} tone={stats.profit >= 0 ? "success" : "danger"} />
+        <DashboardMetric label="مستحق من العملاء" value={`${fmt(stats.receivables)} ج.م`} tone="gold" />
+      </DashboardSection>}
+
+      {canGo("employees") && <DashboardSection title="الموارد البشرية" description="القوة العاملة ودورة الرواتب" action={quickAction("employees", "فتح الموظفين")}>
+        <DashboardMetric label="موظفون نشطون" value={stats.activeEmployees} />
+        <DashboardMetric label="رواتب قيد الإجراء" value={stats.pendingPayroll} tone={stats.pendingPayroll ? "warning" : "success"} />
+        <DashboardMetric label="عمالة اليوم" value={stats.todayLabor} tone="info" />
+      </DashboardSection>}
+
+      <DashboardSection title="التنبيهات" description="العناصر التي تحتاج تدخلاً سريعًا" className="dashboard-wide" action={quickAction("inventory", "فتح المخزون")}>
+        <div className="dashboard-alerts">
+          {stats.lowMaterials.slice(0, 3).map((item) => <div className="dashboard-alert" key={`material-${item.id}`}><AlertCircle size={17} /><span><strong>{item.name}</strong> — الرصيد {fmt(item.stock)} {item.unit}</span></div>)}
+          {stats.lowProducts.slice(0, 3).map((item) => <div className="dashboard-alert" key={`product-${item.id}`}><AlertCircle size={17} /><span><strong>{item.name}</strong> — المتاح {fmt(item.stock)} وحدة</span></div>)}
+          {!stats.lowMaterials.length && !stats.lowProducts.length && <div className="dashboard-clear"><CheckCircle2 size={18} /> لا توجد تنبيهات مخزون حرجة حاليًا.</div>}
         </div>
-      </div>
+      </DashboardSection>
 
-      {(stats.lowMaterials.length > 0 || stats.lowProducts.length > 0) && (
-        <Card style={{ marginBottom: 18, borderColor: `${C.red}66`, background: `${C.red}10` }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, color: C.red, fontWeight: 800, marginBottom: 10 }}>
-            <AlertCircle size={18} /> تنبيهات تحتاج تدخل
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 10 }}>
-            {stats.lowMaterials.slice(0, 5).map((m) => (
-              <div key={`m-${m.id}`} style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 9, padding: 10 }}>
-                <div style={{ fontWeight: 700 }}>{m.name}</div>
-                <div style={{ color: m.stock <= 0 ? C.red : C.brass, fontSize: 12.5, marginTop: 3 }}>
-                  خامة {m.stock <= 0 ? "نافدة" : "منخفضة"}: {fmt(m.stock)} {m.unit}
-                </div>
-              </div>
-            ))}
-            {stats.lowProducts.slice(0, 5).map((p) => (
-              <div key={`p-${p.id}`} style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 9, padding: 10 }}>
-                <div style={{ fontWeight: 700 }}>{p.name}</div>
-                <div style={{ color: p.stock <= 0 ? C.red : C.brass, fontSize: 12.5, marginTop: 3 }}>
-                  منتج {p.stock <= 0 ? "غير متوفر" : "قرب يخلص"}: {fmt(p.stock)} وحدة
-                </div>
-              </div>
-            ))}
-          </div>
-        </Card>
-      )}
-
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 14, marginBottom: 22 }}>
-        {cards.map((c, i) => (
-          <Card key={i} style={{ minHeight: 102, position: "relative", overflow: "hidden" }}>
-            <div style={{ position: "absolute", insetInlineStart: 0, top: 0, bottom: 0, width: 4, background: c.color }} />
-            <div style={{ fontSize: 12.5, color: C.muted, marginBottom: 8 }}>{c.label}</div>
-            <div style={{ fontFamily: "Cairo, sans-serif", fontWeight: 800, fontSize: 21, color: c.color }}>{c.value}</div>
-          </Card>
-        ))}
-      </div>
-
-      <Card>
-        <div style={{ fontSize: 13.5, color: C.muted, marginBottom: 12, fontWeight: 700 }}>الإيراد مقابل التكلفة لكل منتج</div>
-        {chartData.length === 0 ? <Empty text="لا توجد بيانات مبيعات بعد لعرض الرسم البياني" /> : (
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={chartData}>
-              <CartesianGrid stroke={C.border} strokeDasharray="3 3" />
-              <XAxis dataKey="name" stroke={C.muted} fontSize={12} />
-              <YAxis stroke={C.muted} fontSize={12} />
-              <Tooltip contentStyle={{ background: C.panelAlt, border: `1px solid ${C.border}`, borderRadius: 8, color: C.text }} />
-              <Legend />
-              <Bar dataKey="الإيراد" fill={C.brass} radius={[4, 4, 0, 0]} />
-              <Bar dataKey="التكلفة" fill={C.wood} radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        )}
-      </Card>
+      <DashboardSection title="آخر الأنشطة" description="أحدث ما تم على المشاريع" className="dashboard-wide" action={quickAction("projects", "عرض الكل")}>
+        <div className="dashboard-activity-list">
+          {recentActivities.map((activity) => <div className="dashboard-activity" key={activity.id}><span className="activity-mark" /><div><strong>{activity.title || activity.activity_type || "نشاط مشروع"}</strong><small>{activity.description || new Date(activity.created_at).toLocaleString("ar-EG")}</small></div></div>)}
+          {!recentActivities.length && <Empty text="لا توجد أنشطة مسجلة بعد." />}
+        </div>
+      </DashboardSection>
     </div>
-  );
+  </div>;
 }
 
 
@@ -1433,25 +1588,22 @@ function ReportsTab({ data }) {
 }
 
 /* ----------------------------------- Team ------------------------------------ */
-function TeamTab() {
-  const [profiles, setProfiles] = useState(null);
+function TeamTab({ profiles, refresh, currentUserId }) {
   const [pending, setPending] = useState({});
   const [msg, setMsg] = useState("");
 
+  useEffect(() => {
+    const initial = {};
+    for (const p of profiles || []) initial[p.id] = { role: p.role, status: p.status || "active", ...permissionsForProfile(p) };
+    setPending(initial);
+    console.info("[permissions] currentState", initial);
+  }, [profiles]);
+
   const load = useCallback(async () => {
-    const fetchResult = await supabase.from("profiles").select("*").order("created_at", { ascending: true });
-    const { data, error } = fetchResult;
+    const fetchResult = await refresh("profiles");
     console.info("[permissions] refetchResult", fetchResult);
-    setProfiles(error ? [] : data);
-    if (!error) {
-      const initial = {};
-      for (const p of data || []) initial[p.id] = { role: p.role, ...permissionsForProfile(p) };
-      setPending(initial);
-      console.info("[permissions] currentState", initial);
-    }
     return fetchResult;
-  }, []);
-  useEffect(() => { load(); }, [load]);
+  }, [refresh]);
 
   function patchUser(userId, patch) {
     setPending((prev) => ({ ...prev, [userId]: { ...(prev[userId] || {}), ...patch } }));
@@ -1474,20 +1626,21 @@ function TeamTab() {
       can_edit_products: Boolean(current.can_edit_products),
       ...Object.fromEntries(ACTION_PERMISSIONS.map((key) => [key, Boolean(current[key])])),
     };
-    const mutationResult = await supabase.from("profiles").update({ role, permissions }).eq("id", userId);
+    const status = userId === currentUserId ? "active" : (current.status || "active");
+    const mutationResult = await supabase.from("profiles").update({ role, permissions, status }).eq("id", userId);
     const result = await syncMutation({ scope:"permissions:update", mutationResult, refetch:load });
     if (result.error) return setMsg(result.error.message);
     setMsg("تم حفظ الصلاحيات بنجاح");
   }
 
-  if (profiles === null) return <Empty text="جارِ التحميل..." />;
+  if (!profiles) return <Empty text="جارِ التحميل..." />;
   return (
     <div>
       <SectionTitle eyebrow="التحكم بالصلاحيات" title="الفريق والصلاحيات" icon={<ShieldCheck size={14} />} />
       {msg && <Banner type={msg.includes("بنجاح") ? "success" : "error"}>{msg}</Banner>}
       <div style={{ display: "grid", gap: 14, marginTop: 14 }}>
         {profiles.map((p) => {
-          const current = pending[p.id] || { role: p.role, ...permissionsForProfile(p) };
+          const current = pending[p.id] || { role: p.role, status: p.status || "active", ...permissionsForProfile(p) };
           const isManager = current.role === "manager";
           return <Card key={p.id}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
@@ -1495,6 +1648,12 @@ function TeamTab() {
               <Field label="الصفة" style={{ maxWidth: 220 }}>
                 <Select value={current.role} onChange={(e) => patchUser(p.id, { role: e.target.value, ...permissionsForProfile({ role: e.target.value }) })}>
                   {Object.entries(ROLES).map(([k, r]) => <option key={k} value={k}>{r.label}</option>)}
+                </Select>
+              </Field>
+              <Field label="حالة الحساب" style={{ maxWidth: 220 }}>
+                <Select disabled={p.id === currentUserId} value={current.status || "active"} onChange={(e) => patchUser(p.id, { status: e.target.value })}>
+                  <option value="active">نشط</option>
+                  <option value="suspended">موقوف</option>
                 </Select>
               </Field>
             </div>
