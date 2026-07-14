@@ -17,6 +17,7 @@ import { AuditLogTab, PERMISSION_LABELS } from "./v22/audit";
 import { demoData, demoProfile } from "./v22/demoData";
 import { PROJECT_FILES_TABLE } from "./v22/fileTypes";
 import { syncMutation } from "./v22/mutations";
+import { combinedRealtimeStatus, isActiveProfile, REALTIME_TABLE_TO_KEY, resolveAllowedTab, TABLES } from "./realtime";
 
 const V22_DEMO = (import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEMO === "true") && new URLSearchParams(window.location.search).get("demo") === "v22";
 
@@ -74,31 +75,10 @@ function permissionsForProfile(profile) {
 }
 const MATERIAL_UNITS = ["قطعة", "متر", "متر مربع", "متر مكعب", "كيلوجرام", "جرام", "لتر", "مللي لتر", "لفة", "طقم", "علبة", "كرتونة", "أخرى"];
 
-const TABLES = {
-  materials: "materials",
-  materialPurchases: "material_purchases",
-  products: "products",
-  productionOrders: "production_orders",
-  sales: "sales",
-  rentals: "rentals",
-  suppliers: "suppliers",
-  supplierPayments: "supplier_payments",
-  customers: "customers",
-  customerReceipts: "customer_receipts",
-  expenses: "expenses",
-  projects: "projects",
-  projectFiles: PROJECT_FILES_TABLE,
-  projectActivities: "project_activities",
-  employees: "employees",
-  payroll: "payroll",
-  dailyLabor: "daily_labor",
-  projectCosts: "project_costs",
-  auditLog: "audit_log",
-};
 const EMPTY_DATA = {
   materials: [], materialPurchases: [], products: [], productionOrders: [],
   sales: [], rentals: [], suppliers: [], supplierPayments: [], customers: [], customerReceipts: [], expenses: [],
-  projects: [], projectFiles: [], projectActivities: [], employees: [], payroll: [], dailyLabor: [], projectCosts: [], auditLog: [],
+  profiles: [], projects: [], projectFiles: [], projectActivities: [], employees: [], payroll: [], dailyLabor: [], projectCosts: [], auditLog: [],
 };
 
 async function fetchTableRows(key, table) {
@@ -248,7 +228,7 @@ function SearchBox({ value, onChange, placeholder }) {
 }
 
 /* ----------------------------- شاشة الدخول والتسجيل ----------------------------- */
-function AuthGate() {
+function AuthGate({ notice = "" }) {
   const [mode, setMode] = useState("login");
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
@@ -324,6 +304,7 @@ function AuthGate() {
           </Btn>
         </div>
         {err && <Banner type="error">{err}</Banner>}
+        {notice && <Banner type="error">{notice}</Banner>}
         {info && <Banner type="success">{info}</Banner>}
       </Card>
       <div style={{ fontSize: 11.5, color: C.muted, marginTop: 16, maxWidth: 340, textAlign: "center" }}>
@@ -339,6 +320,8 @@ export default function App() {
   const [profile, setProfile] = useState(V22_DEMO ? demoProfile : undefined);
   const [data, setData] = useState(V22_DEMO ? demoData : null);
   const [tab, setTab] = useState(V22_DEMO ? "projects" : null);
+  const [authNotice, setAuthNotice] = useState("");
+  const [realtimeStatus, setRealtimeStatus] = useState(V22_DEMO ? "DEMO" : "CONNECTING");
 
   useEffect(() => {
     if (V22_DEMO) return;
@@ -348,14 +331,28 @@ export default function App() {
   }, []);
 
   const fetchProfile = useCallback(async (userId) => {
-    const { data: rows } = await supabase.from("profiles").select("*").eq("id", userId).limit(1);
-    setProfile(rows && rows.length ? rows[0] : null);
+    const fetchResult = await supabase.from("profiles").select("*").eq("id", userId).maybeSingle();
+    if (fetchResult.error) {
+      console.error("[Realtime:profile] refetch failed", fetchResult.error);
+      return fetchResult;
+    }
+    const nextProfile = fetchResult.data;
+    if (nextProfile && !isActiveProfile(nextProfile)) {
+      console.warn("[Realtime:profile] account suspended", { userId, status: nextProfile.status });
+      setAuthNotice("تم إيقاف حسابك. تواصل مع مدير النظام لإعادة تفعيله.");
+      setProfile(null);
+      await supabase.auth.signOut({ scope: "local" });
+      return fetchResult;
+    }
+    setProfile(nextProfile || null);
+    return fetchResult;
   }, []);
 
   useEffect(() => {
     if (V22_DEMO) return;
     if (session === undefined) return;
-    if (!session) { setProfile(null); return; }
+    if (!session) { setProfile(null); setData(null); return; }
+    setAuthNotice("");
     fetchProfile(session.user.id);
   }, [session, fetchProfile]);
 
@@ -370,6 +367,15 @@ export default function App() {
   useEffect(() => {
     if (V22_DEMO) return;
     if (!session) return;
+    let disposed = false;
+    let reconnectTimer = null;
+    let reconnectAttempt = 0;
+    let connectGeneration = 0;
+    let synchronizedGeneration = 0;
+    let channels = [];
+    const channelStatuses = { data: "CONNECTING", profile: "CONNECTING" };
+    const tableRefreshState = new Map();
+
     (async () => {
       const entries = await Promise.all(
         Object.entries(TABLES).map(async ([key, table]) => {
@@ -377,27 +383,143 @@ export default function App() {
           return [key, fetchResult.error ? [] : (fetchResult.data || [])];
         })
       );
-      setData(Object.fromEntries(entries));
+      if (!disposed) setData(Object.fromEntries(entries));
     })();
 
-    const channel = supabase.channel("factory-realtime");
-    Object.entries(TABLES).forEach(([key, table]) => {
-      channel.on("postgres_changes", { event: "*", schema: "public", table }, () => refetchTable(key));
-    });
-    channel.subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [session, refetchTable]);
+    const updateConnectionStatus = (channelName, status) => {
+      channelStatuses[channelName] = status;
+      const combined = combinedRealtimeStatus(channelStatuses);
+      setRealtimeStatus(combined);
+      console.info(`[Realtime:${channelName}] ${status}`, { combined });
+      if (combined === "CONNECTED") {
+        reconnectAttempt = 0;
+        if (synchronizedGeneration !== connectGeneration) {
+          synchronizedGeneration = connectGeneration;
+          console.info("[Realtime] connected; reconciling missed changes");
+          void Promise.all([
+            ...Object.keys(TABLES).map((key) => refetchTable(key)),
+            fetchProfile(session.user.id),
+          ]);
+        }
+      }
+      if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") scheduleReconnect();
+    };
+
+    const removeChannels = async () => {
+      const staleChannels = channels;
+      channels = [];
+      await Promise.all(staleChannels.map((channel) => supabase.removeChannel(channel)));
+    };
+
+    const requestTableRefresh = (key) => {
+      const state = tableRefreshState.get(key) || { running: false, queued: false };
+      if (state.running) {
+        state.queued = true;
+        tableRefreshState.set(key, state);
+        return;
+      }
+      state.running = true;
+      tableRefreshState.set(key, state);
+      void (async () => {
+        try {
+          do {
+            state.queued = false;
+            await refetchTable(key);
+          } while (!disposed && state.queued);
+        } catch (error) {
+          console.error("[Realtime] table reconciliation failed", { key, error });
+        } finally {
+          state.running = false;
+        }
+      })();
+    };
+
+    const connect = async () => {
+      if (disposed) return;
+      const generation = ++connectGeneration;
+      await removeChannels();
+      if (disposed || generation !== connectGeneration) return;
+      channelStatuses.data = "CONNECTING";
+      channelStatuses.profile = "CONNECTING";
+      setRealtimeStatus("CONNECTING");
+
+      const dataChannel = supabase.channel(`factory-data-${session.user.id}`);
+      Object.entries(REALTIME_TABLE_TO_KEY).forEach(([table, key]) => {
+        dataChannel.on("postgres_changes", { event: "*", schema: "public", table }, (payload) => {
+          if (disposed || generation !== connectGeneration) return;
+          console.info("[Realtime:data] postgres_changes", { table, key, event: payload.eventType });
+          requestTableRefresh(key);
+        });
+      });
+
+      const profileChannel = supabase
+        .channel(`factory-profile-${session.user.id}`)
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "profiles", filter: `id=eq.${session.user.id}` },
+          async (payload) => {
+            if (disposed || generation !== connectGeneration) return;
+            console.info("[Realtime:profile] postgres_changes", { event: payload.eventType, userId: session.user.id });
+            if (payload.eventType === "DELETE") {
+              setAuthNotice("تم حذف أو تعطيل حسابك. تواصل مع مدير النظام.");
+              setProfile(null);
+              await supabase.auth.signOut({ scope: "local" });
+              return;
+            }
+            await fetchProfile(session.user.id);
+          }
+        );
+
+      channels = [dataChannel, profileChannel];
+      dataChannel.subscribe((status) => { if (generation === connectGeneration) updateConnectionStatus("data", status); });
+      profileChannel.subscribe((status) => { if (generation === connectGeneration) updateConnectionStatus("profile", status); });
+    };
+
+    function scheduleReconnect() {
+      if (disposed || reconnectTimer) return;
+      const delay = Math.min(1000 * (2 ** reconnectAttempt), 30000);
+      reconnectAttempt += 1;
+      console.warn("[Realtime] reconnect scheduled", { delay, reconnectAttempt });
+      setRealtimeStatus("RECONNECTING");
+      reconnectTimer = window.setTimeout(() => {
+        reconnectTimer = null;
+        void connect();
+      }, delay);
+    }
+
+    const handleOnline = () => {
+      console.info("[Realtime] browser is online; reconnecting");
+      if (reconnectTimer) window.clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+      void connect();
+    };
+
+    void connect();
+    window.addEventListener("online", handleOnline);
+    return () => {
+      disposed = true;
+      if (reconnectTimer) window.clearTimeout(reconnectTimer);
+      window.removeEventListener("online", handleOnline);
+      connectGeneration += 1;
+      void removeChannels();
+    };
+  }, [session?.user?.id, refetchTable, fetchProfile]);
+
+  const permissions = useMemo(() => profile ? permissionsForProfile(profile) : null, [profile]);
+  useEffect(() => {
+    if (!permissions?.pages?.length) return;
+    setTab((currentTab) => resolveAllowedTab(currentTab, permissions.pages));
+  }, [permissions]);
 
   if (session === undefined || (session && profile === undefined)) {
     return <LoadingScreen text="جارِ التحميل..." />;
   }
-  if (!session) return <AuthGate />;
+  if (!session) return <AuthGate notice={authNotice} />;
   if (profile === null) return <LoadingScreen text="جارِ إعداد حسابك..." />;
   if (!data) return <LoadingScreen text="جارِ تحميل البيانات..." />;
 
   const role = profile.role;
-  const permissions = permissionsForProfile(profile);
-  const activeTab = permissions.pages.includes(tab) ? tab : permissions.pages[0];
+  const activeTab = resolveAllowedTab(tab, permissions.pages);
   const ALL_NAV = [
     { id: "dashboard", label: "لوحة التحكم", icon: LayoutDashboard },
     { id: "projects", label: "المشاريع", icon: BriefcaseBusiness },
@@ -444,6 +566,7 @@ export default function App() {
           <img src="/logo.png" alt="NEXTEP" style={{ width: 195, height: 82, objectFit: "contain", display: "block", margin: "0 auto 12px" }} />
           <div style={{ fontSize: 11.5, color: C.muted, marginTop: 2 }}>{profile.full_name}</div>
           <div style={{ fontSize: 11.5, color: C.brass, marginTop: 2, fontWeight: 700 }}>{ROLES[role]?.label}</div>
+          {import.meta.env.DEV && <div style={{ fontSize: 10.5, color: realtimeStatus === "CONNECTED" ? C.green : C.brass, marginTop: 5 }}>Realtime: {realtimeStatus}</div>}
         </div>
         {NAV.map((n) => {
           const Icon = n.icon;
@@ -478,7 +601,7 @@ export default function App() {
         {activeTab === "dailyLabor" && permissions.daily_labor_view && <DailyLaborTab data={data} profile={profile} permissions={permissions} refresh={refetchTable} />}
         {activeTab === "reports" && permissions.view_financials && <ReportsTab data={data} />}
         {activeTab === "auditLog" && permissions.audit_log_view && <AuditLogTab data={data} />}
-        {activeTab === "team" && <TeamTab />}
+        {activeTab === "team" && <TeamTab profiles={data.profiles} refresh={refetchTable} currentUserId={profile.id} />}
       </div>
     </div>
   );
@@ -1433,25 +1556,22 @@ function ReportsTab({ data }) {
 }
 
 /* ----------------------------------- Team ------------------------------------ */
-function TeamTab() {
-  const [profiles, setProfiles] = useState(null);
+function TeamTab({ profiles, refresh, currentUserId }) {
   const [pending, setPending] = useState({});
   const [msg, setMsg] = useState("");
 
+  useEffect(() => {
+    const initial = {};
+    for (const p of profiles || []) initial[p.id] = { role: p.role, status: p.status || "active", ...permissionsForProfile(p) };
+    setPending(initial);
+    console.info("[permissions] currentState", initial);
+  }, [profiles]);
+
   const load = useCallback(async () => {
-    const fetchResult = await supabase.from("profiles").select("*").order("created_at", { ascending: true });
-    const { data, error } = fetchResult;
+    const fetchResult = await refresh("profiles");
     console.info("[permissions] refetchResult", fetchResult);
-    setProfiles(error ? [] : data);
-    if (!error) {
-      const initial = {};
-      for (const p of data || []) initial[p.id] = { role: p.role, ...permissionsForProfile(p) };
-      setPending(initial);
-      console.info("[permissions] currentState", initial);
-    }
     return fetchResult;
-  }, []);
-  useEffect(() => { load(); }, [load]);
+  }, [refresh]);
 
   function patchUser(userId, patch) {
     setPending((prev) => ({ ...prev, [userId]: { ...(prev[userId] || {}), ...patch } }));
@@ -1474,20 +1594,21 @@ function TeamTab() {
       can_edit_products: Boolean(current.can_edit_products),
       ...Object.fromEntries(ACTION_PERMISSIONS.map((key) => [key, Boolean(current[key])])),
     };
-    const mutationResult = await supabase.from("profiles").update({ role, permissions }).eq("id", userId);
+    const status = userId === currentUserId ? "active" : (current.status || "active");
+    const mutationResult = await supabase.from("profiles").update({ role, permissions, status }).eq("id", userId);
     const result = await syncMutation({ scope:"permissions:update", mutationResult, refetch:load });
     if (result.error) return setMsg(result.error.message);
     setMsg("تم حفظ الصلاحيات بنجاح");
   }
 
-  if (profiles === null) return <Empty text="جارِ التحميل..." />;
+  if (!profiles) return <Empty text="جارِ التحميل..." />;
   return (
     <div>
       <SectionTitle eyebrow="التحكم بالصلاحيات" title="الفريق والصلاحيات" icon={<ShieldCheck size={14} />} />
       {msg && <Banner type={msg.includes("بنجاح") ? "success" : "error"}>{msg}</Banner>}
       <div style={{ display: "grid", gap: 14, marginTop: 14 }}>
         {profiles.map((p) => {
-          const current = pending[p.id] || { role: p.role, ...permissionsForProfile(p) };
+          const current = pending[p.id] || { role: p.role, status: p.status || "active", ...permissionsForProfile(p) };
           const isManager = current.role === "manager";
           return <Card key={p.id}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
@@ -1495,6 +1616,12 @@ function TeamTab() {
               <Field label="الصفة" style={{ maxWidth: 220 }}>
                 <Select value={current.role} onChange={(e) => patchUser(p.id, { role: e.target.value, ...permissionsForProfile({ role: e.target.value }) })}>
                   {Object.entries(ROLES).map(([k, r]) => <option key={k} value={k}>{r.label}</option>)}
+                </Select>
+              </Field>
+              <Field label="حالة الحساب" style={{ maxWidth: 220 }}>
+                <Select disabled={p.id === currentUserId} value={current.status || "active"} onChange={(e) => patchUser(p.id, { status: e.target.value })}>
+                  <option value="active">نشط</option>
+                  <option value="suspended">موقوف</option>
                 </Select>
               </Field>
             </div>

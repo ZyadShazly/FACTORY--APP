@@ -4,6 +4,7 @@ import { calculateDailyLabor, calculateNetSalary } from "../src/v22/calculations
 import { buildProjectFilePath, PROJECT_FILES_BUCKET, PROJECT_FILES_TABLE } from "../src/v22/fileTypes.js";
 import { syncMutation } from "../src/v22/mutations.js";
 import { auditActorLabel } from "../src/v22/auditIdentity.js";
+import { combinedRealtimeStatus, isActiveProfile, REALTIME_TABLE_TO_KEY, resolveAllowedTab } from "../src/realtime.js";
 
 test("حساب صافي الراتب يشمل البدلات والإضافي والخصومات والسلف", () => {
   assert.equal(calculateNetSalary({ base_salary: 5000, housing_allowance: 1000, transport_allowance: 500, other_allowance: 250, overtime_hours: 10, overtime_rate: 50, bonuses: 300, deductions: 200, advances: 400 }), 6950);
@@ -53,4 +54,26 @@ test("هوية سجل التدقيق تعرض الاسم ثم البريد ثم 
   assert.equal(auditActorLabel({ actor: { full_name: "", email: "z@example.com" }, actor_id: "user-id" }), "z@example.com");
   assert.equal(auditActorLabel({ actor_id: null }), "النظام");
   assert.equal(auditActorLabel({ actor_id: "6775d4cb-0000-4000-8000-000000000000" }), "6775d4cb-0000-4000-8000-000000000000");
+});
+
+test("خريطة Realtime تغطي الجداول التشغيلية الموجودة في state", () => {
+  const tables = Object.keys(REALTIME_TABLE_TO_KEY);
+  for (const table of ["profiles", "projects", "project_files", "payroll", "daily_labor", "materials", "material_purchases", "production_orders", "expenses", "audit_log"]) {
+    assert.equal(tables.includes(table), true, `${table} must be subscribed`);
+  }
+  assert.equal(new Set(Object.values(REALTIME_TABLE_TO_KEY)).size, tables.length);
+});
+
+test("تغيير الصلاحيات ينقل المستخدم من الصفحة الممنوعة", () => {
+  assert.equal(resolveAllowedTab("payroll", ["projects", "inventory"]), "projects");
+  assert.equal(resolveAllowedTab("inventory", ["projects", "inventory"]), "inventory");
+  assert.equal(resolveAllowedTab("payroll", []), null);
+});
+
+test("حالة الحساب والاتصال اللحظي تُحسب بأمان", () => {
+  assert.equal(isActiveProfile({ status: "active" }), true);
+  assert.equal(isActiveProfile({}), true);
+  assert.equal(isActiveProfile({ status: "suspended" }), false);
+  assert.equal(combinedRealtimeStatus({ data: "SUBSCRIBED", profile: "SUBSCRIBED" }), "CONNECTED");
+  assert.equal(combinedRealtimeStatus({ data: "CHANNEL_ERROR", profile: "SUBSCRIBED" }), "RECONNECTING");
 });

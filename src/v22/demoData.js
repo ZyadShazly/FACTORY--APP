@@ -1,7 +1,7 @@
 const now = new Date().toISOString();
-export const demoProfile = { id: "00000000-0000-0000-0000-000000000001", full_name: "مدير النظام", role: "manager", permissions: {} };
+export const demoProfile = { id: "00000000-0000-0000-0000-000000000001", full_name: "مدير النظام", email: "manager@nextep.demo", role: "manager", status: "active", permissions: {} };
 export const demoData = {
-  materials: [], materialPurchases: [], products: [], productionOrders: [], sales: [], rentals: [], suppliers: [], supplierPayments: [], customerReceipts: [], expenses: [], employees: [], payroll: [], dailyLabor: [], projectCosts: [], auditLog: [],
+  profiles: [demoProfile], materials: [], materialPurchases: [], products: [], productionOrders: [], sales: [], rentals: [], suppliers: [], supplierPayments: [], customerReceipts: [], expenses: [], employees: [], payroll: [], dailyLabor: [], projectCosts: [], auditLog: [],
   customers: [{ id:"c1", name:"شركة آفاق للتطوير" }, { id:"c2", name:"مجموعة رواسي" }],
   projects: [
     { id:"p1",project_code:"NXT-26031",project_name:"تجهيز مكاتب آفاق",customer_id:"c1",location:"الرياض · حي الياسمين",start_date:"2026-06-15",delivery_date:"2026-08-28",status:"manufacturing",progress_percentage:68,expected_cost:420000,actual_cost:281500,revenue:610000,profit:328500,notes:"" },
