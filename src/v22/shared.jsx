@@ -2,9 +2,9 @@ import React from "react";
 import { AlertCircle, CheckCircle2, Loader2, X } from "lucide-react";
 
 export const theme = {
-  bg: "#1C1916", panel: "#242019", panelAlt: "#2C2620", border: "#3D3527",
-  wood: "#B8703A", woodDark: "#8C5527", brass: "#D9A441", text: "#EDE6D8",
-  muted: "#A69C8A", green: "#7FA35C", red: "#C1543A", blue: "#5796B8",
+  bg: "var(--color-app-bg)", panel: "var(--color-surface)", panelAlt: "var(--color-surface-muted)", border: "var(--color-border)",
+  wood: "var(--color-wood)", woodDark: "var(--color-wood-dark)", brass: "var(--color-gold)", text: "var(--color-text)",
+  muted: "var(--color-text-muted)", green: "var(--color-success)", red: "var(--color-danger)", blue: "var(--color-info)",
 };
 
 export const money = (value) => `${Number(value || 0).toLocaleString("ar-EG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ج.م`;
@@ -41,11 +41,11 @@ export function Panel({ children, className = "", ...props }) {
   return <section className={`v22-panel ${className}`} {...props}>{children}</section>;
 }
 
-export function PageTitle({ eyebrow, title, description, actions }) {
-  return <div className="v22-page-title">
+export function PageTitle({ eyebrow, title, description, actions, search, filters }) {
+  return <header className="v22-page-title">
     <div><div className="v22-eyebrow">{eyebrow}</div><h2>{title}</h2>{description && <p>{description}</p>}</div>
-    {actions && <div className="v22-actions">{actions}</div>}
-  </div>;
+    {(search || filters || actions) && <div className="v22-actions">{search}{filters}{actions}</div>}
+  </header>;
 }
 
 export function Field({ label, children, wide = false }) {
