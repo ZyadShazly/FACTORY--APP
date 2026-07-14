@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { calculateDailyLabor, calculateNetSalary } from "../src/v22/calculations.js";
 import { buildProjectFilePath, PROJECT_FILES_BUCKET, PROJECT_FILES_TABLE } from "../src/v22/fileTypes.js";
 import { syncMutation } from "../src/v22/mutations.js";
+import { auditActorLabel } from "../src/v22/auditIdentity.js";
 
 test("حساب صافي الراتب يشمل البدلات والإضافي والخصومات والسلف", () => {
   assert.equal(calculateNetSalary({ base_salary: 5000, housing_allowance: 1000, transport_allowance: 500, other_allowance: 250, overtime_hours: 10, overtime_rate: 50, bonuses: 300, deductions: 200, advances: 400 }), 6950);
@@ -45,4 +46,11 @@ test("mutation الفاشلة لا تنفذ refetch", async () => {
   });
   assert.equal(refetched, false);
   assert.equal(result.error, mutationError);
+});
+
+test("هوية سجل التدقيق تعرض الاسم ثم البريد ثم النظام ثم UUID", () => {
+  assert.equal(auditActorLabel({ actor: { full_name: "زياد شاذلي", email: "z@example.com" }, actor_id: "user-id" }), "زياد شاذلي");
+  assert.equal(auditActorLabel({ actor: { full_name: "", email: "z@example.com" }, actor_id: "user-id" }), "z@example.com");
+  assert.equal(auditActorLabel({ actor_id: null }), "النظام");
+  assert.equal(auditActorLabel({ actor_id: "6775d4cb-0000-4000-8000-000000000000" }), "6775d4cb-0000-4000-8000-000000000000");
 });

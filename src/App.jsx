@@ -105,6 +105,16 @@ async function fetchTableRows(key, table) {
   let fetchResult;
   if (key === "projects") fetchResult = await supabase.rpc("get_projects_visible");
   else if (key === "payroll") fetchResult = await supabase.rpc("get_payroll_visible");
+  else if (key === "auditLog") {
+    fetchResult = await supabase
+      .from(table)
+      .select("*, actor:profiles!audit_log_actor_id_fkey(full_name,email)")
+      .order("created_at", { ascending: true });
+    if (fetchResult.error) {
+      console.warn("[AuditLog] actor profile relation unavailable; using legacy rows", fetchResult.error);
+      fetchResult = await supabase.from(table).select("*").order("created_at", { ascending: true });
+    }
+  }
   else {
     fetchResult = await supabase.from(table).select("*").order("created_at", { ascending: true });
     // Backward-compatible fallback until the project_files created_at migration is applied.
@@ -262,7 +272,7 @@ function AuthGate() {
         if (error) { setBusy(false); return setErr(error.message); }
         const userId = signData?.user?.id;
         if (userId) {
-          const profileMutationResult = await supabase.from("profiles").insert({ id: userId, full_name: fullName.trim(), role });
+          const profileMutationResult = await supabase.from("profiles").insert({ id: userId, full_name: fullName.trim(), email: email.trim(), role });
           console.info("[profiles:signup] mutationResult", profileMutationResult);
           const profErr = profileMutationResult.error;
           if (profErr) setErr("تم إنشاء الحساب لكن حصل خطأ في حفظ الصفة: " + profErr.message);
