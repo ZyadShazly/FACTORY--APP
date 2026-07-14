@@ -71,6 +71,15 @@ export function SuccessState({ message }) {
   return message ? <div className="v22-alert success"><CheckCircle2 size={17} />{message}</div> : null;
 }
 
+export function Toast({ type = "success", message, onDismiss }) {
+  if (!message) return null;
+  const Icon = type === "error" ? AlertCircle : CheckCircle2;
+  return <div className={`v22-toast ${type}`} role={type === "error" ? "alert" : "status"}>
+    <Icon size={19} /><span>{message}</span>
+    <button type="button" onClick={onDismiss} aria-label="إغلاق الرسالة"><X size={16} /></button>
+  </div>;
+}
+
 export function ConfirmDialog({ open, title, description, confirmLabel = "تأكيد", danger = false, onConfirm, onCancel }) {
   if (!open) return null;
   return <div className="v22-modal-backdrop" role="presentation" onMouseDown={onCancel}>

@@ -1,8 +1,8 @@
 import React, { useMemo, useState } from "react";
 import { ArrowRight, Calendar, Download, Eye, File, FolderOpen, MapPin, Paperclip, Pencil, Plus, Trash2, Upload } from "lucide-react";
 import { supabase } from "../supabaseClient";
-import { Button, ConfirmDialog, DataTable, EmptyState, ErrorState, Field, Input, money, number, PageTitle, Panel, PermissionGuard, Select, StatCard, SuccessState, TextArea, today } from "./shared";
-import { FILE_CATEGORIES, isSupportedProjectFile, PROJECT_FILES_ACCEPT } from "./fileTypes";
+import { Button, ConfirmDialog, DataTable, EmptyState, ErrorState, Field, Input, money, number, PageTitle, Panel, PermissionGuard, Select, StatCard, SuccessState, TextArea, Toast, today } from "./shared";
+import { buildProjectFilePath, FILE_CATEGORIES, isSupportedProjectFile, PROJECT_FILES_ACCEPT, PROJECT_FILES_BUCKET, PROJECT_FILES_TABLE } from "./fileTypes";
 
 export const PROJECT_STATUSES = {
   design: "التصميم", approval: "الاعتماد", manufacturing: "التصنيع", painting: "الدهان",
@@ -128,34 +128,84 @@ function RelatedProjectData({ project, data, permissions, costs }) {
 }
 
 export function FileUploader({ project, files, permissions, profile, refresh }) {
-  const [file, setFile] = useState(null); const [category, setCategory] = useState("other"); const [description, setDescription] = useState(""); const [busy, setBusy] = useState(false); const [error, setError] = useState("");
+  const [file, setFile] = useState(null); const [category, setCategory] = useState("other"); const [description, setDescription] = useState(""); const [busy, setBusy] = useState(false); const [error, setError] = useState(""); const [success, setSuccess] = useState("");
   async function upload(e) {
-    e.preventDefault(); if (!file) return; setError(""); setBusy(true);
+    e.preventDefault();
+    setError(""); setSuccess("");
+    if (!file) return setError("اختر ملفًا للرفع أولًا");
+
+    const projectId = typeof project?.id === "string" ? project.id.trim() : "";
+    const bucketName = PROJECT_FILES_BUCKET;
+    console.info("[ProjectFiles] upload context", { projectId, bucketName });
+    if (!projectId) {
+      console.error("[ProjectFiles] invalid projectId", { projectId, project });
+      return setError("تعذر رفع الملف: معرف المشروع غير صالح. أعد فتح المشروع وحاول مرة أخرى.");
+    }
+    if (!profile?.id) {
+      console.error("[ProjectFiles] missing uploaded_by", { projectId, profile });
+      return setError("تعذر رفع الملف: بيانات المستخدم غير مكتملة. سجّل الدخول مرة أخرى.");
+    }
     const ext = file.name.split(".").pop()?.toLowerCase();
-    if (!isSupportedProjectFile(file.name)) { setBusy(false); return setError("نوع الملف غير مدعوم"); }
-    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "-"); const path = `${project.id}/${crypto.randomUUID()}-${safeName}`;
-    const { error: storageError } = await supabase.storage.from("project-files").upload(path, file, { contentType: file.type || "application/octet-stream" });
-    if (storageError) { setBusy(false); return setError(storageError.message); }
-    const { error: rowError } = await supabase.from("project_files").insert({ project_id: project.id, file_name: file.name, file_path: path, file_type: file.type || ext, file_size: file.size, category, description: description || null, uploaded_by: profile.id });
-    if (rowError) { await supabase.storage.from("project-files").remove([path]); setBusy(false); return setError(rowError.message); }
-    await supabase.from("project_activities").insert({ project_id: project.id, actor_id: profile.id, action_type: "file_uploaded", description: `تم رفع الملف ${file.name}`, metadata: { category, path } });
-    setFile(null); setDescription(""); setBusy(false); await refresh("projectFiles"); await refresh("projectActivities");
+    if (!isSupportedProjectFile(file.name)) return setError("نوع الملف غير مدعوم");
+
+    setBusy(true);
+    const filePath = buildProjectFilePath(projectId, file.name);
+    console.info("[ProjectFiles] filePath", { projectId, bucketName, filePath });
+
+    try {
+      const uploadResult = await supabase.storage.from(bucketName).upload(filePath, file, { contentType: file.type || "application/octet-stream" });
+      console.info("[ProjectFiles] uploadResult", uploadResult);
+      if (uploadResult.error) {
+        console.error("[ProjectFiles] storage upload failed", uploadResult.error);
+        return setError(`فشل رفع الملف إلى التخزين: ${uploadResult.error.message}`);
+      }
+
+      const createdAt = new Date().toISOString();
+      const fileRecord = {
+        project_id: projectId, file_name: file.name, file_path: filePath,
+        file_type: file.type || ext || "application/octet-stream", file_size: file.size,
+        category, description: description.trim() || null, uploaded_by: profile.id, created_at: createdAt,
+      };
+      const insertResult = await supabase.from(PROJECT_FILES_TABLE).insert(fileRecord).select("*").single();
+      console.info("[ProjectFiles] insertResult", insertResult);
+      if (insertResult.error || !insertResult.data) {
+        console.error("[ProjectFiles] database insert failed", insertResult.error, fileRecord);
+        const rollbackResult = await supabase.storage.from(bucketName).remove([filePath]);
+        if (rollbackResult.error) console.error("[ProjectFiles] storage rollback failed", rollbackResult.error);
+        return setError(`تم إلغاء الرفع لأن حفظ بيانات الملف فشل: ${insertResult.error?.message || "لم يرجع السجل المحفوظ"}`);
+      }
+
+      const fetchResult = await refresh("projectFiles");
+      console.info("[ProjectFiles] fetchResult", fetchResult);
+      if (fetchResult?.error) {
+        console.error("[ProjectFiles] refetch failed", fetchResult.error);
+        return setError(`تم حفظ الملف لكن تعذر تحديث القائمة: ${fetchResult.error.message}`);
+      }
+      await refresh("projectActivities");
+      setFile(null); setDescription("");
+      setSuccess(`تم رفع وحفظ الملف «${file.name}» بنجاح.`);
+    } catch (unexpectedError) {
+      console.error("[ProjectFiles] unexpected upload error", unexpectedError);
+      setError(`حدث خطأ غير متوقع أثناء رفع الملف: ${unexpectedError?.message || "خطأ غير معروف"}`);
+    } finally {
+      setBusy(false);
+    }
   }
   return <Panel><div className="files-heading"><h3 className="v22-section-title"><Paperclip size={17} /> ملفات المشروع</h3><span>{files.length} ملف</span></div>
     <PermissionGuard allow={permissions.project_files_upload}><form className="file-upload-form" onSubmit={upload}><label className="file-drop"><Upload size={22} /><span>{file?.name || "اختر ملفًا أو اسحبه هنا"}</span><small>PDF · صور · DWG/DXF · Office · ZIP (حتى 50 MB)</small><input type="file" accept={PROJECT_FILES_ACCEPT} onChange={(e) => setFile(e.target.files?.[0] || null)} /></label><Select value={category} onChange={(e) => setCategory(e.target.value)}>{Object.entries(FILE_CATEGORIES).map(([k,v]) => <option key={k} value={k}>{v}</option>)}</Select><Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="وصف اختياري" /><Button disabled={!file || busy}>{busy ? "جارِ الرفع..." : "رفع الملف"}</Button></form></PermissionGuard>
-    <ErrorState error={error} /><FileList files={files} canDelete={permissions.project_files_delete} onRefresh={() => refresh("projectFiles")} />
+    <Toast type="error" message={error} onDismiss={() => setError("")} /><Toast message={success} onDismiss={() => setSuccess("")} /><FileList files={files} canDelete={permissions.project_files_delete} onRefresh={() => refresh("projectFiles")} />
   </Panel>;
 }
 
 export function FileList({ files, canDelete, onRefresh }) {
   const [error, setError] = useState("");
-  async function openFile(file, download = false) { const { data, error: e } = await supabase.storage.from("project-files").createSignedUrl(file.file_path, 300, { download }); if (e) return setError(e.message); window.open(data.signedUrl, "_blank", "noopener,noreferrer"); }
-  async function remove(file) { if (!window.confirm(`حذف ${file.file_name}؟`)) return; const { error: e } = await supabase.storage.from("project-files").remove([file.file_path]); if (e) return setError(e.message); const { error: dbError } = await supabase.from("project_files").delete().eq("id", file.id); if (dbError) return setError(dbError.message); onRefresh(); }
+  async function openFile(file, download = false) { const { data, error: e } = await supabase.storage.from(PROJECT_FILES_BUCKET).createSignedUrl(file.file_path, 300, { download }); if (e) { console.error("[ProjectFiles] signed URL failed", e); return setError(e.message); } window.open(data.signedUrl, "_blank", "noopener,noreferrer"); }
+  async function remove(file) { if (!window.confirm(`حذف ${file.file_name}؟`)) return; const { error: e } = await supabase.storage.from(PROJECT_FILES_BUCKET).remove([file.file_path]); if (e) { console.error("[ProjectFiles] storage delete failed", e); return setError(e.message); } const { error: dbError } = await supabase.from(PROJECT_FILES_TABLE).delete().eq("id", file.id); if (dbError) { console.error("[ProjectFiles] row delete failed", dbError); return setError(dbError.message); } onRefresh(); }
   if (!files.length) return <EmptyState title="لا توجد ملفات" description="ستظهر الرسومات والمستندات هنا بعد رفعها." />;
   return <div className="file-groups"><ErrorState error={error} />{Object.entries(FILE_CATEGORIES).map(([key,label]) => { const group = files.filter((f) => f.category === key); if (!group.length) return null; return <div key={key}><h4>{label}<span>{group.length}</span></h4>{group.map((file) => <div className="file-row" key={file.id}><div className="file-icon"><File size={18} /></div><div className="file-name"><strong>{file.file_name}</strong><span>{(file.file_size / 1024 / 1024).toFixed(2)} MB · {file.description || "بدون وصف"}</span></div><button className="v22-icon-button" onClick={() => openFile(file)} title="فتح"><Eye size={16} /></button><button className="v22-icon-button" onClick={() => openFile(file, true)} title="تنزيل"><Download size={16} /></button>{canDelete && <button className="v22-icon-button danger" onClick={() => remove(file)} title="حذف"><Trash2 size={16} /></button>}</div>)}</div>; })}</div>;
 }
 
-export function ProjectFilesHub({ data, permissions }) {
+export function ProjectFilesHub({ data, permissions, refresh }) {
   const [projectId, setProjectId] = useState(""); const files = projectId ? data.projectFiles.filter((f) => f.project_id === projectId) : data.projectFiles;
-  return <div><PageTitle eyebrow="مكتبة المستندات" title="ملفات المشاريع" description="الوصول السريع لكل الرسومات وملفات العمل." /><Panel><div className="v22-filters"><Select value={projectId} onChange={(e) => setProjectId(e.target.value)}><option value="">كل المشاريع</option>{data.projects.map((p) => <option key={p.id} value={p.id}>{p.project_code} · {p.project_name}</option>)}</Select></div><FileList files={files} canDelete={permissions.project_files_delete} onRefresh={() => window.location.reload()} /></Panel></div>;
+  return <div><PageTitle eyebrow="مكتبة المستندات" title="ملفات المشاريع" description="الوصول السريع لكل الرسومات وملفات العمل." /><Panel><div className="v22-filters"><Select value={projectId} onChange={(e) => setProjectId(e.target.value)}><option value="">كل المشاريع</option>{data.projects.map((p) => <option key={p.id} value={p.id}>{p.project_code} · {p.project_name}</option>)}</Select></div><FileList files={files} canDelete={permissions.project_files_delete} onRefresh={() => refresh("projectFiles")} /></Panel></div>;
 }

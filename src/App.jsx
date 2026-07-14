@@ -15,6 +15,7 @@ import { EmployeesTab, PayrollTab } from "./v22/payroll";
 import { DailyLaborTab } from "./v22/dailyLabor";
 import { AuditLogTab, PERMISSION_LABELS } from "./v22/audit";
 import { demoData, demoProfile } from "./v22/demoData";
+import { PROJECT_FILES_TABLE } from "./v22/fileTypes";
 
 const V22_DEMO = (import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEMO === "true") && new URLSearchParams(window.location.search).get("demo") === "v22";
 
@@ -85,7 +86,7 @@ const TABLES = {
   customerReceipts: "customer_receipts",
   expenses: "expenses",
   projects: "projects",
-  projectFiles: "project_files",
+  projectFiles: PROJECT_FILES_TABLE,
   projectActivities: "project_activities",
   employees: "employees",
   payroll: "payroll",
@@ -98,6 +99,23 @@ const EMPTY_DATA = {
   sales: [], rentals: [], suppliers: [], supplierPayments: [], customers: [], customerReceipts: [], expenses: [],
   projects: [], projectFiles: [], projectActivities: [], employees: [], payroll: [], dailyLabor: [], projectCosts: [], auditLog: [],
 };
+
+async function fetchTableRows(key, table) {
+  let fetchResult;
+  if (key === "projects") fetchResult = await supabase.rpc("get_projects_visible");
+  else if (key === "payroll") fetchResult = await supabase.rpc("get_payroll_visible");
+  else {
+    fetchResult = await supabase.from(table).select("*").order("created_at", { ascending: true });
+    // Backward-compatible fallback until the project_files created_at migration is applied.
+    if (key === "projectFiles" && fetchResult.error?.code === "42703") {
+      console.warn("[ProjectFiles] created_at is missing; falling back to uploaded_at", fetchResult.error);
+      fetchResult = await supabase.from(PROJECT_FILES_TABLE).select("*").order("uploaded_at", { ascending: true });
+    }
+  }
+  if (key === "projectFiles") console.info("[ProjectFiles] fetchResult", { table: PROJECT_FILES_TABLE, fetchResult });
+  if (fetchResult.error) console.error(`[NEXTEP] Failed to fetch ${table}`, fetchResult.error);
+  return fetchResult;
+}
 
 /* ------------------------------ دوال الحسابات ------------------------------ */
 function materialConsumedQty(materialId, data) {
@@ -331,11 +349,9 @@ export default function App() {
   const refetchTable = useCallback(async (key) => {
     if (V22_DEMO) return;
     const table = TABLES[key];
-    const { data: rows } = key === "projects"
-      ? await supabase.rpc("get_projects_visible")
-      : key === "payroll" ? await supabase.rpc("get_payroll_visible")
-      : await supabase.from(table).select("*").order("created_at", { ascending: true });
-    setData((prev) => ({ ...(prev || EMPTY_DATA), [key]: rows || [] }));
+    const fetchResult = await fetchTableRows(key, table);
+    if (!fetchResult.error) setData((prev) => ({ ...(prev || EMPTY_DATA), [key]: fetchResult.data || [] }));
+    return fetchResult;
   }, []);
 
   useEffect(() => {
@@ -344,11 +360,8 @@ export default function App() {
     (async () => {
       const entries = await Promise.all(
         Object.entries(TABLES).map(async ([key, table]) => {
-          const { data: rows } = key === "projects"
-            ? await supabase.rpc("get_projects_visible")
-            : key === "payroll" ? await supabase.rpc("get_payroll_visible")
-            : await supabase.from(table).select("*").order("created_at", { ascending: true });
-          return [key, rows || []];
+          const fetchResult = await fetchTableRows(key, table);
+          return [key, fetchResult.error ? [] : (fetchResult.data || [])];
         })
       );
       setData(Object.fromEntries(entries));
@@ -436,7 +449,7 @@ export default function App() {
       <div style={{ flex: 1, padding: 28, maxWidth: 1180 }}>
         {activeTab === "dashboard" && <Dashboard data={data} />}
         {activeTab === "projects" && <ProjectsTab data={data} profile={profile} permissions={permissions} refresh={refetchTable} />}
-        {activeTab === "projectFiles" && <ProjectFilesHub data={data} permissions={permissions} />}
+        {activeTab === "projectFiles" && <ProjectFilesHub data={data} permissions={permissions} refresh={refetchTable} />}
         {activeTab === "inventory" && <InventoryTab data={data} />}
         {activeTab === "purchases" && <PurchasesTab data={data} insertRow={insertRow} deleteRow={deleteRow} canDelete={permissions.can_delete} />}
         {activeTab === "expenses" && <ExpensesTab data={data} insertRow={insertRow} deleteRow={deleteRow} canDelete={permissions.can_delete} />}
