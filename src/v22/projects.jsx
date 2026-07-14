@@ -3,6 +3,7 @@ import { ArrowRight, Calendar, Download, Eye, File, FolderOpen, MapPin, Papercli
 import { supabase } from "../supabaseClient";
 import { Button, ConfirmDialog, DataTable, EmptyState, ErrorState, Field, Input, money, number, PageTitle, Panel, PermissionGuard, Select, StatCard, SuccessState, TextArea, Toast, today } from "./shared";
 import { buildProjectFilePath, FILE_CATEGORIES, isSupportedProjectFile, PROJECT_FILES_ACCEPT, PROJECT_FILES_BUCKET, PROJECT_FILES_TABLE } from "./fileTypes";
+import { syncMutation } from "./mutations";
 
 export const PROJECT_STATUSES = {
   design: "التصميم", approval: "الاعتماد", manufacturing: "التصنيع", painting: "الدهان",
@@ -52,9 +53,13 @@ export function ProjectsTab({ data, profile, permissions, refresh, initialProjec
     e.preventDefault(); setError(""); setSuccess("");
     const payload = { ...form, customer_id: form.customer_id || null, delivery_date: form.delivery_date || null,
       progress_percentage: number(form.progress_percentage), expected_cost: number(form.expected_cost), revenue: number(form.revenue), created_by: profile.id };
-    const { data: created, error: createError } = await supabase.from("projects").insert(payload).select().single();
-    if (createError) return setError(createError.message);
-    setForm(emptyProject); setShowForm(false); setSuccess("تم إنشاء المشروع بنجاح"); await refresh("projects"); setSelectedId(created.id);
+    const mutationResult = await supabase.from("projects").insert(payload).select().single();
+    const result = await syncMutation({ scope:"projects:create", mutationResult, refetch:()=>refresh("projects") });
+    if (result.error) return setError(result.error.message);
+    const activityRefetchResult = await refresh("projectActivities");
+    console.info("[projects:create] activityRefetchResult", activityRefetchResult);
+    if (activityRefetchResult?.error) return setError(activityRefetchResult.error.message);
+    setForm(emptyProject); setShowForm(false); setSuccess("تم إنشاء المشروع بنجاح"); setSelectedId(mutationResult.data.id);
   }
 
   if (selected) return <ProjectDetails project={selected} data={data} profile={profile} permissions={permissions} refresh={refresh} onBack={() => setSelectedId(null)} />;
@@ -95,9 +100,9 @@ function ProjectDetails({ project, data, profile, permissions, refresh, onBack }
     setError(""); const update = { progress_percentage: number(patch.progress_percentage), notes: patch.notes };
     if (profile.role === "manager") update.status = patch.status;
     if (permissions.project_financials_view && profile.role !== "production") Object.assign(update, { expected_cost: number(patch.expected_cost), revenue: number(patch.revenue) });
-    const { error: e } = await supabase.from("projects").update(update).eq("id", project.id); if (e) return setError(e.message); await refresh("projects"); await refresh("projectActivities"); setEditing(false);
+    const mutationResult = await supabase.from("projects").update(update).eq("id", project.id); const result = await syncMutation({ scope:"projects:update", mutationResult, refetch:()=>refresh("projects") }); if (result.error) return setError(result.error.message); const activityRefetchResult=await refresh("projectActivities"); console.info("[projects:update] activityRefetchResult",activityRefetchResult); if(activityRefetchResult?.error)return setError(activityRefetchResult.error.message); setEditing(false);
   }
-  async function remove() { const { error: e } = await supabase.from("projects").delete().eq("id", project.id); if (e) return setError(e.message); await refresh("projects"); onBack(); }
+  async function remove() { const mutationResult = await supabase.from("projects").delete().eq("id", project.id); const result=await syncMutation({scope:"projects:delete",mutationResult,refetch:()=>refresh("projects")}); if(result.error)return setError(result.error.message); onBack(); }
   return <div>
     <PageTitle eyebrow={project.project_code} title={project.project_name} description={project.location || "لا يوجد موقع مسجل"} actions={<><Button variant="ghost" onClick={onBack}><ArrowRight size={16} /> كل المشاريع</Button><Button variant="ghost" onClick={() => setEditing(!editing)}><Pencil size={15} /> تحديث</Button><PermissionGuard allow={permissions.projects_delete}><Button variant="danger" onClick={() => setConfirmDelete(true)}><Trash2 size={15} /> حذف</Button></PermissionGuard></>} />
     <div className="project-detail-heading"><ProjectStatusBadge status={project.status} /><ProgressBar value={project.progress_percentage} /></div><ErrorState error={error} />
@@ -200,7 +205,7 @@ export function FileUploader({ project, files, permissions, profile, refresh }) 
 export function FileList({ files, canDelete, onRefresh }) {
   const [error, setError] = useState("");
   async function openFile(file, download = false) { const { data, error: e } = await supabase.storage.from(PROJECT_FILES_BUCKET).createSignedUrl(file.file_path, 300, { download }); if (e) { console.error("[ProjectFiles] signed URL failed", e); return setError(e.message); } window.open(data.signedUrl, "_blank", "noopener,noreferrer"); }
-  async function remove(file) { if (!window.confirm(`حذف ${file.file_name}؟`)) return; const { error: e } = await supabase.storage.from(PROJECT_FILES_BUCKET).remove([file.file_path]); if (e) { console.error("[ProjectFiles] storage delete failed", e); return setError(e.message); } const { error: dbError } = await supabase.from(PROJECT_FILES_TABLE).delete().eq("id", file.id); if (dbError) { console.error("[ProjectFiles] row delete failed", dbError); return setError(dbError.message); } onRefresh(); }
+  async function remove(file) { if (!window.confirm(`حذف ${file.file_name}؟`)) return; const storageMutationResult = await supabase.storage.from(PROJECT_FILES_BUCKET).remove([file.file_path]); console.info("[ProjectFiles:delete] storage mutationResult",storageMutationResult); if (storageMutationResult.error) { console.error("[ProjectFiles] storage delete failed", storageMutationResult.error); return setError(storageMutationResult.error.message); } const mutationResult = await supabase.from(PROJECT_FILES_TABLE).delete().eq("id", file.id); const result=await syncMutation({scope:"projectFiles:delete",mutationResult,refetch:onRefresh}); if(result.error)return setError(result.error.message); }
   if (!files.length) return <EmptyState title="لا توجد ملفات" description="ستظهر الرسومات والمستندات هنا بعد رفعها." />;
   return <div className="file-groups"><ErrorState error={error} />{Object.entries(FILE_CATEGORIES).map(([key,label]) => { const group = files.filter((f) => f.category === key); if (!group.length) return null; return <div key={key}><h4>{label}<span>{group.length}</span></h4>{group.map((file) => <div className="file-row" key={file.id}><div className="file-icon"><File size={18} /></div><div className="file-name"><strong>{file.file_name}</strong><span>{(file.file_size / 1024 / 1024).toFixed(2)} MB · {file.description || "بدون وصف"}</span></div><button className="v22-icon-button" onClick={() => openFile(file)} title="فتح"><Eye size={16} /></button><button className="v22-icon-button" onClick={() => openFile(file, true)} title="تنزيل"><Download size={16} /></button>{canDelete && <button className="v22-icon-button danger" onClick={() => remove(file)} title="حذف"><Trash2 size={16} /></button>}</div>)}</div>; })}</div>;
 }
