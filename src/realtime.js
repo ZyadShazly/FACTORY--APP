@@ -25,6 +25,12 @@ export const TABLES = Object.freeze(
   Object.fromEntries(Object.entries(REALTIME_TABLE_TO_KEY).map(([table, key]) => [key, table]))
 );
 
+const PRODUCTION_DATA_KEYS = Object.freeze(["materials", "products", "productionOrders"]);
+
+export function dataTableKeysForRole(role) {
+  return role === "production" ? [...PRODUCTION_DATA_KEYS] : Object.keys(TABLES);
+}
+
 export function isActiveProfile(profile) {
   return Boolean(profile) && (!profile.status || profile.status === "active");
 }

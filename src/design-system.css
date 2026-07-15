@@ -201,6 +201,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .project-card-finance b.negative { color: var(--color-danger); }
 .project-progress { background: var(--color-surface-strong); border-color: var(--color-border); }
 .project-progress span { background: linear-gradient(90deg, var(--color-wood), var(--color-gold)); }
+.project-progress span { inset: 0 0 0 auto; }
 .project-timeline > div:not(:last-child)::after, .cost-breakdown, .cost-breakdown > div, .file-row { border-color: var(--color-border); }
 .project-timeline i { background: var(--color-info); border-color: var(--color-info-soft); }
 .related-counts span, .payroll-preview, .labor-calculation, .labor-group h3 span, .file-groups h4 span { background: var(--color-surface-muted); color: var(--color-text-muted); }
@@ -211,6 +212,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .payroll-preview strong { color: var(--color-success); }
 .labor-calculation b { color: var(--color-gold); }
 .v22-table code { color: var(--color-wood); }
+.v22-toast { right: 22px; left: auto; }
 
 @media (max-width: 1050px) {
   .app-sidebar { width: 240px; flex-basis: 240px; }
@@ -221,6 +223,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .app-sidebar { position: static; width: 100%; height: auto; max-height: none; padding: 12px; }
   .sidebar-brand img { height: 58px; }
   .sidebar-nav { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .sidebar-nav { max-height: 46vh; overflow-y: auto; overscroll-behavior: contain; padding-left: 4px; }
   .sidebar-signout { margin-top: 12px; }
   .app-main { padding: 18px 12px 34px; }
   .dashboard-metrics { grid-template-columns: 1fr 1fr; }
@@ -230,5 +233,6 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 }
 @media (max-width: 480px) {
   .sidebar-nav { grid-template-columns: 1fr; }
+  .v22-toast { right: 16px; left: 16px; max-width: none; }
   .dashboard-metrics { grid-template-columns: 1fr; }
 }

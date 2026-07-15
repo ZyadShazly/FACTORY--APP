@@ -24,7 +24,7 @@ const ACCOUNTANT_DEFAULTS = [
   "payroll_view", "payroll_create", "payroll_edit", "payroll_mark_paid", "daily_labor_view",
   "daily_labor_create", "daily_labor_edit", "daily_labor_pay",
 ];
-const PRODUCTION_DEFAULTS = ["projects_view", "project_files_view"];
+const PRODUCTION_DEFAULTS = [];
 
 export function actionPermissions(profile) {
   if (profile?.role === "manager") return Object.fromEntries(ACTION_PERMISSIONS.map((key) => [key, true]));

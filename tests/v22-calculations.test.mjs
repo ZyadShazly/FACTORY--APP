@@ -4,7 +4,7 @@ import { calculateDailyLabor, calculateNetSalary } from "../src/v22/calculations
 import { buildProjectFilePath, PROJECT_FILES_BUCKET, PROJECT_FILES_TABLE } from "../src/v22/fileTypes.js";
 import { syncMutation } from "../src/v22/mutations.js";
 import { auditActorLabel } from "../src/v22/auditIdentity.js";
-import { combinedRealtimeStatus, isActiveProfile, REALTIME_TABLE_TO_KEY, resolveAllowedTab } from "../src/realtime.js";
+import { combinedRealtimeStatus, dataTableKeysForRole, isActiveProfile, REALTIME_TABLE_TO_KEY, resolveAllowedTab } from "../src/realtime.js";
 
 test("حساب صافي الراتب يشمل البدلات والإضافي والخصومات والسلف", () => {
   assert.equal(calculateNetSalary({ base_salary: 5000, housing_allowance: 1000, transport_allowance: 500, other_allowance: 250, overtime_hours: 10, overtime_rate: 50, bonuses: 300, deductions: 200, advances: 400 }), 6950);
@@ -76,4 +76,10 @@ test("حالة الحساب والاتصال اللحظي تُحسب بأمان"
   assert.equal(isActiveProfile({ status: "suspended" }), false);
   assert.equal(combinedRealtimeStatus({ data: "SUBSCRIBED", profile: "SUBSCRIBED" }), "CONNECTED");
   assert.equal(combinedRealtimeStatus({ data: "CHANNEL_ERROR", profile: "SUBSCRIBED" }), "RECONNECTING");
+});
+
+test("موظف الإنتاج لا يحمّل الجداول المالية أو الإدارية", () => {
+  assert.deepEqual(dataTableKeysForRole("production"), ["materials", "products", "productionOrders"]);
+  assert.equal(dataTableKeysForRole("manager").includes("payroll"), true);
+  assert.equal(dataTableKeysForRole("accountant").includes("expenses"), true);
 });
