@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import { isAdministrativeRole } from "../identity";
 import { ArrowRight, Calendar, Download, Eye, File, FolderOpen, MapPin, Paperclip, Pencil, Plus, Trash2, Upload } from "lucide-react";
 import { supabase } from "../supabaseClient";
 import { Button, ConfirmDialog, DataTable, EmptyState, ErrorState, Field, Input, money, number, PageTitle, Panel, PermissionGuard, Select, StatCard, SuccessState, TextArea, Toast, today } from "./shared";
@@ -98,7 +99,7 @@ function ProjectDetails({ project, data, profile, permissions, refresh, onBack }
   const profit = number(project.revenue) - actual; const margin = number(project.revenue) ? profit / number(project.revenue) * 100 : 0;
   async function save() {
     setError(""); const update = { progress_percentage: number(patch.progress_percentage), notes: patch.notes };
-    if (profile.role === "manager") update.status = patch.status;
+    if (isAdministrativeRole(profile.role)) update.status = patch.status;
     if (permissions.project_financials_view && profile.role !== "production") Object.assign(update, { expected_cost: number(patch.expected_cost), revenue: number(patch.revenue) });
     const mutationResult = await supabase.from("projects").update(update).eq("id", project.id); const result = await syncMutation({ scope:"projects:update", mutationResult, refetch:()=>refresh("projects") }); if (result.error) return setError(result.error.message); const activityRefetchResult=await refresh("projectActivities"); console.info("[projects:update] activityRefetchResult",activityRefetchResult); if(activityRefetchResult?.error)return setError(activityRefetchResult.error.message); setEditing(false);
   }
@@ -107,7 +108,7 @@ function ProjectDetails({ project, data, profile, permissions, refresh, onBack }
     <PageTitle eyebrow={project.project_code} title={project.project_name} description={project.location || "لا يوجد موقع مسجل"} actions={<><Button variant="ghost" onClick={onBack}><ArrowRight size={16} /> كل المشاريع</Button><Button variant="ghost" onClick={() => setEditing(!editing)}><Pencil size={15} /> تحديث</Button><PermissionGuard allow={permissions.projects_delete}><Button variant="danger" onClick={() => setConfirmDelete(true)}><Trash2 size={15} /> حذف</Button></PermissionGuard></>} />
     <div className="project-detail-heading"><ProjectStatusBadge status={project.status} /><ProgressBar value={project.progress_percentage} /></div><ErrorState error={error} />
     {editing && <Panel className="project-edit"><div className="v22-form-grid">
-      <PermissionGuard allow={profile.role === "manager"}><Field label="الحالة"><Select value={patch.status} onChange={(e) => setPatch({ ...patch, status: e.target.value })}>{Object.entries(PROJECT_STATUSES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</Select></Field></PermissionGuard>
+      <PermissionGuard allow={isAdministrativeRole(profile.role)}><Field label="الحالة"><Select value={patch.status} onChange={(e) => setPatch({ ...patch, status: e.target.value })}>{Object.entries(PROJECT_STATUSES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</Select></Field></PermissionGuard>
       <Field label="نسبة الإنجاز"><Input type="number" min="0" max="100" value={patch.progress_percentage} onChange={(e) => setPatch({ ...patch, progress_percentage: e.target.value })} /></Field>
       <PermissionGuard allow={permissions.project_financials_view && profile.role !== "production"}><Field label="التكلفة المتوقعة"><Input type="number" value={patch.expected_cost} onChange={(e) => setPatch({ ...patch, expected_cost: e.target.value })} /></Field><Field label="الإيراد"><Input type="number" value={patch.revenue} onChange={(e) => setPatch({ ...patch, revenue: e.target.value })} /></Field></PermissionGuard>
       <Field label="الملاحظات" wide><TextArea value={patch.notes} onChange={(e) => setPatch({ ...patch, notes: e.target.value })} /></Field>

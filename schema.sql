@@ -2,11 +2,11 @@
 -- شغّل الكود ده كله مرة واحدة في Supabase: SQL Editor -> New query -> الصق كله -> Run
 -- ============================================================
 
--- جدول الأدوار (كل مستخدم مسجل بياناته هنا: مدير / محاسب / موظف إنتاج)
+-- جدول الأدوار (مالك النظام / مدير النظام / محاسب / موظف إنتاج)
 create table if not exists profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   full_name text,
-  role text not null check (role in ('manager','accountant','production')),
+  role text not null check (role in ('owner','manager','accountant','production')),
   permissions jsonb not null default '{}'::jsonb,
   status text not null default 'active' check (status in ('active','suspended')),
   created_at timestamptz default now()
@@ -111,7 +111,7 @@ security definer
 set search_path = public
 as $$
   select exists (
-    select 1 from profiles where id = auth.uid() and role = 'manager'
+    select 1 from profiles where id = auth.uid() and role in ('owner','manager')
   );
 $$;
 

@@ -21,10 +21,12 @@ VITE_SUPABASE_ANON_KEY=...
 نفّذ ملفات `supabase/migrations` بالترتيب التصاعدي للاسم من خلال Supabase SQL Editor أو Supabase CLI. آخر migration حاليًا هو:
 
 ```text
-202607150002_enforce_protected_role_creation.sql
+202607150003_owner_identity_security.sql
 ```
 
-نفّذ أولًا `202607150001_stabilize_production_access.sql`، ثم نفّذ `202607150002_enforce_protected_role_creation.sql` أخيرًا. يمنع الملف الأخير التسجيل الذاتي بدور مدير أو تعديل المستخدم لدوره بنفسه، حتى عند تجاوز الواجهة وإرسال طلب API مباشر.
+نفّذ `202607150001_stabilize_production_access.sql` ثم `202607150002_enforce_protected_role_creation.sql`، وأخيرًا `202607150003_owner_identity_security.sql`. يضيف الملف الأخير دور مالك النظام، ويحمي آخر مالك وآخر مدير، ويجعل تغيير الدور والصلاحيات والحالة متاحًا فقط عبر RPC إدارية مدققة، مع الإبقاء على التسجيل الذاتي محصورًا في المحاسب وموظف الإنتاج.
+
+بعد مراجعة PR وتطبيق الـMigration، اتبع [دليل الهوية والأمان](docs/IDENTITY_SECURITY.md) لتشغيل سكربت الترقية الآمن لحساب موجود. لا تضف بريدًا أو UUID أو كلمة مرور أو `service_role` إلى GitHub أو متغيرات `VITE_`.
 
 بعد تنفيذ migrations، تحقّق من إضافة الجداول المطلوبة إلى `supabase_realtime` باستخدام الاستعلام الموجود في `docs/multi-user-realtime.md`.
 
