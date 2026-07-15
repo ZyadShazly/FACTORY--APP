@@ -9,7 +9,7 @@ import {
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
 } from "recharts";
-import { ACTION_PERMISSIONS, actionPermissions } from "./v22/shared";
+import { ACTION_PERMISSIONS, actionPermissions, Toast } from "./v22/shared";
 import { ProjectsTab, ProjectFilesHub } from "./v22/projects";
 import { EmployeesTab, PayrollTab } from "./v22/payroll";
 import { DailyLaborTab } from "./v22/dailyLabor";
@@ -17,7 +17,7 @@ import { AuditLogTab, PERMISSION_LABELS } from "./v22/audit";
 import { demoData, demoProfile } from "./v22/demoData";
 import { PROJECT_FILES_TABLE } from "./v22/fileTypes";
 import { syncMutation } from "./v22/mutations";
-import { combinedRealtimeStatus, isActiveProfile, REALTIME_TABLE_TO_KEY, resolveAllowedTab, TABLES } from "./realtime";
+import { combinedRealtimeStatus, dataTableKeysForRole, isActiveProfile, REALTIME_TABLE_TO_KEY, resolveAllowedTab, TABLES } from "./realtime";
 import { buildNavigationGroups, loadNavigationState, NAV_GROUP_STORAGE_KEY } from "./navigation";
 
 const V22_DEMO = (import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEMO === "true") && new URLSearchParams(window.location.search).get("demo") === "v22";
@@ -59,6 +59,14 @@ function permissionsForProfile(profile) {
     view_financials: true,
     can_create_products: true,
     can_edit_products: true, ...actions,
+  };
+  if (profile?.role === "production") return {
+    pages: ["production"],
+    can_delete: false,
+    view_financials: false,
+    can_create_products: false,
+    can_edit_products: false,
+    ...Object.fromEntries(ACTION_PERMISSIONS.map((key) => [key, false])),
   };
   const saved = profile?.permissions || {};
   const isAccountant = profile?.role === "accountant";
@@ -347,6 +355,9 @@ export default function App() {
   const [data, setData] = useState(V22_DEMO ? demoData : null);
   const [tab, setTab] = useState(V22_DEMO ? "projects" : null);
   const [authNotice, setAuthNotice] = useState("");
+  const [bootstrapError, setBootstrapError] = useState("");
+  const [dataWarnings, setDataWarnings] = useState([]);
+  const [mutationFeedback, setMutationFeedback] = useState({ type: "success", message: "" });
   const [realtimeStatus, setRealtimeStatus] = useState(V22_DEMO ? "DEMO" : "CONNECTING");
   const [openNavGroups, setOpenNavGroups] = useState(loadNavigationState);
 
@@ -360,7 +371,10 @@ export default function App() {
 
   useEffect(() => {
     if (V22_DEMO) return;
-    supabase.auth.getSession().then(({ data: { session } }) => setSession(session));
+    supabase.auth.getSession().then(({ data: { session }, error }) => {
+      if (error) setBootstrapError(`تعذر التحقق من جلسة المستخدم: ${error.message}`);
+      setSession(session);
+    });
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => setSession(session));
     return () => sub.subscription.unsubscribe();
   }, []);
@@ -369,8 +383,10 @@ export default function App() {
     const fetchResult = await supabase.from("profiles").select("*").eq("id", userId).maybeSingle();
     if (fetchResult.error) {
       console.error("[Realtime:profile] refetch failed", fetchResult.error);
+      setBootstrapError(`تعذر تحميل بيانات الحساب: ${fetchResult.error.message}`);
       return fetchResult;
     }
+    setBootstrapError("");
     const nextProfile = fetchResult.data;
     if (nextProfile && !isActiveProfile(nextProfile)) {
       console.warn("[Realtime:profile] account suspended", { userId, status: nextProfile.status });
@@ -387,21 +403,28 @@ export default function App() {
     if (V22_DEMO) return;
     if (session === undefined) return;
     if (!session) { setProfile(null); setData(null); return; }
+    setProfile((current) => current?.id === session.user.id ? current : undefined);
+    setData(null);
     setAuthNotice("");
     fetchProfile(session.user.id);
-  }, [session, fetchProfile]);
+  }, [session?.user?.id, fetchProfile]);
 
   const refetchTable = useCallback(async (key) => {
     if (V22_DEMO) return;
     const table = TABLES[key];
     const fetchResult = await fetchTableRows(key, table);
-    if (!fetchResult.error) setData((prev) => ({ ...(prev || EMPTY_DATA), [key]: fetchResult.data || [] }));
+    if (!fetchResult.error) {
+      setData((prev) => ({ ...(prev || EMPTY_DATA), [key]: fetchResult.data || [] }));
+      setDataWarnings((current) => current.filter((item) => item !== key));
+    } else {
+      setDataWarnings((current) => current.includes(key) ? current : [...current, key]);
+    }
     return fetchResult;
   }, []);
 
   useEffect(() => {
     if (V22_DEMO) return;
-    if (!session) return;
+    if (!session || !profile) return;
     let disposed = false;
     let reconnectTimer = null;
     let reconnectAttempt = 0;
@@ -410,15 +433,20 @@ export default function App() {
     let channels = [];
     const channelStatuses = { data: "CONNECTING", profile: "CONNECTING" };
     const tableRefreshState = new Map();
+    const activeTableKeys = dataTableKeysForRole(profile.role);
+    const activeTableEntries = Object.entries(TABLES).filter(([key]) => activeTableKeys.includes(key));
 
     (async () => {
-      const entries = await Promise.all(
-        Object.entries(TABLES).map(async ([key, table]) => {
+      const results = await Promise.all(
+        activeTableEntries.map(async ([key, table]) => {
           const fetchResult = await fetchTableRows(key, table);
-          return [key, fetchResult.error ? [] : (fetchResult.data || [])];
+          return { key, fetchResult };
         })
       );
-      if (!disposed) setData(Object.fromEntries(entries));
+      if (!disposed) {
+        setData({ ...EMPTY_DATA, ...Object.fromEntries(results.map(({ key, fetchResult }) => [key, fetchResult.error ? [] : (fetchResult.data || [])])) });
+        setDataWarnings(results.filter(({ fetchResult }) => fetchResult.error).map(({ key }) => key));
+      }
     })();
 
     const updateConnectionStatus = (channelName, status) => {
@@ -432,7 +460,7 @@ export default function App() {
           synchronizedGeneration = connectGeneration;
           console.info("[Realtime] connected; reconciling missed changes");
           void Promise.all([
-            ...Object.keys(TABLES).map((key) => refetchTable(key)),
+            ...activeTableKeys.map((key) => refetchTable(key)),
             fetchProfile(session.user.id),
           ]);
         }
@@ -479,7 +507,7 @@ export default function App() {
       setRealtimeStatus("CONNECTING");
 
       const dataChannel = supabase.channel(`factory-data-${session.user.id}`);
-      Object.entries(REALTIME_TABLE_TO_KEY).forEach(([table, key]) => {
+      Object.entries(REALTIME_TABLE_TO_KEY).filter(([, key]) => activeTableKeys.includes(key)).forEach(([table, key]) => {
         dataChannel.on("postgres_changes", { event: "*", schema: "public", table }, (payload) => {
           if (disposed || generation !== connectGeneration) return;
           console.info("[Realtime:data] postgres_changes", { table, key, event: payload.eventType });
@@ -538,7 +566,7 @@ export default function App() {
       connectGeneration += 1;
       void removeChannels();
     };
-  }, [session?.user?.id, refetchTable, fetchProfile]);
+  }, [session?.user?.id, profile?.role, refetchTable, fetchProfile]);
 
   const permissions = useMemo(() => profile ? permissionsForProfile(profile) : null, [profile]);
   useEffect(() => {
@@ -547,9 +575,12 @@ export default function App() {
   }, [permissions]);
 
   if (session === undefined || (session && profile === undefined)) {
+    if (session && bootstrapError) {
+      return <ErrorScreen message={bootstrapError} onRetry={() => { setBootstrapError(""); setProfile(undefined); void fetchProfile(session.user.id); }} />;
+    }
     return <LoadingScreen text="جارِ التحميل..." />;
   }
-  if (!session) return <AuthGate notice={authNotice} />;
+  if (!session) return <AuthGate notice={authNotice || bootstrapError} />;
   if (profile === null) return <LoadingScreen text="جارِ إعداد حسابك..." />;
   if (!data) return <LoadingScreen text="جارِ تحميل البيانات..." />;
 
@@ -584,16 +615,19 @@ export default function App() {
   async function insertRow(key, payload) {
     const mutationResult = await supabase.from(TABLES[key]).insert(payload);
     const result = await syncMutation({ scope: `${key}:create`, mutationResult, refetch: () => refetchTable(key) });
+    setMutationFeedback(result.error ? { type: "error", message: result.error.message } : { type: "success", message: "تم الحفظ بنجاح" });
     return result.error?.message || null;
   }
   async function deleteRow(key, id) {
     const mutationResult = await supabase.from(TABLES[key]).delete().eq("id", id);
     const result = await syncMutation({ scope: `${key}:delete`, mutationResult, refetch: () => refetchTable(key) });
+    setMutationFeedback(result.error ? { type: "error", message: result.error.message } : { type: "success", message: "تم الحذف بنجاح" });
     return result.error?.message || null;
   }
   async function updateRow(key, id, patch) {
     const mutationResult = await supabase.from(TABLES[key]).update(patch).eq("id", id);
     const result = await syncMutation({ scope: `${key}:update`, mutationResult, refetch: () => refetchTable(key) });
+    setMutationFeedback(result.error ? { type: "error", message: result.error.message } : { type: "success", message: "تم حفظ التعديل بنجاح" });
     return result.error?.message || null;
   }
 
@@ -637,6 +671,8 @@ export default function App() {
       <main className="app-main">
         <div className="app-context-bar"><span>{activeGroup?.label}</span><strong>{activePage?.label}</strong></div>
         <div className="app-content">
+        {dataWarnings.length > 0 && <Banner type="error">تعذر تحديث بعض البيانات ({dataWarnings.map((key) => PAGE_LABELS[key] || key).join("، ")}). البيانات المعروضة قد تكون غير مكتملة.</Banner>}
+        {realtimeStatus === "RECONNECTING" && <Banner type="error">انقطع التحديث اللحظي مؤقتًا. يحاول النظام إعادة الاتصال تلقائيًا.</Banner>}
         {activeTab === "dashboard" && <Dashboard data={data} navigate={setTab} permissions={permissions} />}
         {activeTab === "projects" && <ProjectsTab data={data} profile={profile} permissions={permissions} refresh={refetchTable} />}
         {activeTab === "projectFiles" && <ProjectFilesHub data={data} permissions={permissions} refresh={refetchTable} />}
@@ -645,7 +681,7 @@ export default function App() {
         {activeTab === "expenses" && <ExpensesTab data={data} insertRow={insertRow} deleteRow={deleteRow} canDelete={permissions.can_delete} />}
         {activeTab === "materials" && <MaterialsTab data={data} canDelete={permissions.can_delete} insertRow={insertRow} deleteRow={deleteRow} updateRow={updateRow} />}
         {activeTab === "products" && <ProductsTab data={data} canCreate={permissions.can_create_products} canEdit={permissions.can_edit_products} canDelete={permissions.can_delete} hideProfitInfo={!permissions.view_financials} insertRow={insertRow} deleteRow={deleteRow} updateRow={updateRow} />}
-        {activeTab === "production" && <ProductionTab data={data} insertRow={insertRow} updateRow={updateRow} deleteRow={deleteRow} canManage={role === "manager"} />}
+        {activeTab === "production" && <ProductionTab data={data} insertRow={insertRow} updateRow={updateRow} deleteRow={deleteRow} canManage={role === "manager"} canViewFinancials={permissions.view_financials} />}
         {activeTab === "sales" && <SalesTab data={data} insertRow={insertRow} updateRow={updateRow} deleteRow={deleteRow} canManage={role === "manager"} />}
         {activeTab === "rentals" && <RentalsTab data={data} insertRow={insertRow} updateRow={updateRow} deleteRow={deleteRow} canManage={role === "manager"} />}
         {activeTab === "suppliers" && <SuppliersTab data={data} insertRow={insertRow} updateRow={updateRow} deleteRow={deleteRow} canManage={role === "manager"} />}
@@ -658,6 +694,7 @@ export default function App() {
         {activeTab === "team" && <TeamTab profiles={data.profiles} refresh={refetchTable} currentUserId={profile.id} />}
         </div>
       </main>
+      <Toast type={mutationFeedback.type} message={mutationFeedback.message} onDismiss={() => setMutationFeedback((current) => ({ ...current, message: "" }))} />
     </div>
   );
 }
@@ -668,6 +705,15 @@ function LoadingScreen({ text }) {
       {text}
     </div>
   );
+}
+
+function ErrorScreen({ message, onRetry }) {
+  return <div dir="rtl" style={{ minHeight: "100vh", display: "flex", flexDirection: "column", gap: 12, alignItems: "center", justifyContent: "center", padding: 24, textAlign: "center", background: C.bg, color: C.text, fontFamily: "Tajawal, sans-serif" }}>
+    <AlertCircle size={34} color={C.red} />
+    <strong>تعذر تحميل النظام</strong>
+    <span>{message}</span>
+    <Btn onClick={onRetry}>إعادة المحاولة</Btn>
+  </div>;
 }
 
 /* --------------------------------- Dashboard -------------------------------- */
@@ -854,6 +900,11 @@ function MaterialsTab({ data, canDelete, insertRow, deleteRow, updateRow }) {
     if (e) return setErr(e);
     setPForm({ materialId: "", qty: "", unitCost: "", supplierId: "", date: todayStr() }); setErr("");
   }
+  async function removeMaterial(material) {
+    if (!window.confirm(`متأكد من حذف المادة "${material.name}"؟`)) return;
+    const error = await deleteRow("materials", material.id);
+    if (error) setErr(error);
+  }
 
   const filtered = data.materials.filter((m) => m.name.toLowerCase().includes(search.toLowerCase()));
 
@@ -907,7 +958,7 @@ function MaterialsTab({ data, canDelete, insertRow, deleteRow, updateRow }) {
                   <Td>{fmt(stock * m.unit_cost)} ج.م</Td>
                   <Td style={{ display: "flex", gap: 10 }}>
                     <button onClick={() => startEdit(m)} style={{ background: "none", border: "none", cursor: "pointer", color: C.brass }}><Pencil size={15} /></button>
-                    {canDelete && <button onClick={() => deleteRow("materials", m.id)} style={{ background: "none", border: "none", cursor: "pointer", color: C.red }}><Trash2 size={15} /></button>}
+                    {canDelete && <button aria-label={`حذف ${m.name}`} onClick={() => removeMaterial(m)} style={{ background: "none", border: "none", cursor: "pointer", color: C.red }}><Trash2 size={15} /></button>}
                   </Td>
                 </tr>
               );
@@ -948,6 +999,11 @@ function ProductsTab({ data, canCreate, canEdit, canDelete, hideProfitInfo, inse
     const e = editingId ? await updateRow("products", editingId, payload) : await insertRow("products", payload);
     if (e) return setErr(e);
     setForm(blank); setBom([]); setEditingId(null); setErr("");
+  }
+  async function removeProduct(product) {
+    if (!window.confirm(`متأكد من حذف المنتج "${product.name}"؟`)) return;
+    const error = await deleteRow("products", product.id);
+    if (error) setErr(error);
   }
 
   const filtered = data.products.filter((p) => p.name.toLowerCase().includes(search.toLowerCase()));
@@ -1018,7 +1074,7 @@ function ProductsTab({ data, canCreate, canEdit, canDelete, hideProfitInfo, inse
                   <Td>{finishedStock(p.id, data)}</Td>
                   <Td style={{ display: "flex", gap: 10 }}>
                     {canEdit && <button onClick={() => startEdit(p)} style={{ background: "none", border: "none", cursor: "pointer", color: C.brass }}><Pencil size={15} /></button>}
-                    {canDelete && <button onClick={() => deleteRow("products", p.id)} style={{ background: "none", border: "none", cursor: "pointer", color: C.red }}><Trash2 size={15} /></button>}
+                    {canDelete && <button aria-label={`حذف ${p.name}`} onClick={() => removeProduct(p)} style={{ background: "none", border: "none", cursor: "pointer", color: C.red }}><Trash2 size={15} /></button>}
                   </Td>
                 </tr>
               );
@@ -1031,7 +1087,7 @@ function ProductsTab({ data, canCreate, canEdit, canDelete, hideProfitInfo, inse
 }
 
 /* -------------------------------- Production -------------------------------- */
-function ProductionTab({ data, insertRow, updateRow, deleteRow, canManage }) {
+function ProductionTab({ data, insertRow, updateRow, deleteRow, canManage, canViewFinancials }) {
   const [form, setForm] = useState({ productId: "", qty: "", wastePercentage: "0", laborCost: "", overheadCost: "", date: todayStr() });
   const [err, setErr] = useState(""); const [ok, setOk] = useState("");
   const selectedProduct = data.products.find((p) => p.id === form.productId);
@@ -1100,8 +1156,8 @@ function ProductionTab({ data, insertRow, updateRow, deleteRow, canManage }) {
           <Field label="المنتج"><Select value={form.productId} onChange={(e) => setForm({ ...form, productId: e.target.value })}><option value="">اختر المنتج</option>{data.products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select></Field>
           <Field label="الكمية المطلوب إنتاجها"><Input type="number" min="0" step="any" value={form.qty} onChange={(e) => setForm({ ...form, qty: e.target.value })} /></Field>
           <Field label="نسبة الهالك %"><Input type="number" min="0" step="0.1" value={form.wastePercentage} onChange={(e) => setForm({ ...form, wastePercentage: e.target.value })} /></Field>
-          <Field label="تكلفة العمالة الإجمالية (اختياري)"><Input type="number" value={form.laborCost} onChange={(e) => setForm({ ...form, laborCost: e.target.value })} placeholder={selectedProduct ? `افتراضي: ${fmt(selectedProduct.labor_cost * (num(form.qty) || 1))}` : ""} /></Field>
-          <Field label="تكاليف غير مباشرة إجمالية (اختياري)"><Input type="number" value={form.overheadCost} onChange={(e) => setForm({ ...form, overheadCost: e.target.value })} placeholder={selectedProduct ? `افتراضي: ${fmt(selectedProduct.overhead_cost * (num(form.qty) || 1))}` : ""} /></Field>
+          {canViewFinancials && <Field label="تكلفة العمالة الإجمالية (اختياري)"><Input type="number" value={form.laborCost} onChange={(e) => setForm({ ...form, laborCost: e.target.value })} placeholder={selectedProduct ? `افتراضي: ${fmt(selectedProduct.labor_cost * (num(form.qty) || 1))}` : ""} /></Field>}
+          {canViewFinancials && <Field label="تكاليف غير مباشرة إجمالية (اختياري)"><Input type="number" value={form.overheadCost} onChange={(e) => setForm({ ...form, overheadCost: e.target.value })} placeholder={selectedProduct ? `افتراضي: ${fmt(selectedProduct.overhead_cost * (num(form.qty) || 1))}` : ""} /></Field>}
           <Field label="التاريخ"><Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></Field>
         </div>
         <div style={{ marginTop: 12 }}><Btn onClick={submit}><Plus size={15} /> تسجيل أمر الإنتاج</Btn></div>
@@ -1110,10 +1166,10 @@ function ProductionTab({ data, insertRow, updateRow, deleteRow, canManage }) {
       </Card>
       <Card>
         {data.productionOrders.length === 0 ? <Empty text="لا توجد أوامر إنتاج مسجلة بعد" /> : (
-          <Table headers={["التاريخ", "المنتج", "الكمية", "الهالك", "تكلفة الخامات", "عمالة", "غير مباشرة", "إجمالي التكلفة", "تكلفة الوحدة", ""]}>
+          <Table headers={canViewFinancials ? ["التاريخ", "المنتج", "الكمية", "الهالك", "تكلفة الخامات", "عمالة", "غير مباشرة", "إجمالي التكلفة", "تكلفة الوحدة", ""] : ["التاريخ", "المنتج", "الكمية", "الهالك", ""]}>
             {[...data.productionOrders].reverse().map((o) => { const p = data.products.find((x) => x.id === o.product_id); return (
-              <tr key={o.id}><Td>{o.order_date}</Td><Td>{p?.name || "—"}</Td><Td>{o.qty}</Td><Td>{num(o.waste_percentage).toFixed(1)}%</Td><Td>{fmt(o.materials_cost)}</Td><Td>{fmt(o.labor_cost)}</Td><Td>{fmt(o.overhead_cost)}</Td>
-                <Td style={{ fontWeight: 700 }}>{fmt(o.total_cost)} ج.م</Td><Td style={{ color: C.brass }}>{fmt(o.unit_cost)} ج.م</Td>
+              <tr key={o.id}><Td>{o.order_date}</Td><Td>{p?.name || "—"}</Td><Td>{o.qty}</Td><Td>{num(o.waste_percentage).toFixed(1)}%</Td>{canViewFinancials && <><Td>{fmt(o.materials_cost)}</Td><Td>{fmt(o.labor_cost)}</Td><Td>{fmt(o.overhead_cost)}</Td>
+                <Td style={{ fontWeight: 700 }}>{fmt(o.total_cost)} ج.م</Td><Td style={{ color: C.brass }}>{fmt(o.unit_cost)} ج.م</Td></>}
                 <Td>{canManage && <div style={{display:"flex",gap:8}}><button onClick={() => quickEditProduction(o)} style={{background:"none",border:"none",cursor:"pointer",color:C.brass}}><Pencil size={15}/></button><button onClick={() => removeProduction(o)} style={{background:"none",border:"none",cursor:"pointer",color:C.red}}><Trash2 size={15}/></button></div>}</Td></tr>
             ); })}
           </Table>
@@ -1213,7 +1269,10 @@ function RentalsTab({ data, insertRow, updateRow, deleteRow, canManage }) {
     setForm({ productId: "", customerId: "", qty: "", rentalFee: "", startDate: todayStr(), expectedReturn: "" });
   }
   async function markReturned(r) {
-    await updateRow("rentals", r.id, { status: "returned", return_date: todayStr() });
+    setErr(""); setOk("");
+    const error = await updateRow("rentals", r.id, { status: "returned", return_date: todayStr() });
+    if (error) return setErr(error);
+    setOk("تم تسجيل إرجاع الصنف بنجاح");
   }
 
   const rentalProducts = data.products.filter((p) => (p.item_type || "sale") !== "sale");
@@ -1618,7 +1677,14 @@ function TeamTab({ profiles, refresh, currentUserId }) {
     if (!current) return;
     setMsg("");
     const role = current.role;
-    const permissions = role === "manager" ? null : {
+    const permissions = role === "manager" ? null : role === "production" ? {
+      pages: ["production"],
+      can_delete: false,
+      view_financials: false,
+      can_create_products: false,
+      can_edit_products: false,
+      ...Object.fromEntries(ACTION_PERMISSIONS.map((key) => [key, false])),
+    } : {
       pages: (current.pages || []).filter((p) => p !== "team"),
       can_delete: Boolean(current.can_delete),
       view_financials: Boolean(current.view_financials),
@@ -1642,6 +1708,7 @@ function TeamTab({ profiles, refresh, currentUserId }) {
         {profiles.map((p) => {
           const current = pending[p.id] || { role: p.role, status: p.status || "active", ...permissionsForProfile(p) };
           const isManager = current.role === "manager";
+          const isProduction = current.role === "production";
           return <Card key={p.id}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
               <div><div style={{ fontWeight: 800 }}>{p.full_name || "بدون اسم"}</div><div style={{ color: C.muted, fontSize: 12 }}>{p.id.slice(0, 8)}…</div></div>
@@ -1657,7 +1724,8 @@ function TeamTab({ profiles, refresh, currentUserId }) {
                 </Select>
               </Field>
             </div>
-            {!isManager && <>
+            {isProduction && <Banner type="success">موظف الإنتاج لديه وصول إلى أوامر الإنتاج فقط، ولا تظهر له أي بيانات مالية.</Banner>}
+            {!isManager && !isProduction && <>
               <div style={{ color: C.muted, fontSize: 13, margin: "16px 0 8px" }}>الصفحات المسموح بها</div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 8 }}>
                 {ALL_PAGE_IDS.filter((id) => id !== "team").map((id) => <label key={id} style={{ display: "flex", alignItems: "center", gap: 8, background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 10px" }}>

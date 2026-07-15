@@ -2,7 +2,14 @@ import React, { useMemo, useState } from "react";
 import { DataTable, EmptyState, Input, PageTitle, Panel, Select } from "./shared";
 import { auditActorLabel } from "./auditIdentity";
 
-const TABLE_LABELS = { projects:"المشاريع", project_files:"ملفات المشاريع", project_activities:"أنشطة المشاريع", employees:"الموظفون", payroll:"الرواتب", daily_labor:"العمالة اليومية", project_costs:"تكاليف المشاريع" };
+const TABLE_LABELS = {
+  profiles:"المستخدمون", suppliers:"الموردون", customers:"العملاء", materials:"المواد الخام",
+  material_purchases:"المشتريات", products:"المنتجات", production_orders:"أوامر الإنتاج",
+  sales:"المبيعات", rentals:"الإيجارات", supplier_payments:"دفعات الموردين",
+  customer_receipts:"تحصيلات العملاء", expenses:"المصروفات", projects:"المشاريع",
+  project_files:"ملفات المشاريع", project_activities:"أنشطة المشاريع", employees:"الموظفون",
+  payroll:"الرواتب", daily_labor:"العمالة اليومية", project_costs:"تكاليف المشاريع",
+};
 const ACTION_LABELS = { insert:"إضافة", update:"تعديل", delete:"حذف" };
 export const PERMISSION_LABELS = {
   projects_view:"عرض المشاريع",projects_create:"إنشاء المشاريع",projects_edit:"تعديل المشاريع",projects_delete:"حذف المشاريع",
