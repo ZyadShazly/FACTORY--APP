@@ -7,6 +7,8 @@ create table if not exists profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   full_name text,
   role text not null check (role in ('manager','accountant','production')),
+  permissions jsonb not null default '{}'::jsonb,
+  status text not null default 'active' check (status in ('active','suspended')),
   created_at timestamptz default now()
 );
 
@@ -130,7 +132,17 @@ alter table customer_receipts enable row level security;
 -- profiles: أي حد مسجل يقدر يشوف كل البروفايلات، ويضيف/يعدّل بروفايله هو بس
 create policy "profiles_select_all" on profiles for select using (auth.role() = 'authenticated');
 create policy "profiles_insert_own" on profiles for insert
-  with check (auth.uid() = id and role in ('accountant','production'));
+  to authenticated
+  with check (auth.uid() = id);
+create policy "profiles_self_signup_restrictions" on profiles
+  as restrictive
+  for insert
+  to authenticated
+  with check (
+    role in ('accountant','production')
+    and permissions = '{}'::jsonb
+    and status = 'active'
+  );
 create policy "profiles_update_own" on profiles for update using (auth.uid() = id);
 
 -- Roles are protected in the database, not only by the signup form. A new user
@@ -153,12 +165,22 @@ begin
        or new.role not in ('accountant', 'production') then
       raise exception using errcode = '42501', message = 'Self-service registration cannot create a protected role';
     end if;
-  elsif new.role is distinct from old.role then
-    if auth.uid() = old.id then
-      raise exception using errcode = '42501', message = 'Users cannot change their own role';
+    if new.permissions <> '{}'::jsonb or new.status <> 'active' then
+      raise exception using errcode = '42501', message = 'Self-service registration cannot grant permissions or set account status';
     end if;
-    if not is_manager() then
-      raise exception using errcode = '42501', message = 'Only a manager or the system owner can change roles';
+  else
+    if new.role is distinct from old.role then
+      if auth.uid() = old.id then
+        raise exception using errcode = '42501', message = 'Users cannot change their own role';
+      end if;
+      if not is_manager() then
+        raise exception using errcode = '42501', message = 'Only a manager or the system owner can change roles';
+      end if;
+    end if;
+
+    if (new.permissions is distinct from old.permissions or new.status is distinct from old.status)
+       and not is_manager() then
+      raise exception using errcode = '42501', message = 'Only a manager or the system owner can change privileges or account status';
     end if;
   end if;
 
@@ -168,7 +190,7 @@ $$;
 
 revoke all on function enforce_profile_role_security() from public, anon, authenticated;
 create trigger enforce_profile_role_security
-before insert or update of role on profiles
+before insert or update of role, permissions, status on profiles
 for each row execute function enforce_profile_role_security();
 
 -- باقي الجداول: أي حد مسجل يقدر يشوف ويضيف، والحذف للمدير بس

@@ -29,8 +29,8 @@ begin
         message = 'Self-service registration cannot create a protected role';
     end if;
 
-    if coalesce(new.permissions, '{}'::jsonb) <> '{}'::jsonb
-       or coalesce(new.status, 'active') <> 'active' then
+    if new.permissions <> '{}'::jsonb
+       or new.status <> 'active' then
       raise exception using
         errcode = '42501',
         message = 'Self-service registration cannot grant permissions or set account status';
@@ -102,18 +102,32 @@ begin
 end
 $$;
 
--- Replace the legacy self-insert policy so RLS independently rejects a crafted
--- REST request that tries to create manager privileges.
+drop trigger if exists protect_profile_privileges on public.profiles;
+create trigger protect_profile_privileges
+before update of role, permissions, status on public.profiles
+for each row
+execute function public.protect_profile_privileges();
+
+-- Keep one permissive policy to establish which row may be inserted. The
+-- separate restrictive policy below is ANDed with every permissive INSERT
+-- policy, so no legacy/additional permissive policy can bypass the allowlist.
 drop policy if exists profiles_insert_own on public.profiles;
 create policy profiles_insert_own
 on public.profiles
 for insert
 to authenticated
+with check (auth.uid() = id);
+
+drop policy if exists profiles_self_signup_restrictions on public.profiles;
+create policy profiles_self_signup_restrictions
+on public.profiles
+as restrictive
+for insert
+to authenticated
 with check (
-  auth.uid() = id
-  and role in ('accountant', 'production')
-  and coalesce(permissions, '{}'::jsonb) = '{}'::jsonb
-  and coalesce(status, 'active') = 'active'
+  role in ('accountant', 'production')
+  and permissions = '{}'::jsonb
+  and status = 'active'
 );
 
 comment on function public.enforce_profile_role_security() is
