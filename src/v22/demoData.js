@@ -1,7 +1,10 @@
 const now = new Date().toISOString();
-export const demoProfile = { id: "00000000-0000-0000-0000-000000000001", full_name: "مدير النظام", email: "manager@nextep.demo", role: "manager", status: "active", permissions: {} };
+export const demoProfile = { id: "00000000-0000-0000-0000-000000000001", full_name: "مالك النظام", email: "owner@nextep.demo", role: "owner", status: "active", permissions: {} };
+const demoManager = { id: "00000000-0000-0000-0000-000000000002", full_name: "مدير التشغيل", email: "manager@nextep.demo", role: "manager", status: "active", permissions: {} };
+const demoAccountant = { id: "00000000-0000-0000-0000-000000000003", full_name: "محاسب المصنع", email: "accountant@nextep.demo", role: "accountant", status: "active", permissions: {} };
+const demoProduction = { id: "00000000-0000-0000-0000-000000000004", full_name: "مشرف الإنتاج", email: "production@nextep.demo", role: "production", status: "active", permissions: { pages: ["production"] } };
 export const demoData = {
-  profiles: [demoProfile], materials: [], materialPurchases: [], products: [], productionOrders: [], sales: [], rentals: [], suppliers: [], supplierPayments: [], customerReceipts: [], expenses: [], employees: [], payroll: [], dailyLabor: [], projectCosts: [], auditLog: [],
+  profiles: [demoProfile, demoManager, demoAccountant, demoProduction], materials: [], materialPurchases: [], products: [], productionOrders: [], sales: [], rentals: [], suppliers: [], supplierPayments: [], customerReceipts: [], expenses: [], employees: [], payroll: [], dailyLabor: [], projectCosts: [], auditLog: [],
   customers: [{ id:"c1", name:"شركة آفاق للتطوير" }, { id:"c2", name:"مجموعة رواسي" }],
   projects: [
     { id:"p1",project_code:"NXT-26031",project_name:"تجهيز مكاتب آفاق",customer_id:"c1",location:"الرياض · حي الياسمين",start_date:"2026-06-15",delivery_date:"2026-08-28",status:"manufacturing",progress_percentage:68,expected_cost:420000,actual_cost:281500,revenue:610000,profit:328500,notes:"" },

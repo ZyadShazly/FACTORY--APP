@@ -1,5 +1,6 @@
 import React from "react";
 import { AlertCircle, CheckCircle2, Loader2, X } from "lucide-react";
+import { isAdministrativeRole } from "../identity";
 
 export const theme = {
   bg: "var(--color-app-bg)", panel: "var(--color-surface)", panelAlt: "var(--color-surface-muted)", border: "var(--color-border)",
@@ -27,10 +28,12 @@ const ACCOUNTANT_DEFAULTS = [
 const PRODUCTION_DEFAULTS = [];
 
 export function actionPermissions(profile) {
-  if (profile?.role === "manager") return Object.fromEntries(ACTION_PERMISSIONS.map((key) => [key, true]));
+  if (isAdministrativeRole(profile?.role)) return Object.fromEntries(ACTION_PERMISSIONS.map((key) => [key, true]));
   const defaults = profile?.role === "accountant" ? ACCOUNTANT_DEFAULTS : PRODUCTION_DEFAULTS;
   const saved = profile?.permissions || {};
-  return Object.fromEntries(ACTION_PERMISSIONS.map((key) => [key, saved[key] ?? defaults.includes(key)]));
+  const resolved = Object.fromEntries(ACTION_PERMISSIONS.map((key) => [key, saved[key] ?? defaults.includes(key)]));
+  resolved.audit_log_view = false;
+  return resolved;
 }
 
 export function PermissionGuard({ allow, children, fallback = null }) {

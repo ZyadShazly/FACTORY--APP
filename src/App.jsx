@@ -19,6 +19,7 @@ import { PROJECT_FILES_TABLE } from "./v22/fileTypes";
 import { syncMutation } from "./v22/mutations";
 import { combinedRealtimeStatus, dataTableKeysForRole, isActiveProfile, REALTIME_TABLE_TO_KEY, resolveAllowedTab, TABLES } from "./realtime";
 import { buildNavigationGroups, loadNavigationState, NAV_GROUP_STORAGE_KEY } from "./navigation";
+import { canAssignRole, identityProtectionReason, isAdministrativeRole, PRODUCTION_ALLOWED_PAGES, SELF_SIGNUP_ROLES, SYSTEM_ROLES } from "./identity";
 
 const V22_DEMO = (import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEMO === "true") && new URLSearchParams(window.location.search).get("demo") === "v22";
 
@@ -33,12 +34,8 @@ const num = (v) => { const n = parseFloat(v); return isFinite(n) ? n : 0; };
 const fmt = (n) => (isFinite(n) ? n : 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const todayStr = () => new Date().toISOString().slice(0, 10);
 
-const ROLES = {
-  manager: { label: "المدير", desc: "كل الصلاحيات: عرض، تعديل، حذف، وكل التقارير" },
-  accountant: { label: "المحاسب", desc: "إضافة المنتجات والعمليات المالية بدون تعديل أو حذف المنتجات" },
-  production: { label: "موظف الإنتاج", desc: "تسجيل أوامر الإنتاج فقط" },
-};
-const SIGNUP_ROLES = ["accountant", "production"];
+const ROLES = SYSTEM_ROLES;
+const SIGNUP_ROLES = SELF_SIGNUP_ROLES;
 const NAV_BY_ROLE = {
   manager: ["dashboard", "projects", "projectFiles", "inventory", "purchases", "expenses", "materials", "products", "production", "sales", "rentals", "suppliers", "customers", "employees", "payroll", "dailyLabor", "reports", "auditLog", "team"],
   accountant: ["projects", "projectFiles", "inventory", "purchases", "expenses", "materials", "products", "production", "sales", "rentals", "suppliers", "customers", "employees", "payroll", "dailyLabor"],
@@ -53,26 +50,29 @@ const PAGE_LABELS = {
 };
 function permissionsForProfile(profile) {
   const actions = actionPermissions(profile);
-  if (profile?.role === "manager") return {
+  if (isAdministrativeRole(profile?.role)) return {
     pages: ALL_PAGE_IDS,
     can_delete: true,
     view_financials: true,
     can_create_products: true,
     can_edit_products: true, ...actions,
   };
-  if (profile?.role === "production") return {
-    pages: ["production"],
-    can_delete: false,
-    view_financials: false,
-    can_create_products: false,
-    can_edit_products: false,
-    ...Object.fromEntries(ACTION_PERMISSIONS.map((key) => [key, false])),
-  };
+  if (profile?.role === "production") {
+    const hasSavedPages = Array.isArray(profile?.permissions?.pages);
+    const savedPages = hasSavedPages ? profile.permissions.pages.filter((page) => PRODUCTION_ALLOWED_PAGES.includes(page)) : ["production"];
+    return {
+      pages: savedPages,
+      can_delete: false,
+      view_financials: false,
+      can_create_products: false,
+      can_edit_products: false,
+      ...Object.fromEntries(ACTION_PERMISSIONS.map((key) => [key, false])),
+    };
+  }
   const saved = profile?.permissions || {};
   const isAccountant = profile?.role === "accountant";
-  const legacyPages = Array.isArray(saved.pages) && saved.pages.length ? saved.pages : (NAV_BY_ROLE[profile?.role] || []);
+  const legacyPages = Array.isArray(saved.pages) ? saved.pages : (NAV_BY_ROLE[profile?.role] || []);
   const modulePages = [actions.projects_view && "projects", actions.project_files_view && "projectFiles", actions.payroll_view && "payroll", actions.daily_labor_view && "dailyLabor"].filter(Boolean);
-  if (profile?.role === "accountant") modulePages.push("employees");
   if (actions.audit_log_view) modulePages.push("auditLog");
   return {
     pages: [...new Set([...legacyPages, ...modulePages])],
@@ -570,8 +570,8 @@ export default function App() {
 
   const permissions = useMemo(() => profile ? permissionsForProfile(profile) : null, [profile]);
   useEffect(() => {
-    if (!permissions?.pages?.length) return;
-    setTab((currentTab) => resolveAllowedTab(currentTab, permissions.pages));
+    if (!permissions) return;
+    setTab((currentTab) => resolveAllowedTab(currentTab, permissions.pages || []));
   }, [permissions]);
 
   if (session === undefined || (session && profile === undefined)) {
@@ -671,6 +671,7 @@ export default function App() {
       <main className="app-main">
         <div className="app-context-bar"><span>{activeGroup?.label}</span><strong>{activePage?.label}</strong></div>
         <div className="app-content">
+        {!activeTab && <Card><Empty text="لا توجد صفحات مسموحة لهذا الحساب حاليًا. تواصل مع مدير النظام لتحديث صلاحياتك." /></Card>}
         {dataWarnings.length > 0 && <Banner type="error">تعذر تحديث بعض البيانات ({dataWarnings.map((key) => PAGE_LABELS[key] || key).join("، ")}). البيانات المعروضة قد تكون غير مكتملة.</Banner>}
         {realtimeStatus === "RECONNECTING" && <Banner type="error">انقطع التحديث اللحظي مؤقتًا. يحاول النظام إعادة الاتصال تلقائيًا.</Banner>}
         {activeTab === "dashboard" && <Dashboard data={data} navigate={setTab} permissions={permissions} />}
@@ -681,17 +682,17 @@ export default function App() {
         {activeTab === "expenses" && <ExpensesTab data={data} insertRow={insertRow} deleteRow={deleteRow} canDelete={permissions.can_delete} />}
         {activeTab === "materials" && <MaterialsTab data={data} canDelete={permissions.can_delete} insertRow={insertRow} deleteRow={deleteRow} updateRow={updateRow} />}
         {activeTab === "products" && <ProductsTab data={data} canCreate={permissions.can_create_products} canEdit={permissions.can_edit_products} canDelete={permissions.can_delete} hideProfitInfo={!permissions.view_financials} insertRow={insertRow} deleteRow={deleteRow} updateRow={updateRow} />}
-        {activeTab === "production" && <ProductionTab data={data} insertRow={insertRow} updateRow={updateRow} deleteRow={deleteRow} canManage={role === "manager"} canViewFinancials={permissions.view_financials} />}
-        {activeTab === "sales" && <SalesTab data={data} insertRow={insertRow} updateRow={updateRow} deleteRow={deleteRow} canManage={role === "manager"} />}
-        {activeTab === "rentals" && <RentalsTab data={data} insertRow={insertRow} updateRow={updateRow} deleteRow={deleteRow} canManage={role === "manager"} />}
-        {activeTab === "suppliers" && <SuppliersTab data={data} insertRow={insertRow} updateRow={updateRow} deleteRow={deleteRow} canManage={role === "manager"} />}
-        {activeTab === "customers" && <CustomersTab data={data} insertRow={insertRow} updateRow={updateRow} deleteRow={deleteRow} canManage={role === "manager"} />}
+        {activeTab === "production" && <ProductionTab data={data} insertRow={insertRow} updateRow={updateRow} deleteRow={deleteRow} canManage={isAdministrativeRole(role)} canViewFinancials={permissions.view_financials} />}
+        {activeTab === "sales" && <SalesTab data={data} insertRow={insertRow} updateRow={updateRow} deleteRow={deleteRow} canManage={isAdministrativeRole(role)} />}
+        {activeTab === "rentals" && <RentalsTab data={data} insertRow={insertRow} updateRow={updateRow} deleteRow={deleteRow} canManage={isAdministrativeRole(role)} />}
+        {activeTab === "suppliers" && <SuppliersTab data={data} insertRow={insertRow} updateRow={updateRow} deleteRow={deleteRow} canManage={isAdministrativeRole(role)} />}
+        {activeTab === "customers" && <CustomersTab data={data} insertRow={insertRow} updateRow={updateRow} deleteRow={deleteRow} canManage={isAdministrativeRole(role)} />}
         {activeTab === "employees" && role !== "production" && <EmployeesTab data={data} profile={profile} refresh={refetchTable} />}
         {activeTab === "payroll" && permissions.payroll_view && <PayrollTab data={data} profile={profile} permissions={permissions} refresh={refetchTable} />}
         {activeTab === "dailyLabor" && permissions.daily_labor_view && <DailyLaborTab data={data} profile={profile} permissions={permissions} refresh={refetchTable} />}
         {activeTab === "reports" && permissions.view_financials && <ReportsTab data={data} />}
         {activeTab === "auditLog" && permissions.audit_log_view && <AuditLogTab data={data} />}
-        {activeTab === "team" && <TeamTab profiles={data.profiles} refresh={refetchTable} currentUserId={profile.id} />}
+        {activeTab === "team" && <TeamTab profiles={data.profiles} refresh={refetchTable} currentProfile={profile} />}
         </div>
       </main>
       <Toast type={mutationFeedback.type} message={mutationFeedback.message} onDismiss={() => setMutationFeedback((current) => ({ ...current, message: "" }))} />
@@ -1647,13 +1648,30 @@ function ReportsTab({ data }) {
 }
 
 /* ----------------------------------- Team ------------------------------------ */
-function TeamTab({ profiles, refresh, currentUserId }) {
+const GENERAL_PERMISSION_LABELS = {
+  can_delete: "السماح بالحذف",
+  view_financials: "عرض الأرباح والتقارير المالية",
+  can_create_products: "إضافة منتجات جديدة",
+  can_edit_products: "تعديل المنتجات الموجودة",
+};
+const PERMISSION_SECTIONS = [
+  { id: "pages", label: "الصفحات والوحدات", type: "page", keys: ALL_PAGE_IDS },
+  { id: "general", label: "الصلاحيات العامة", type: "permission", keys: Object.keys(GENERAL_PERMISSION_LABELS) },
+  { id: "projects", label: "المشاريع والملفات", type: "permission", keys: ACTION_PERMISSIONS.filter((key) => key.startsWith("project")) },
+  { id: "payroll", label: "الرواتب", type: "permission", keys: ACTION_PERMISSIONS.filter((key) => key.startsWith("payroll")) },
+  { id: "labor", label: "العمالة اليومية", type: "permission", keys: ACTION_PERMISSIONS.filter((key) => key.startsWith("daily_labor")) },
+  { id: "audit", label: "التدقيق", type: "permission", keys: ["audit_log_view"] },
+];
+
+function TeamTab({ profiles, refresh, currentProfile }) {
   const [pending, setPending] = useState({});
-  const [msg, setMsg] = useState("");
+  const [message, setMessage] = useState({ type: "", text: "" });
+  const [openSections, setOpenSections] = useState({});
+  const [savingUserId, setSavingUserId] = useState(null);
 
   useEffect(() => {
     const initial = {};
-    for (const p of profiles || []) initial[p.id] = { role: p.role, status: p.status || "active", ...permissionsForProfile(p) };
+    for (const profile of profiles || []) initial[profile.id] = { role: profile.role, status: profile.status || "active", ...permissionsForProfile(profile) };
     setPending(initial);
     console.info("[permissions] currentState", initial);
   }, [profiles]);
@@ -1665,90 +1683,134 @@ function TeamTab({ profiles, refresh, currentUserId }) {
   }, [refresh]);
 
   function patchUser(userId, patch) {
-    setPending((prev) => ({ ...prev, [userId]: { ...(prev[userId] || {}), ...patch } }));
+    setPending((previous) => ({ ...previous, [userId]: { ...(previous[userId] || {}), ...patch } }));
   }
-  function togglePage(userId, pageId) {
+
+  function itemAllowed(role, section, key) {
+    if (role === "production") return section.type === "page" && PRODUCTION_ALLOWED_PAGES.includes(key);
+    if (role === "accountant") return !(section.type === "page" && ["team", "auditLog"].includes(key)) && key !== "audit_log_view";
+    return true;
+  }
+
+  function isChecked(current, section, key) {
+    return section.type === "page" ? (current.pages || []).includes(key) : Boolean(current[key]);
+  }
+
+  function setPermission(userId, section, key, checked) {
     const current = pending[userId] || {};
-    const pages = current.pages || [];
-    patchUser(userId, { pages: pages.includes(pageId) ? pages.filter((x) => x !== pageId) : [...pages, pageId] });
+    if (section.type === "page") {
+      const pages = new Set(current.pages || []);
+      if (checked) pages.add(key); else pages.delete(key);
+      patchUser(userId, { pages: [...pages] });
+    } else patchUser(userId, { [key]: checked });
   }
+
+  function setSection(userId, section, checked) {
+    const current = pending[userId] || {};
+    const allowedKeys = section.keys.filter((key) => itemAllowed(current.role, section, key));
+    if (section.type === "page") {
+      const pages = new Set(current.pages || []);
+      allowedKeys.forEach((key) => checked ? pages.add(key) : pages.delete(key));
+      patchUser(userId, { pages: [...pages] });
+    } else patchUser(userId, Object.fromEntries(allowedKeys.map((key) => [key, checked])));
+  }
+
+  function permissionPayload(current) {
+    if (isAdministrativeRole(current.role)) return {};
+    return {
+      pages: current.pages || [],
+      ...Object.fromEntries(Object.keys(GENERAL_PERMISSION_LABELS).map((key) => [key, Boolean(current[key])])),
+      ...Object.fromEntries(ACTION_PERMISSIONS.map((key) => [key, Boolean(current[key])])),
+    };
+  }
+
   async function savePermissions(userId) {
     const current = pending[userId];
     if (!current) return;
-    setMsg("");
-    const role = current.role;
-    const permissions = role === "manager" ? null : role === "production" ? {
-      pages: ["production"],
-      can_delete: false,
-      view_financials: false,
-      can_create_products: false,
-      can_edit_products: false,
-      ...Object.fromEntries(ACTION_PERMISSIONS.map((key) => [key, false])),
-    } : {
-      pages: (current.pages || []).filter((p) => p !== "team"),
-      can_delete: Boolean(current.can_delete),
-      view_financials: Boolean(current.view_financials),
-      can_create_products: Boolean(current.can_create_products),
-      can_edit_products: Boolean(current.can_edit_products),
-      ...Object.fromEntries(ACTION_PERMISSIONS.map((key) => [key, Boolean(current[key])])),
-    };
-    const status = userId === currentUserId ? "active" : (current.status || "active");
-    const mutationResult = await supabase.from("profiles").update({ role, permissions, status }).eq("id", userId);
-    const result = await syncMutation({ scope:"permissions:update", mutationResult, refetch:load });
-    if (result.error) return setMsg(result.error.message);
-    setMsg("تم حفظ الصلاحيات بنجاح");
+    setMessage({ type: "", text: "" });
+    setSavingUserId(userId);
+    const mutationResult = await supabase.rpc("admin_update_profile", {
+      target_user_id: userId,
+      target_role: current.role,
+      target_permissions: permissionPayload(current),
+      target_status: current.status || "active",
+    });
+    console.info("[permissions] mutationResult", mutationResult);
+    if (mutationResult.error) {
+      setSavingUserId(null);
+      return setMessage({ type: "error", text: mutationResult.error.message });
+    }
+    if (!mutationResult.data?.ok) {
+      setSavingUserId(null);
+      return setMessage({ type: "error", text: mutationResult.data?.error || "تعذر حفظ الصلاحيات." });
+    }
+    await load();
+    setSavingUserId(null);
+    setMessage({ type: "success", text: "تم حفظ الدور والصلاحيات بأمان." });
   }
 
   if (!profiles) return <Empty text="جارِ التحميل..." />;
-  return (
-    <div>
-      <SectionTitle eyebrow="التحكم بالصلاحيات" title="الفريق والصلاحيات" icon={<ShieldCheck size={14} />} />
-      {msg && <Banner type={msg.includes("بنجاح") ? "success" : "error"}>{msg}</Banner>}
-      <div style={{ display: "grid", gap: 14, marginTop: 14 }}>
-        {profiles.map((p) => {
-          const current = pending[p.id] || { role: p.role, status: p.status || "active", ...permissionsForProfile(p) };
-          const isManager = current.role === "manager";
-          const isProduction = current.role === "production";
-          return <Card key={p.id}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
-              <div><div style={{ fontWeight: 800 }}>{p.full_name || "بدون اسم"}</div><div style={{ color: C.muted, fontSize: 12 }}>{p.id.slice(0, 8)}…</div></div>
-              <Field label="الصفة" style={{ maxWidth: 220 }}>
-                <Select value={current.role} onChange={(e) => patchUser(p.id, { role: e.target.value, ...permissionsForProfile({ role: e.target.value }) })}>
-                  {Object.entries(ROLES).map(([k, r]) => <option key={k} value={k}>{r.label}</option>)}
-                </Select>
-              </Field>
-              <Field label="حالة الحساب" style={{ maxWidth: 220 }}>
-                <Select disabled={p.id === currentUserId} value={current.status || "active"} onChange={(e) => patchUser(p.id, { status: e.target.value })}>
-                  <option value="active">نشط</option>
-                  <option value="suspended">موقوف</option>
-                </Select>
-              </Field>
-            </div>
-            {isProduction && <Banner type="success">موظف الإنتاج لديه وصول إلى أوامر الإنتاج فقط، ولا تظهر له أي بيانات مالية.</Banner>}
-            {!isManager && !isProduction && <>
-              <div style={{ color: C.muted, fontSize: 13, margin: "16px 0 8px" }}>الصفحات المسموح بها</div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 8 }}>
-                {ALL_PAGE_IDS.filter((id) => id !== "team").map((id) => <label key={id} style={{ display: "flex", alignItems: "center", gap: 8, background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 10px" }}>
-                  <input type="checkbox" checked={(current.pages || []).includes(id)} onChange={() => togglePage(p.id, id)} />{PAGE_LABELS[id]}
-                </label>)}
-              </div>
-              <div style={{ display: "flex", gap: 18, flexWrap: "wrap", marginTop: 14 }}>
-                <label style={{ display: "flex", alignItems: "center", gap: 8 }}><input type="checkbox" checked={Boolean(current.can_delete)} onChange={(e) => patchUser(p.id, { can_delete: e.target.checked })} />السماح بالحذف</label>
-                <label style={{ display: "flex", alignItems: "center", gap: 8 }}><input type="checkbox" checked={Boolean(current.view_financials)} onChange={(e) => patchUser(p.id, { view_financials: e.target.checked })} />عرض الأرباح والتقارير المالية</label>
-                <label style={{ display: "flex", alignItems: "center", gap: 8 }}><input type="checkbox" checked={Boolean(current.can_create_products)} onChange={(e) => patchUser(p.id, { can_create_products: e.target.checked })} />إضافة منتجات جديدة</label>
-                <label style={{ display: "flex", alignItems: "center", gap: 8 }}><input type="checkbox" checked={Boolean(current.can_edit_products)} onChange={(e) => patchUser(p.id, { can_edit_products: e.target.checked })} />تعديل المنتجات الموجودة</label>
-              </div>
-              <div style={{ color: C.muted, fontSize: 13, margin: "18px 0 8px" }}>صلاحيات V2.2 التفصيلية</div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 8 }}>
-                {ACTION_PERMISSIONS.map((key) => <label key={key} style={{ display: "flex", alignItems: "center", gap: 8, background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 10px" }}>
-                  <input type="checkbox" checked={Boolean(current[key])} onChange={(e) => patchUser(p.id, { [key]: e.target.checked })} />{PERMISSION_LABELS[key]}
-                </label>)}
-              </div>
-            </>}
-            <div style={{ marginTop: 16 }}><Btn onClick={() => savePermissions(p.id)}>حفظ الصلاحيات</Btn></div>
-          </Card>;
-        })}
-      </div>
+  const allOpen = PERMISSION_SECTIONS.every((section) => openSections[section.id]);
+  return <div>
+    <SectionTitle eyebrow="الهوية والوصول" title="الفريق والصلاحيات" icon={<ShieldCheck size={14} />} description="إدارة الأدوار والصلاحيات وفق تسلسل إداري محمي ومسجل بالكامل." />
+    {message.text && <Banner type={message.type}>{message.text}</Banner>}
+    <div className="permissions-toolbar">
+      <Btn variant="ghost" onClick={() => setOpenSections(Object.fromEntries(PERMISSION_SECTIONS.map((section) => [section.id, true])))}>فتح الكل</Btn>
+      <Btn variant="ghost" onClick={() => setOpenSections({})}>إغلاق الكل</Btn>
+      <span>{allOpen ? "كل أقسام الصلاحيات مفتوحة" : "افتح القسم المطلوب لتقليل الزحام"}</span>
     </div>
-  );
+    <div className="team-grid">
+      {profiles.map((profile) => {
+        const current = pending[profile.id] || { role: profile.role, status: profile.status || "active", ...permissionsForProfile(profile) };
+        const protectionReason = identityProtectionReason(currentProfile, profile);
+        const protectedFields = Boolean(protectionReason);
+        const automaticAccess = isAdministrativeRole(current.role);
+        return <Card className={`team-card role-${current.role}`} key={profile.id}>
+          <div className="team-card-head">
+            <div className="team-identity"><div className="team-avatar">{(profile.full_name || profile.email || "؟").trim().charAt(0)}</div><div><strong>{profile.full_name || "بدون اسم"}</strong><span>{profile.email || `${profile.id.slice(0, 8)}…`}</span></div></div>
+            <span className={`role-badge ${current.role}`}>{ROLES[current.role]?.label || current.role}</span>
+          </div>
+          <div className="team-controls">
+            <Field label="الدور">
+              <Select disabled={protectedFields} value={current.role} onChange={(event) => patchUser(profile.id, { role: event.target.value, ...permissionsForProfile({ role: event.target.value, permissions: {} }) })}>
+                {Object.entries(ROLES).map(([roleKey, role]) => <option key={roleKey} value={roleKey} disabled={!canAssignRole(currentProfile.role, roleKey)}>{role.label}</option>)}
+              </Select>
+            </Field>
+            <Field label="حالة الحساب">
+              <Select disabled={protectedFields} value={current.status || "active"} onChange={(event) => patchUser(profile.id, { status: event.target.value })}>
+                <option value="active">نشط</option><option value="suspended">موقوف</option>
+              </Select>
+            </Field>
+          </div>
+          {protectionReason && <div className="protected-note"><ShieldCheck size={17} /><span><strong>حقول محمية</strong>{protectionReason}</span></div>}
+          {current.role === "owner" && <div className="automatic-access-note"><ShieldCheck size={18} /><span><strong>صلاحيات مالك النظام تلقائية</strong>يمتلك جميع صلاحيات النظام من الدور مباشرة ولا يعتمد على Checkboxes مخزنة.</span></div>}
+          {current.role === "manager" && <div className="automatic-access-note manager"><ShieldCheck size={18} /><span><strong>صلاحيات تشغيلية كاملة</strong>مدير النظام لا يعتمد على Checkboxes، ولا يمكنه إدارة مالك النظام أو تعديل Audit Log.</span></div>}
+          {!automaticAccess && <div className="permission-accordion-list">
+            {PERMISSION_SECTIONS.map((section) => {
+              const enabledCount = section.keys.filter((key) => isChecked(current, section, key)).length;
+              const open = Boolean(openSections[section.id]);
+              return <section className="permission-accordion" key={section.id}>
+                <button type="button" className="permission-accordion-toggle" aria-expanded={open} onClick={() => setOpenSections((previous) => ({ ...previous, [section.id]: !open }))}>
+                  <span><ChevronDown size={16} className={open ? "open" : ""} />{section.label}</span><b>{enabledCount}/{section.keys.length}</b>
+                </button>
+                {open && <div className="permission-accordion-body">
+                  <div className="permission-section-actions"><button type="button" onClick={() => setSection(profile.id, section, true)}>تحديد الكل داخل القسم</button><button type="button" onClick={() => setSection(profile.id, section, false)}>إزالة الكل داخل القسم</button></div>
+                  <div className="permission-options">
+                    {section.keys.map((key) => {
+                      const allowed = itemAllowed(current.role, section, key);
+                      const label = section.type === "page" ? PAGE_LABELS[key] : (GENERAL_PERMISSION_LABELS[key] || PERMISSION_LABELS[key] || key);
+                      return <label className={!allowed ? "disabled" : ""} key={key} title={!allowed ? "هذه الصلاحية محمية لهذا الدور بواسطة RLS" : ""}>
+                        <input type="checkbox" disabled={!allowed} checked={isChecked(current, section, key)} onChange={(event) => setPermission(profile.id, section, key, event.target.checked)} /><span>{label}</span>{!allowed && <small>محمي</small>}
+                      </label>;
+                    })}
+                  </div>
+                </div>}
+              </section>;
+            })}
+          </div>}
+          <div className="team-card-actions"><Btn disabled={protectedFields || savingUserId === profile.id} onClick={() => savePermissions(profile.id)}>{savingUserId === profile.id ? "جارِ الحفظ..." : "حفظ الدور والصلاحيات"}</Btn></div>
+        </Card>;
+      })}
+    </div>
+  </div>;
 }
