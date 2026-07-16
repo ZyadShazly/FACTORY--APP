@@ -19,7 +19,7 @@ import { PROJECT_FILES_TABLE } from "./v22/fileTypes";
 import { syncMutation } from "./v22/mutations";
 import { combinedRealtimeStatus, dataTableKeysForRole, isActiveProfile, REALTIME_TABLE_TO_KEY, resolveAllowedTab, TABLES } from "./realtime";
 import { buildNavigationGroups, loadNavigationState, NAV_GROUP_STORAGE_KEY } from "./navigation";
-import { canAssignRole, identityProtectionReason, isAdministrativeRole, PRODUCTION_ALLOWED_PAGES, SELF_SIGNUP_ROLES, SYSTEM_ROLES } from "./identity";
+import { canAdministerTarget, canAssignRole, identityProtectionReason, isAdministrativeRole, PRODUCTION_ALLOWED_PAGES, SELF_SIGNUP_ROLES, SYSTEM_ROLES } from "./identity";
 
 const V22_DEMO = (import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEMO === "true") && new URLSearchParams(window.location.search).get("demo") === "v22";
 
@@ -1668,6 +1668,7 @@ function TeamTab({ profiles, refresh, currentProfile }) {
   const [message, setMessage] = useState({ type: "", text: "" });
   const [openSections, setOpenSections] = useState({});
   const [savingUserId, setSavingUserId] = useState(null);
+  const [deletingUserId, setDeletingUserId] = useState(null);
 
   useEffect(() => {
     const initial = {};
@@ -1749,6 +1750,23 @@ function TeamTab({ profiles, refresh, currentProfile }) {
     setMessage({ type: "success", text: "تم حفظ الدور والصلاحيات بأمان." });
   }
 
+  async function deleteProfile(profile) {
+    const protectionReason = identityProtectionReason(currentProfile, profile);
+    if (protectionReason) return setMessage({ type: "error", text: protectionReason });
+    if (!window.confirm(`حذف حساب ${profile.full_name || profile.email || "المستخدم"} من النظام؟`)) return;
+    setMessage({ type: "", text: "" });
+    setDeletingUserId(profile.id);
+    const mutationResult = await supabase.rpc("admin_delete_profile", { target_user_id: profile.id });
+    console.info("[profiles:delete] mutationResult", mutationResult);
+    if (mutationResult.error || !mutationResult.data?.ok) {
+      setDeletingUserId(null);
+      return setMessage({ type: "error", text: mutationResult.error?.message || mutationResult.data?.error || "تعذر حذف الحساب." });
+    }
+    await load();
+    setDeletingUserId(null);
+    setMessage({ type: "success", text: "تم حذف الحساب من النظام بأمان." });
+  }
+
   if (!profiles) return <Empty text="جارِ التحميل..." />;
   const allOpen = PERMISSION_SECTIONS.every((section) => openSections[section.id]);
   return <div>
@@ -1784,7 +1802,7 @@ function TeamTab({ profiles, refresh, currentProfile }) {
           </div>
           {protectionReason && <div className="protected-note"><ShieldCheck size={17} /><span><strong>حقول محمية</strong>{protectionReason}</span></div>}
           {current.role === "owner" && <div className="automatic-access-note"><ShieldCheck size={18} /><span><strong>صلاحيات مالك النظام تلقائية</strong>يمتلك جميع صلاحيات النظام من الدور مباشرة ولا يعتمد على Checkboxes مخزنة.</span></div>}
-          {current.role === "manager" && <div className="automatic-access-note manager"><ShieldCheck size={18} /><span><strong>صلاحيات تشغيلية كاملة</strong>مدير النظام لا يعتمد على Checkboxes، ولا يمكنه إدارة مالك النظام أو تعديل Audit Log.</span></div>}
+          {current.role === "manager" && <div className="automatic-access-note manager"><ShieldCheck size={18} /><span><strong>صلاحيات تشغيلية كاملة</strong>مدير النظام لا يعتمد على Checkboxes، ولا يمكن لمدير آخر إدارته أو تعديل Audit Log.</span></div>}
           {!automaticAccess && <div className="permission-accordion-list">
             {PERMISSION_SECTIONS.map((section) => {
               const enabledCount = section.keys.filter((key) => isChecked(current, section, key)).length;
@@ -1808,7 +1826,10 @@ function TeamTab({ profiles, refresh, currentProfile }) {
               </section>;
             })}
           </div>}
-          <div className="team-card-actions"><Btn disabled={protectedFields || savingUserId === profile.id} onClick={() => savePermissions(profile.id)}>{savingUserId === profile.id ? "جارِ الحفظ..." : "حفظ الدور والصلاحيات"}</Btn></div>
+          <div className="team-card-actions">
+            <Btn disabled={protectedFields || savingUserId === profile.id} onClick={() => savePermissions(profile.id)}>{savingUserId === profile.id ? "جارِ الحفظ..." : "حفظ الدور والصلاحيات"}</Btn>
+            {canAdministerTarget(currentProfile, profile) && <Btn variant="danger" disabled={deletingUserId === profile.id} onClick={() => deleteProfile(profile)}><Trash2 size={15}/>{deletingUserId === profile.id ? "جارِ الحذف..." : "حذف الحساب"}</Btn>}
+          </div>
         </Card>;
       })}
     </div>

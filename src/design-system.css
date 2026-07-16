@@ -230,7 +230,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .permission-options label.disabled { opacity: .65; cursor: not-allowed; }
 .permission-options label small { margin-inline-start: auto; color: var(--color-neutral); background: var(--color-neutral-soft); border-radius: 999px; padding: 2px 6px; font-size: 9px; }
 .permission-options input { accent-color: var(--color-wood); }
-.team-card-actions { display: flex; justify-content: flex-end; margin-top: 14px; }
+.team-card-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
 .activity-list { display: flex; flex-direction: column; }
 .activity-item { display: grid; grid-template-columns: 9px 1fr auto; gap: 10px; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--color-border); }
 .activity-item:last-child { border-bottom: 0; }

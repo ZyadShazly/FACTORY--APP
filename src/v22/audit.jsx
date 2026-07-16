@@ -14,6 +14,7 @@ const ACTION_LABELS = {
   insert:"إضافة", update:"تعديل", delete:"حذف",
   role_change_attempt:"محاولة تغيير دور",
   privilege_change_attempt:"محاولة تغيير صلاحيات",
+  profile_delete_attempt:"محاولة حذف حساب",
   owner_bootstrap:"ترقية مالك النظام",
 };
 export const PERMISSION_LABELS = {

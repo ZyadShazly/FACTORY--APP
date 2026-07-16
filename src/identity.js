@@ -1,6 +1,6 @@
 export const SYSTEM_ROLES = Object.freeze({
   owner: { label: "مالك النظام", desc: "صلاحيات النظام كاملة تلقائيًا مع حماية الحسابات الإدارية." },
-  manager: { label: "مدير النظام", desc: "تحكم تشغيلي كامل وإدارة المستخدمين غير المالكين." },
+  manager: { label: "مدير النظام", desc: "تحكم تشغيلي كامل وإدارة المحاسبين وموظفي الإنتاج فقط." },
   accountant: { label: "محاسب", desc: "صلاحيات مالية وتشغيلية قابلة للتخصيص." },
   production: { label: "موظف إنتاج", desc: "وصول تشغيلي آمن دون البيانات المالية أو الإدارية." },
 });
@@ -20,12 +20,17 @@ export function isOwner(role) {
 export function identityProtectionReason(actor, target) {
   if (!actor || !target) return "تعذر التحقق من هوية المستخدم.";
   if (actor.id === target.id) return "لا يمكن تعديل دورك أو صلاحياتك أو حالة حسابك بنفسك.";
-  if (actor.role === "manager" && target.role === "owner") return "حساب مالك النظام محمي ولا يمكن لمدير النظام تعديله.";
+  if (actor.role === "manager" && isAdministrativeRole(target.role)) return "لا يمكن لمدير النظام إدارة مدير نظام آخر.";
   if (!isAdministrativeRole(actor.role)) return "إدارة الهويات متاحة لمالك النظام ومدير النظام فقط.";
   return "";
 }
 
 export function canAssignRole(actorRole, role) {
-  if (role === "owner") return actorRole === "owner";
-  return isAdministrativeRole(actorRole);
+  if (actorRole === "owner") return Object.hasOwn(SYSTEM_ROLES, role);
+  if (actorRole === "manager") return SELF_SIGNUP_ROLES.includes(role);
+  return false;
+}
+
+export function canAdministerTarget(actor, target) {
+  return identityProtectionReason(actor, target) === "";
 }
