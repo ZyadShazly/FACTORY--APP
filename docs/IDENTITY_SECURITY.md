@@ -5,7 +5,7 @@
 | Role | Display name | Authority |
 | --- | --- | --- |
 | `owner` | مالك النظام | Full system access calculated from role; may administer other owners and managers subject to last-owner protection. |
-| `manager` | مدير النظام | Full operational access; may administer non-owner accounts through the protected RPC. |
+| `manager` | مدير النظام | Full operational access; may administer accountant and production accounts only through the protected RPC. |
 | `accountant` | محاسب | Existing defaults plus approved custom permissions. |
 | `production` | موظف إنتاج | Customizable safe operational pages only; financial and administrative isolation remains enforced by RLS. |
 
@@ -16,14 +16,14 @@ Protected profile fields (`role`, `permissions`, and `status`) cannot be changed
 Apply migrations in filename order. For this phase, the new final migration is:
 
 ```text
-202607150003_owner_identity_security.sql
+202607160001_enforce_owner_manager_hierarchy.sql
 ```
 
-It must run after `202607150002_enforce_protected_role_creation.sql`. It does not weaken self-signup restrictions: new users may still create only `accountant` or `production` profiles with empty permissions and active status.
+It must run after `202607150003_owner_identity_security.sql`. It does not weaken self-signup restrictions: new users may still create only `accountant` or `production` profiles with empty permissions and active status.
 
 ## Promote an existing account to Owner
 
-1. Apply all migrations through `202607150003_owner_identity_security.sql`.
+1. Apply all migrations through `202607160001_enforce_owner_manager_hierarchy.sql`.
 2. Open `supabase/scripts/promote_existing_user_to_owner.sql` locally.
 3. Copy it into Supabase SQL Editor without saving personal values to Git.
 4. Set exactly one variable inside the `DO` block:
@@ -39,6 +39,9 @@ Never put an actual email, UUID, password, service-role key, or other secret in 
 ## Security verification
 
 - A manager cannot modify, suspend, demote, or delete an owner.
+- A manager cannot modify, suspend, demote, or delete another manager.
+- A manager can administer accountant and production accounts only and cannot promote either account to manager or owner.
+- An owner may administer managers through `admin_update_profile` and `admin_delete_profile`.
 - No user can change their own role, permissions, or status.
 - A manager cannot promote any account to owner.
 - The last owner cannot be deleted, suspended, or demoted.
@@ -53,7 +56,7 @@ Never put an actual email, UUID, password, service-role key, or other secret in 
 
 1. Apply the migration to a non-production Supabase project and bootstrap one existing test account as Owner.
 2. Open the Owner and Manager accounts in separate browser profiles.
-3. Confirm the Manager sees the Owner fields disabled and cannot save changes for that row.
+3. Confirm the Manager sees Owner and other Manager fields disabled, with the message `لا يمكن لمدير النظام إدارة مدير نظام آخر.`
 4. From the Owner session, change another account between `accountant`, `production`, and `manager`; confirm the affected session updates its navigation without refresh.
 5. Remove the affected user's current page permission and confirm the app moves to the first allowed page.
 6. Remove every page and confirm the explicit no-access state appears instead of a blank or unauthorized page.

@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import {
+  canAdministerTarget,
   canAssignRole,
   identityProtectionReason,
   isAdministrativeRole,
@@ -12,6 +13,7 @@ import {
 import { dataTableKeysForRole, resolveAllowedTab, TABLES } from "../src/realtime.js";
 
 const migrationUrl = new URL("../supabase/migrations/202607150003_owner_identity_security.sql", import.meta.url);
+const hierarchyMigrationUrl = new URL("../supabase/migrations/202607160001_enforce_owner_manager_hierarchy.sql", import.meta.url);
 const priorMigrationUrl = new URL("../supabase/migrations/202607150002_enforce_protected_role_creation.sql", import.meta.url);
 const bootstrapUrl = new URL("../supabase/scripts/promote_existing_user_to_owner.sql", import.meta.url);
 
@@ -28,12 +30,40 @@ test("manager versus owner UI hierarchy blocks protected edits", () => {
   const manager = { id: "manager-id", role: "manager" };
   const accountant = { id: "accountant-id", role: "accountant" };
 
-  assert.match(identityProtectionReason(manager, owner), /مالك النظام/);
+  assert.equal(identityProtectionReason(manager, owner), "لا يمكن لمدير النظام إدارة مدير نظام آخر.");
   assert.match(identityProtectionReason(manager, manager), /بنفسك/);
   assert.equal(identityProtectionReason(owner, manager), "");
   assert.equal(identityProtectionReason(manager, accountant), "");
   assert.equal(canAssignRole("manager", "owner"), false);
   assert.equal(canAssignRole("owner", "owner"), true);
+});
+
+test("owner and manager administration matrix is enforced in the UI contract", () => {
+  const owner = { id: "owner-id", role: "owner" };
+  const manager = { id: "manager-id", role: "manager" };
+  const otherManager = { id: "manager-2", role: "manager" };
+  const accountant = { id: "accountant-id", role: "accountant" };
+  const production = { id: "production-id", role: "production" };
+
+  assert.equal(canAdministerTarget(manager, otherManager), false, "manager -> manager must be denied");
+  assert.equal(canAssignRole("manager", "owner"), false, "manager -> owner must be denied");
+  assert.equal(canAdministerTarget(manager, accountant) && canAssignRole("manager", "accountant"), true, "manager -> accountant must be allowed");
+  assert.equal(canAdministerTarget(manager, production) && canAssignRole("manager", "production"), true, "manager -> production must be allowed");
+  assert.equal(canAdministerTarget(owner, otherManager) && canAssignRole("owner", "manager"), true, "owner -> manager must be allowed");
+  assert.equal(identityProtectionReason(manager, otherManager), "لا يمكن لمدير النظام إدارة مدير نظام آخر.");
+});
+
+test("hierarchy hotfix protects RPC, trigger, RLS, deletion and audit", async () => {
+  const sql = await readFile(hierarchyMigrationUrl, "utf8");
+
+  assert.match(sql, /target_profile\.role in \('owner', 'manager'\)[\s\S]*target_role in \('owner', 'manager'\)/);
+  assert.match(sql, /لا يمكن لمدير النظام إدارة مدير نظام آخر\./);
+  assert.match(sql, /create trigger enforce_administrative_hierarchy[\s\S]*before update or delete/);
+  assert.match(sql, /profiles_administration_scope[\s\S]*as restrictive[\s\S]*role in \('accountant', 'production'\)/);
+  assert.match(sql, /profile_delete_attempt/);
+  assert.match(sql, /source', 'administrative_hierarchy_trigger'/);
+  assert.match(sql, /create or replace function public\.admin_delete_profile/);
+  assert.match(sql, /grant execute on function public\.admin_delete_profile\(uuid\) to authenticated/);
 });
 
 test("production customization stays inside the safe operational boundary", () => {

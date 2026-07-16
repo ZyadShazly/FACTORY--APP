@@ -21,10 +21,10 @@ VITE_SUPABASE_ANON_KEY=...
 نفّذ ملفات `supabase/migrations` بالترتيب التصاعدي للاسم من خلال Supabase SQL Editor أو Supabase CLI. آخر migration حاليًا هو:
 
 ```text
-202607150003_owner_identity_security.sql
+202607160001_enforce_owner_manager_hierarchy.sql
 ```
 
-نفّذ `202607150001_stabilize_production_access.sql` ثم `202607150002_enforce_protected_role_creation.sql`، وأخيرًا `202607150003_owner_identity_security.sql`. يضيف الملف الأخير دور مالك النظام، ويحمي آخر مالك وآخر مدير، ويجعل تغيير الدور والصلاحيات والحالة متاحًا فقط عبر RPC إدارية مدققة، مع الإبقاء على التسجيل الذاتي محصورًا في المحاسب وموظف الإنتاج.
+نفّذ migrations بالترتيب حتى `202607150003_owner_identity_security.sql`، ثم نفّذ `202607160001_enforce_owner_manager_hierarchy.sql` أخيرًا. يضيف التسلسل دور مالك النظام، ويجعل Owner وحده قادرًا على إدارة Manager، ويقصر Manager على إدارة Accountant وProduction عبر RPC مدققة.
 
 بعد مراجعة PR وتطبيق الـMigration، اتبع [دليل الهوية والأمان](docs/IDENTITY_SECURITY.md) لتشغيل سكربت الترقية الآمن لحساب موجود. لا تضف بريدًا أو UUID أو كلمة مرور أو `service_role` إلى GitHub أو متغيرات `VITE_`.
 
