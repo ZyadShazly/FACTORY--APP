@@ -24,6 +24,7 @@ export const PERMISSION_LABELS = {
   projects_view:"عرض المشاريع",projects_create:"إنشاء المشاريع",projects_edit:"تعديل المشاريع",projects_delete:"حذف المشاريع",
   project_files_view:"عرض ملفات المشاريع",project_files_upload:"رفع ملفات المشاريع",project_files_delete:"حذف ملفات المشاريع",
   project_financials_view:"عرض ماليات المشاريع",payroll_view:"عرض الرواتب",payroll_create:"إنشاء الرواتب",payroll_edit:"تعديل الرواتب",
+  projects_manage_lifecycle:"إدارة دورة حياة المشاريع",projects_manage_milestones:"إدارة مراحل التنفيذ",projects_manage_team:"إدارة فريق المشروع",projects_update_progress:"تحديث إنجاز المشروع",projects_close:"إغلاق المشروع",projects_override:"تجاوز استثنائي للمشروع",
   payroll_approve:"اعتماد الرواتب",payroll_bonus_manage:"إدارة المكافآت",payroll_mark_paid:"صرف الرواتب",
   payroll_calendar_view:"عرض تقويم العمل",payroll_calendar_manage:"إدارة تقويم العمل",
   payroll_calendar_approve:"اعتماد تقويم العمل",payroll_calendar_stale_override:"تجاوز تقادم تقويم مسودة الراتب",
