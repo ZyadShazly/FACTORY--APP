@@ -24,16 +24,27 @@ export const REALTIME_TABLE_TO_KEY = Object.freeze({
   work_schedule_days: "workScheduleDays",
   holiday_calendar: "holidayCalendar",
   holiday_scopes: "holidayScopes",
+  asset_categories: "assetCategories",
+  asset_locations: "assetLocations",
+  assets: "assets",
+  asset_assignments: "assetAssignments",
+  asset_assignment_items: "assetAssignmentItems",
+  asset_return_events: "assetReturnEvents",
+  asset_return_items: "assetReturnItems",
+  asset_settlements: "assetSettlements",
+  asset_movements: "assetMovements",
+  asset_attachments: "assetAttachments",
 });
 
 export const TABLES = Object.freeze(
-  Object.fromEntries(Object.entries(REALTIME_TABLE_TO_KEY).map(([table, key]) => [key, table]))
+  { ...Object.fromEntries(Object.entries(REALTIME_TABLE_TO_KEY).map(([table, key]) => [key, table])), assetAlerts: "asset_alerts" }
 );
 
 const PRODUCTION_DATA_KEYS = Object.freeze(["materials", "products", "productionOrders"]);
+const PRODUCTION_ASSET_KEYS = Object.freeze(["assetCategories", "assetLocations", "assets", "assetAssignments", "assetAssignmentItems", "assetReturnEvents", "assetReturnItems", "assetMovements", "assetAttachments", "assetAlerts"]);
 
-export function dataTableKeysForRole(role) {
-  return role === "production" ? [...PRODUCTION_DATA_KEYS] : Object.keys(TABLES);
+export function dataTableKeysForRole(role, assetsAllowed = false) {
+  return role === "production" ? [...PRODUCTION_DATA_KEYS, ...(assetsAllowed ? PRODUCTION_ASSET_KEYS : [])] : Object.keys(TABLES);
 }
 
 export function isActiveProfile(profile) {

@@ -80,6 +80,8 @@ test("حالة الحساب والاتصال اللحظي تُحسب بأمان"
 
 test("موظف الإنتاج لا يحمّل الجداول المالية أو الإدارية", () => {
   assert.deepEqual(dataTableKeysForRole("production"), ["materials", "products", "productionOrders"]);
+  assert.equal(dataTableKeysForRole("production", true).includes("assets"), true);
+  assert.equal(dataTableKeysForRole("production", true).includes("assetSettlements"), false);
   assert.equal(dataTableKeysForRole("manager").includes("payroll"), true);
   assert.equal(dataTableKeysForRole("accountant").includes("expenses"), true);
 });

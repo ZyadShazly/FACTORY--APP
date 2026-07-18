@@ -1,7 +1,7 @@
 export const NAV_GROUPS = [
   { id: "home", label: "الرئيسية", pages: ["dashboard"] },
   { id: "projects", label: "إدارة المشاريع", pages: ["projects", "projectFiles"] },
-  { id: "operations", label: "التشغيل والإنتاج", pages: ["inventory", "materials", "products", "production"] },
+  { id: "operations", label: "التشغيل والإنتاج", pages: ["inventory", "materials", "products", "production", "assets"] },
   { id: "finance", label: "المالية", pages: ["purchases", "expenses", "sales", "rentals", "suppliers", "customers"] },
   { id: "hr", label: "الموارد البشرية", pages: ["employees", "workCalendar", "payroll", "dailyLabor"] },
   { id: "analytics", label: "التقارير والتحليلات", pages: ["reports"] },

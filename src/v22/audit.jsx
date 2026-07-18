@@ -11,6 +11,7 @@ const TABLE_LABELS = {
   payroll:"الرواتب", daily_labor:"العمالة اليومية", project_costs:"تكاليف المشاريع",
   departments:"الأقسام",work_schedules:"جداول العمل",work_schedule_days:"أيام جداول العمل",
   holiday_calendar:"تقويم العطلات",holiday_scopes:"نطاقات العطلات",
+  asset_categories:"تصنيفات الأصول",asset_locations:"مواقع الأصول",assets:"الأصول",asset_assignments:"العهد",asset_assignment_items:"بنود العهد",asset_return_events:"الإرجاعات",asset_return_items:"بنود الإرجاع",asset_settlements:"تسويات الأصول",asset_movements:"حركة الأصول",asset_attachments:"مرفقات الأصول",
 };
 const ACTION_LABELS = {
   insert:"إضافة", update:"تعديل", delete:"حذف",
@@ -26,6 +27,7 @@ export const PERMISSION_LABELS = {
   payroll_approve:"اعتماد الرواتب",payroll_bonus_manage:"إدارة المكافآت",payroll_mark_paid:"صرف الرواتب",
   payroll_calendar_view:"عرض تقويم العمل",payroll_calendar_manage:"إدارة تقويم العمل",
   payroll_calendar_approve:"اعتماد تقويم العمل",payroll_calendar_stale_override:"تجاوز تقادم تقويم مسودة الراتب",
+  assets_view:"عرض الأصول",assets_manage:"إدارة الأصول",assets_issue:"إصدار عهدة",assets_receive:"تأكيد الاستلام",assets_return:"إرجاع عهدة",assets_adjust:"تسوية الأرصدة",assets_approve_loss:"اعتماد الخسائر",assets_reports:"تقارير وتكلفة الأصول",
   daily_labor_view:"عرض العمالة اليومية",daily_labor_create:"إضافة ورديات",daily_labor_edit:"تعديل الورديات",
   daily_labor_delete:"حذف الورديات",daily_labor_pay:"دفع العمالة",audit_log_view:"عرض سجل التدقيق",
 };
