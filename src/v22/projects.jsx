@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Calendar, Download, Eye, File, MapPin, Paperclip, Plus, Trash2, Upload } from "lucide-react";
 import { supabase } from "../supabaseClient";
 import { Button, EmptyState, ErrorState, Field, Input, money, number, PageTitle, Panel, PermissionGuard, Select, SuccessState, TextArea, Toast, today } from "./shared";
@@ -41,6 +41,7 @@ export function ProjectsTab({ data, profile, permissions, refresh, initialProjec
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const selected = data.projects.find((row) => row.id === selectedId);
+  useEffect(() => { window.scrollTo({ top: 0, behavior: "auto" }); }, [selectedId]);
   const projects = useMemo(() => data.projects.filter((project) => {
     const q = search.trim().toLowerCase();
     return (!q || `${project.project_code} ${project.project_name} ${project.location || ""}`.toLowerCase().includes(q))

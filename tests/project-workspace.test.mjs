@@ -49,7 +49,7 @@ test("exceptional lifecycle actions require reasons and Owner controls reopen", 
   assert.equal(lifecycleNeedsReason("completed","closed"),true);
   assert.match(migration, /A mandatory reason is required for this transition/);
   assert.match(migration, /Only Owner may reopen a completed project/);
-  assert.match(migration, /actor_role<>'owner' or not public\.has_permission\('projects_override'\)/);
+  assert.match(migration, /actor_role<>'owner' or not private\.project_has_permission\('projects_override'\)/);
 });
 
 test("activation readiness is extensible without faking budget approval", () => {
@@ -99,6 +99,7 @@ test("RLS and projection deny anon, require active visibility, and hide finance"
   assert.match(migration, /revoke all on table public\.projects from anon, authenticated/);
   assert.match(migration, /private\.project_profile_active\(\)/);
   assert.match(migration, /private\.project_can_view\(p\.id\)/);
+  assert.match(migration, /current_identity_role\(\) in \('owner','manager'\)[\s\S]*private\.project_has_permission\('projects_view'\) and exists/);
   assert.match(migration, /to_jsonb\(p\) - array\['expected_cost','actual_cost','revenue','profit'\]/);
   assert.match(migration, /to_jsonb\(current_row\)-array\['expected_cost','actual_cost','revenue','profit'\]/);
   assert.doesNotMatch(migration, /'before',to_jsonb\(current_row\),/);

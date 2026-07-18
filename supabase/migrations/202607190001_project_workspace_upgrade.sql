@@ -193,12 +193,27 @@ returns boolean language sql stable security definer set search_path = public, p
   select exists(select 1 from public.profiles where id = auth.uid() and status = 'active')
 $$;
 
+-- Project-only authorization extension. Keep the shared public.has_permission(text)
+-- definition from main untouched so Assets, Payroll, Calendar, Labor, and Audit
+-- retain their exact merged behavior.
+create or replace function private.project_has_permission(permission_name text)
+returns boolean language sql stable security definer set search_path = public, private, pg_temp as $$
+  select private.project_profile_active() and case public.current_identity_role()
+    when 'production' then case
+      when permission_name in ('projects_view','project_files_view') then true
+      when permission_name in ('project_files_upload','projects_manage_milestones','projects_update_progress') then
+        coalesce((select (permissions ->> permission_name)::boolean from public.profiles where id = auth.uid() and status = 'active'), false)
+      else public.has_permission(permission_name)
+    end
+    else public.has_permission(permission_name)
+  end
+$$;
+
 create or replace function private.project_can_view(target_project uuid)
 returns boolean language sql stable security definer set search_path = public, private, pg_temp as $$
   select private.project_profile_active() and (
     public.current_identity_role() in ('owner','manager')
-    or (public.current_identity_role() = 'accountant' and public.has_permission('projects_view'))
-    or exists(
+    or (private.project_has_permission('projects_view') and exists(
       select 1 from public.project_members pm
       where pm.project_id = target_project and pm.active
         and (pm.start_date is null or pm.start_date <= current_date)
@@ -206,56 +221,34 @@ returns boolean language sql stable security definer set search_path = public, p
         and (pm.profile_id = auth.uid() or exists(
           select 1 from public.profiles p where p.id = auth.uid() and p.employee_id = pm.employee_id
         ))
-    )
+    ))
   )
 $$;
 
 create or replace function private.project_can_manage(target_project uuid, permission_name text)
 returns boolean language sql stable security definer set search_path = public, private, pg_temp as $$
   select private.project_profile_active()
-    and public.has_permission(permission_name)
+    and private.project_has_permission(permission_name)
     and (
       public.current_identity_role() in ('owner','manager')
       or exists(
         select 1 from public.project_members pm
         where pm.project_id = target_project and pm.active and pm.project_role = 'project_manager'
+          and (pm.start_date is null or pm.start_date <= current_date)
+          and (pm.end_date is null or pm.end_date >= current_date)
           and pm.profile_id = auth.uid()
       )
     )
 $$;
 
 revoke all on function private.project_profile_active() from public, anon;
+revoke all on function private.project_has_permission(text) from public, anon;
 revoke all on function private.project_can_view(uuid) from public, anon;
 revoke all on function private.project_can_manage(uuid,text) from public, anon;
 grant execute on function private.project_profile_active() to authenticated;
+grant execute on function private.project_has_permission(text) to authenticated;
 grant execute on function private.project_can_view(uuid) to authenticated;
 grant execute on function private.project_can_manage(uuid,text) to authenticated;
-
--- Restore safe Project visibility for Production after the Assets permission
--- function narrowed its allowed set. Membership still limits visible rows.
-create or replace function public.has_permission(permission_name text)
-returns boolean language sql stable security definer set search_path = public, pg_temp as $$
-  select case public.current_identity_role()
-    when 'owner' then true
-    when 'manager' then true
-    when 'production' then permission_name = any(array[
-      'projects_view','project_files_view','project_files_upload',
-      'projects_manage_milestones','projects_update_progress',
-      'assets_view','assets_issue','assets_return'
-    ]) and (
-      permission_name in ('projects_view','project_files_view')
-      or coalesce((select (permissions ->> permission_name)::boolean from public.profiles where id = auth.uid() and status = 'active'), false)
-    )
-    when 'accountant' then
-      coalesce((select (permissions ->> permission_name)::boolean from public.profiles where id = auth.uid() and status = 'active'), false)
-      or permission_name = any(array[
-        'projects_view','projects_create','project_financials_view','project_files_view','project_files_upload',
-        'payroll_view','payroll_create','payroll_edit','payroll_mark_paid','daily_labor_view',
-        'daily_labor_create','daily_labor_edit','daily_labor_pay'
-      ])
-    else false
-  end
-$$;
 
 create or replace function public.project_activation_readiness(target_project uuid)
 returns jsonb language plpgsql stable security definer set search_path = public, private, pg_temp as $$
@@ -404,7 +397,7 @@ $$;
 
 create or replace function public.get_projects_visible()
 returns setof jsonb language sql stable security definer set search_path = public, private, pg_temp as $$
-  select case when public.has_permission('project_financials_view') then to_jsonb(p)
+  select case when private.project_has_permission('project_financials_view') then to_jsonb(p)
     else to_jsonb(p) - array['expected_cost','actual_cost','revenue','profit'] end
   from public.projects p
   where private.project_can_view(p.id)
@@ -416,9 +409,9 @@ returns jsonb language plpgsql security definer set search_path = public, privat
 declare actor uuid:=auth.uid(); created public.projects%rowtype; can_finance boolean;
 begin
   if actor is null or not private.project_profile_active() then raise exception 'Active authentication required'; end if;
-  if not public.has_permission('projects_create') then raise exception 'projects_create permission required'; end if;
+  if not private.project_has_permission('projects_create') then raise exception 'projects_create permission required'; end if;
   if btrim(coalesce(payload->>'project_code',''))='' or btrim(coalesce(payload->>'project_name',''))='' then raise exception 'Project code and name are required'; end if;
-  can_finance := public.has_permission('project_financials_view');
+  can_finance := private.project_has_permission('project_financials_view');
   if can_finance and (coalesce(nullif(payload->>'expected_cost','')::numeric,0) < 0 or coalesce(nullif(payload->>'revenue','')::numeric,0) < 0) then
     raise exception 'Project financial values cannot be negative';
   end if;
@@ -447,7 +440,7 @@ begin
   if not found then raise exception 'Project not found'; end if;
   if current_row.lifecycle in ('closed','cancelled') then raise exception 'Final projects are immutable'; end if;
   if payload ? 'project_name' and btrim(coalesce(payload->>'project_name',''))='' then raise exception 'Project name is required'; end if;
-  if (payload ? 'expected_cost' or payload ? 'revenue') and not public.has_permission('project_financials_view') then raise exception 'project_financials_view permission required'; end if;
+  if (payload ? 'expected_cost' or payload ? 'revenue') and not private.project_has_permission('project_financials_view') then raise exception 'project_financials_view permission required'; end if;
   if (payload ? 'expected_cost' and coalesce(nullif(payload->>'expected_cost','')::numeric,0) < 0)
     or (payload ? 'revenue' and coalesce(nullif(payload->>'revenue','')::numeric,0) < 0) then raise exception 'Project financial values cannot be negative'; end if;
   perform set_config('app.project_workspace_rpc','on',true);
@@ -468,7 +461,7 @@ begin
     'before',to_jsonb(current_row)-array['expected_cost','actual_cost','revenue','profit'],
     'changed_keys',(select jsonb_agg(key) from jsonb_object_keys(payload) as keys(key))
   ));
-  return case when public.has_permission('project_financials_view') then to_jsonb(updated)
+  return case when private.project_has_permission('project_financials_view') then to_jsonb(updated)
     else to_jsonb(updated)-array['expected_cost','actual_cost','revenue','profit'] end;
 end
 $$;
@@ -494,8 +487,8 @@ begin
   if next_lifecycle in ('cancelled','closed') or (p.lifecycle='completed' and next_lifecycle='active') then
     if btrim(coalesce(reason,''))='' then raise exception 'A mandatory reason is required for this transition'; end if;
   end if;
-  if p.lifecycle='completed' and next_lifecycle='active' and (actor_role<>'owner' or not public.has_permission('projects_override')) then raise exception 'Only Owner may reopen a completed project'; end if;
-  if next_lifecycle='closed' and not public.has_permission('projects_close') then raise exception 'projects_close permission required'; end if;
+  if p.lifecycle='completed' and next_lifecycle='active' and (actor_role<>'owner' or not private.project_has_permission('projects_override')) then raise exception 'Only Owner may reopen a completed project'; end if;
+  if next_lifecycle='closed' and not private.project_has_permission('projects_close') then raise exception 'projects_close permission required'; end if;
   if next_lifecycle='active' and p.lifecycle='ready_for_activation' then
     readiness:=public.project_activation_readiness(target_project);
     if not coalesce((readiness->>'ready')::boolean,false) then raise exception 'Project activation readiness checks are incomplete'; end if;
@@ -524,7 +517,7 @@ begin
   update public.projects set execution_stage=next_stage,status=next_stage,updated_by=actor where id=target_project returning * into p;
   insert into public.project_activities(project_id,actor_id,action_type,description,metadata)
   values(target_project,actor,'execution_stage_changed','تم تغيير مرحلة التنفيذ',jsonb_build_object('from',old_stage,'to',next_stage,'reason',reason));
-  return case when public.has_permission('project_financials_view') then to_jsonb(p)
+  return case when private.project_has_permission('project_financials_view') then to_jsonb(p)
     else to_jsonb(p)-array['expected_cost','actual_cost','revenue','profit'] end;
 end
 $$;
@@ -555,7 +548,7 @@ begin
   values(target_project,actor,case when override_reason is null then 'progress_updated' else 'progress_overridden' end,
     case when override_reason is null then 'تم تحديث نسبة إنجاز المشروع' else 'تم تجاوز نسبة الإنجاز المحسوبة يدويًا' end,
     jsonb_build_object('mode',mode,'manual',manual_percentage,'calculated',calculated,'effective',effective,'reason',override_reason));
-  return case when public.has_permission('project_financials_view') then to_jsonb(p)
+  return case when private.project_has_permission('project_financials_view') then to_jsonb(p)
     else to_jsonb(p)-array['expected_cost','actual_cost','revenue','profit'] end;
 end
 $$;
@@ -696,11 +689,11 @@ drop policy if exists project_files_select on public.project_files;
 drop policy if exists project_files_insert on public.project_files;
 drop policy if exists project_files_delete on public.project_files;
 create policy project_files_select on public.project_files for select to authenticated
-using (private.project_can_view(project_id) and public.has_permission('project_files_view'));
+using (private.project_can_view(project_id) and private.project_has_permission('project_files_view'));
 create policy project_files_insert on public.project_files for insert to authenticated
-with check (private.project_can_view(project_id) and public.has_permission('project_files_upload') and uploaded_by=auth.uid());
+with check (private.project_can_view(project_id) and private.project_has_permission('project_files_upload') and uploaded_by=auth.uid());
 create policy project_files_delete on public.project_files for delete to authenticated
-using (private.project_can_view(project_id) and public.has_permission('project_files_delete'));
+using (private.project_can_view(project_id) and private.project_has_permission('project_files_delete'));
 
 drop policy if exists project_activities_select on public.project_activities;
 drop policy if exists project_activities_insert on public.project_activities;
@@ -711,7 +704,7 @@ revoke insert,update,delete on table public.project_activities from anon, authen
 drop policy if exists project_costs_select on public.project_costs;
 drop policy if exists project_costs_manage on public.project_costs;
 create policy project_costs_select on public.project_costs for select to authenticated
-using (private.project_can_view(project_id) and public.has_permission('project_financials_view'));
+using (private.project_can_view(project_id) and private.project_has_permission('project_financials_view'));
 create policy project_costs_manage on public.project_costs for all to authenticated
 using (private.project_can_manage(project_id,'project_financials_view'))
 with check (private.project_can_manage(project_id,'project_financials_view'));
@@ -722,10 +715,11 @@ drop policy if exists project_realtime_signal_select on public.project_realtime_
 create policy project_milestones_select on public.project_milestones for select to authenticated using (private.project_can_view(project_id));
 create policy project_members_select on public.project_members for select to authenticated using (private.project_can_view(project_id));
 create policy project_realtime_signal_select on public.project_realtime_signal for select to authenticated
-using (private.project_profile_active() and (public.has_permission('projects_view') or exists(
-  select 1 from public.project_members pm where pm.active and (
-    pm.profile_id=auth.uid() or exists(select 1 from public.profiles p where p.id=auth.uid() and p.employee_id=pm.employee_id)
-  )
+using (private.project_profile_active() and (public.current_identity_role() in ('owner','manager') or exists(
+  select 1 from public.project_members pm where pm.active
+    and (pm.start_date is null or pm.start_date <= current_date)
+    and (pm.end_date is null or pm.end_date >= current_date)
+    and (pm.profile_id=auth.uid() or exists(select 1 from public.profiles p where p.id=auth.uid() and p.employee_id=pm.employee_id))
 )));
 revoke all on table public.project_milestones from anon;
 revoke all on table public.project_members from anon;
@@ -741,17 +735,17 @@ drop policy if exists project_files_storage_read on storage.objects;
 drop policy if exists project_files_storage_insert on storage.objects;
 drop policy if exists project_files_storage_delete on storage.objects;
 create policy project_files_storage_read on storage.objects for select to authenticated using (
-  bucket_id='project-files' and public.has_permission('project_files_view')
+  bucket_id='project-files' and private.project_has_permission('project_files_view')
   and name ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/'
   and private.project_can_view(split_part(name,'/',1)::uuid)
 );
 create policy project_files_storage_insert on storage.objects for insert to authenticated with check (
-  bucket_id='project-files' and public.has_permission('project_files_upload')
+  bucket_id='project-files' and private.project_has_permission('project_files_upload')
   and name ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/'
   and private.project_can_view(split_part(name,'/',1)::uuid)
 );
 create policy project_files_storage_delete on storage.objects for delete to authenticated using (
-  bucket_id='project-files' and public.has_permission('project_files_delete')
+  bucket_id='project-files' and private.project_has_permission('project_files_delete')
   and name ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/'
   and private.project_can_view(split_part(name,'/',1)::uuid)
 );
