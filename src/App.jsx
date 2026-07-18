@@ -507,12 +507,20 @@ export default function App() {
       setRealtimeStatus("CONNECTING");
 
       const dataChannel = supabase.channel(`factory-data-${session.user.id}`);
-      Object.entries(REALTIME_TABLE_TO_KEY).filter(([, key]) => activeTableKeys.includes(key)).forEach(([table, key]) => {
+      Object.entries(REALTIME_TABLE_TO_KEY).filter(([, key]) => activeTableKeys.includes(key) || (key === "assetRealtimeSignal" && activeTableKeys.includes("assets"))).forEach(([table, key]) => {
         dataChannel.on("postgres_changes", { event: "*", schema: "public", table }, (payload) => {
           if (disposed || generation !== connectGeneration) return;
           console.info("[Realtime:data] postgres_changes", { table, key, event: payload.eventType });
+          if (key === "assetRealtimeSignal") {
+            requestTableRefresh("assets");
+            if (activeTableKeys.includes("assetAlerts")) requestTableRefresh("assetAlerts");
+            return;
+          }
           requestTableRefresh(key);
-          if (key.startsWith("asset") && activeTableKeys.includes("assetAlerts")) requestTableRefresh("assetAlerts");
+          if (key.startsWith("asset")) {
+            if (key !== "assets" && activeTableKeys.includes("assets")) requestTableRefresh("assets");
+            if (activeTableKeys.includes("assetAlerts")) requestTableRefresh("assetAlerts");
+          }
         });
       });
 

@@ -34,10 +34,11 @@ export const REALTIME_TABLE_TO_KEY = Object.freeze({
   asset_settlements: "assetSettlements",
   asset_movements: "assetMovements",
   asset_attachments: "assetAttachments",
+  asset_realtime_signal: "assetRealtimeSignal",
 });
 
 export const TABLES = Object.freeze(
-  { ...Object.fromEntries(Object.entries(REALTIME_TABLE_TO_KEY).map(([table, key]) => [key, table])), assetAlerts: "asset_alerts" }
+  { ...Object.fromEntries(Object.entries(REALTIME_TABLE_TO_KEY).filter(([,key])=>key!=="assetRealtimeSignal").map(([table, key]) => [key, table])), assetAlerts: "asset_alerts" }
 );
 
 const PRODUCTION_DATA_KEYS = Object.freeze(["materials", "products", "productionOrders"]);
