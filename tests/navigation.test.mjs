@@ -5,7 +5,7 @@ import { buildNavigationGroups, loadNavigationState, NAV_GROUPS } from "../src/n
 test("هيكل التنقل يغطي كل صفحة مرة واحدة", () => {
   const pageIds = NAV_GROUPS.flatMap((group) => group.pages);
   assert.equal(new Set(pageIds).size, pageIds.length);
-  assert.equal(pageIds.length, 19);
+  assert.equal(pageIds.length, 20);
 });
 
 test("التنقل لا يعرض إلا الصفحات المسموحة", () => {
@@ -24,5 +24,14 @@ test("حالة فتح المجموعات تستعاد بأمان", () => {
   const storage = { getItem: () => JSON.stringify({ finance: false }) };
   const state = loadNavigationState(storage);
   assert.equal(state.finance, false);
-  assert.equal(state.projects, true);
+  assert.equal(state.home, true);
+  assert.equal(state.projects, false);
+});
+
+test("العملاء والإيجارات ضمن دورة الإيراد والإعدادات ضمن الإدارة", () => {
+  const finance = NAV_GROUPS.find((group) => group.id === "finance");
+  const admin = NAV_GROUPS.find((group) => group.id === "admin");
+  assert.ok(finance.pages.includes("customers"));
+  assert.ok(finance.pages.includes("rentals"));
+  assert.ok(admin.pages.includes("settings"));
 });
