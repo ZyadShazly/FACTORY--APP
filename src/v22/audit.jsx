@@ -9,6 +9,8 @@ const TABLE_LABELS = {
   customer_receipts:"تحصيلات العملاء", expenses:"المصروفات", projects:"المشاريع",
   project_files:"ملفات المشاريع", project_activities:"أنشطة المشاريع", employees:"الموظفون",
   payroll:"الرواتب", daily_labor:"العمالة اليومية", project_costs:"تكاليف المشاريع",
+  departments:"الأقسام",work_schedules:"جداول العمل",work_schedule_days:"أيام جداول العمل",
+  holiday_calendar:"تقويم العطلات",holiday_scopes:"نطاقات العطلات",
 };
 const ACTION_LABELS = {
   insert:"إضافة", update:"تعديل", delete:"حذف",
@@ -22,6 +24,8 @@ export const PERMISSION_LABELS = {
   project_files_view:"عرض ملفات المشاريع",project_files_upload:"رفع ملفات المشاريع",project_files_delete:"حذف ملفات المشاريع",
   project_financials_view:"عرض ماليات المشاريع",payroll_view:"عرض الرواتب",payroll_create:"إنشاء الرواتب",payroll_edit:"تعديل الرواتب",
   payroll_approve:"اعتماد الرواتب",payroll_bonus_manage:"إدارة المكافآت",payroll_mark_paid:"صرف الرواتب",
+  payroll_calendar_view:"عرض تقويم العمل",payroll_calendar_manage:"إدارة تقويم العمل",
+  payroll_calendar_approve:"اعتماد تقويم العمل",payroll_calendar_stale_override:"تجاوز تقادم تقويم مسودة الراتب",
   daily_labor_view:"عرض العمالة اليومية",daily_labor_create:"إضافة ورديات",daily_labor_edit:"تعديل الورديات",
   daily_labor_delete:"حذف الورديات",daily_labor_pay:"دفع العمالة",audit_log_view:"عرض سجل التدقيق",
 };

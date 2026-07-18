@@ -19,6 +19,11 @@ export const REALTIME_TABLE_TO_KEY = Object.freeze({
   customer_receipts: "customerReceipts",
   project_costs: "projectCosts",
   audit_log: "auditLog",
+  departments: "departments",
+  work_schedules: "workSchedules",
+  work_schedule_days: "workScheduleDays",
+  holiday_calendar: "holidayCalendar",
+  holiday_scopes: "holidayScopes",
 });
 
 export const TABLES = Object.freeze(

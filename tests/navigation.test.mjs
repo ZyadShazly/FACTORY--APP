@@ -5,7 +5,8 @@ import { buildNavigationGroups, loadNavigationState, NAV_GROUPS } from "../src/n
 test("هيكل التنقل يغطي كل صفحة مرة واحدة", () => {
   const pageIds = NAV_GROUPS.flatMap((group) => group.pages);
   assert.equal(new Set(pageIds).size, pageIds.length);
-  assert.equal(pageIds.length, 20);
+  assert.equal(pageIds.length, 21);
+  assert.ok(pageIds.includes("workCalendar"));
 });
 
 test("التنقل لا يعرض إلا الصفحات المسموحة", () => {
