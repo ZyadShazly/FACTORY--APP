@@ -8,5 +8,6 @@ export function maskPhone(value=""){return value?`${"•".repeat(Math.max(value.
 export function publicConfirmationBase(configuredUrl,currentOrigin,currentPath="/"){const configured=String(configuredUrl||"").trim();if(configured){try{return new URL(configured).toString()}catch{}}return new URL(currentPath||"/",currentOrigin).toString()}
 export function buildConfirmationUrl(baseUrl,token,kind="issue"){const url=new URL(baseUrl);url.searchParams.set("assetConfirmation",token);url.searchParams.set("kind",kind);return url.toString()}
 export function isPreviewConfirmationUrl(value){try{const host=new URL(value).hostname.toLowerCase();return host==="localhost"||host==="127.0.0.1"||host.endsWith(".vercel.app")}catch{return true}}
+export function linkedProfileForEmployee(profiles,employeeId){return (profiles||[]).find(profile=>profile.employee_id===employeeId&&profile.status==="active")||null}
 export function whatsappMessage({code,url,kind="issue"}){const action=kind==="return"?`بيانات إرجاع العهدة ${code}`:`استلام عهدة NEXTEP رقم ${code}`;return `يرجى تأكيد ${action}: ${url}\nتنبيه: هذا رابط حيازة غير موثّق بالهوية ولا يُعد تحققًا من شخصية الموظف.`}
 export function canProductionAssetPermission(key){return ["assets_view","assets_issue","assets_return"].includes(key)}

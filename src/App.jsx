@@ -668,7 +668,7 @@ export default function App() {
         {activeTab === "dailyLabor" && permissions.daily_labor_view && <DailyLaborTab data={data} profile={profile} permissions={permissions} refresh={refetchTable} />}
         {activeTab === "reports" && permissions.view_financials && <ReportsTab data={data} />}
         {activeTab === "auditLog" && permissions.audit_log_view && <AuditLogTab data={data} />}
-        {activeTab === "team" && <TeamTab profiles={data.profiles} refresh={refetchTable} currentProfile={profile} />}
+        {activeTab === "team" && <TeamTab profiles={data.profiles} employees={data.employees} refresh={refetchTable} currentProfile={profile} />}
         {activeTab === "settings" && <SettingsPage currentProfile={profile} onRepaired={() => refetchTable("profiles")} />}
       <Toast type={mutationFeedback.type} message={mutationFeedback.message} onDismiss={() => setMutationFeedback((current) => ({ ...current, message: "" }))} />
     </AppShell>
@@ -1626,16 +1626,18 @@ const PERMISSION_SECTIONS = [
   { id: "audit", label: "التدقيق", type: "permission", keys: ["audit_log_view"] },
 ];
 
-function TeamTab({ profiles, refresh, currentProfile }) {
+function TeamTab({ profiles, employees, refresh, currentProfile }) {
   const [pending, setPending] = useState({});
   const [message, setMessage] = useState({ type: "", text: "" });
   const [openSections, setOpenSections] = useState({});
   const [savingUserId, setSavingUserId] = useState(null);
   const [deletingUserId, setDeletingUserId] = useState(null);
+  const [linkingUserId, setLinkingUserId] = useState(null);
+  const [linkReasons, setLinkReasons] = useState({});
 
   useEffect(() => {
     const initial = {};
-    for (const profile of profiles || []) initial[profile.id] = { role: profile.role, status: profile.status || "active", ...permissionsForProfile(profile) };
+    for (const profile of profiles || []) initial[profile.id] = { role: profile.role, status: profile.status || "active", employee_id: profile.employee_id || "", ...permissionsForProfile(profile) };
     setPending(initial);
     console.info("[permissions] currentState", initial);
   }, [profiles]);
@@ -1730,6 +1732,28 @@ function TeamTab({ profiles, refresh, currentProfile }) {
     setMessage({ type: "success", text: "تم حذف الحساب من النظام بأمان." });
   }
 
+  async function saveEmployeeLink(profileId) {
+    const current = pending[profileId];
+    const reason = (linkReasons[profileId] || "").trim();
+    if (!reason) return setMessage({ type: "error", text: "اكتب سبب ربط هوية الحساب بالموظف." });
+    setMessage({ type: "", text: "" });
+    setLinkingUserId(profileId);
+    const mutationResult = await supabase.rpc("admin_link_profile_employee", {
+      target_user_id: profileId,
+      target_employee_id: current?.employee_id || null,
+      reason,
+    });
+    console.info("[profiles:employee-link] mutationResult", mutationResult);
+    if (mutationResult.error || !mutationResult.data?.ok) {
+      setLinkingUserId(null);
+      return setMessage({ type: "error", text: mutationResult.error?.message || "تعذر حفظ ربط الموظف بالحساب." });
+    }
+    await Promise.all([load(), refresh("employees")]);
+    setLinkReasons((previous) => ({ ...previous, [profileId]: "" }));
+    setLinkingUserId(null);
+    setMessage({ type: "success", text: "تم حفظ رابط الهوية المعياري وتسجيله في سجل التدقيق." });
+  }
+
   if (!profiles) return <Empty text="جارِ التحميل..." />;
   const allOpen = PERMISSION_SECTIONS.every((section) => openSections[section.id]);
   return <div>
@@ -1742,7 +1766,7 @@ function TeamTab({ profiles, refresh, currentProfile }) {
     </div>
     <div className="team-grid">
       {profiles.map((profile) => {
-        const current = pending[profile.id] || { role: profile.role, status: profile.status || "active", ...permissionsForProfile(profile) };
+        const current = pending[profile.id] || { role: profile.role, status: profile.status || "active", employee_id: profile.employee_id || "", ...permissionsForProfile(profile) };
         const protectionReason = identityProtectionReason(currentProfile, profile);
         const protectedFields = Boolean(protectionReason);
         const automaticAccess = isAdministrativeRole(current.role);
@@ -1766,6 +1790,23 @@ function TeamTab({ profiles, refresh, currentProfile }) {
           {protectionReason && <div className="protected-note"><ShieldCheck size={17} /><span><strong>حقول محمية</strong>{protectionReason}</span></div>}
           {current.role === "owner" && <div className="automatic-access-note"><ShieldCheck size={18} /><span><strong>صلاحيات مالك النظام تلقائية</strong>يمتلك جميع صلاحيات النظام من الدور مباشرة ولا يعتمد على Checkboxes مخزنة.</span></div>}
           {current.role === "manager" && <div className="automatic-access-note manager"><ShieldCheck size={18} /><span><strong>صلاحيات تشغيلية كاملة</strong>مدير النظام لا يعتمد على Checkboxes، ولا يمكن لمدير آخر إدارته أو تعديل Audit Log.</span></div>}
+          {currentProfile.role === "owner" && <div className="identity-link-box">
+            <strong>ربط الحساب بموظف</strong>
+            <p>هذا هو الرابط المعياري المستخدم في تأكيد هوية مستلم العهدة، ولا يعتمد على الاسم أو الهاتف.</p>
+            <Field label="الموظف المرتبط">
+              <Select value={current.employee_id || ""} onChange={(event) => patchUser(profile.id, { employee_id: event.target.value })}>
+                <option value="">لا يوجد موظف مرتبط</option>
+                {(employees || []).filter((employee) => employee.status === "active").map((employee) => {
+                  const linkedElsewhere = profiles.some((candidate) => candidate.id !== profile.id && candidate.employee_id === employee.id);
+                  return <option key={employee.id} value={employee.id} disabled={linkedElsewhere}>{employee.full_name}{linkedElsewhere ? " — مرتبط بحساب آخر" : ""}</option>;
+                })}
+              </Select>
+            </Field>
+            <Field label="سبب الربط أو التغيير">
+              <Input value={linkReasons[profile.id] || ""} onChange={(event) => setLinkReasons((previous) => ({ ...previous, [profile.id]: event.target.value }))} placeholder="سبب موثق لسجل التدقيق" />
+            </Field>
+            <Btn variant="ghost" disabled={linkingUserId === profile.id || (current.employee_id || "") === (profile.employee_id || "")} onClick={() => saveEmployeeLink(profile.id)}>{linkingUserId === profile.id ? "جارِ حفظ الربط..." : "حفظ ربط الموظف"}</Btn>
+          </div>}
           {!automaticAccess && <div className="permission-accordion-list">
             {PERMISSION_SECTIONS.map((section) => {
               const enabledCount = section.keys.filter((key) => isChecked(current, section, key)).length;
