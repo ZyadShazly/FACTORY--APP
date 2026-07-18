@@ -35,4 +35,8 @@ test("missing profile is an explicit recoverable bootstrap state", async () => {
   assert.match(screen, /فشل إعداد الحساب/);
   assert.match(screen, /إعادة المحاولة/);
   assert.match(screen, /تسجيل الخروج/);
+  assert.match(screen, /نسخ معرف الدعم/);
+  assert.match(screen, /navigator\.clipboard\.writeText\(supportId\)/);
+  assert.match(screen, /document\.execCommand\("copy"\)/);
+  assert.doesNotMatch(screen, /<code>\{session\?\.user\?\.id\}<\/code>/);
 });

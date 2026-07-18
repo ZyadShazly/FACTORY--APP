@@ -8,10 +8,11 @@
 
 - التحقق من الجلسة والـProfile له مهلة 12 ثانية.
 - الحالات الصريحة: checking session، loading profile، ready، missing profile، error، signed out.
-- الحساب الموجود في Auth بدون Profile يرى «فشل إعداد الحساب» ومعرّف حسابه، مع Retry وSign out.
+- الحساب الموجود في Auth بدون Profile يرى «فشل إعداد الحساب» والبريد فقط، مع Retry وSign out وزر منفصل لنسخ معرّف الدعم دون عرضه على الشاشة.
 - الإصلاح الإداري يتم من الإدارة ← الإعدادات بواسطة `admin_repair_missing_profile`.
 - الـRPC يقبل Owner/Manager نشطًا فقط، ويتحقق من وجود `auth.users` وغياب `profiles`، وينشئ دور Accountant أو Production فقط بصلاحيات فارغة وحالة active.
 - لا تتغير كلمة المرور، لا يُستخدم `service_role` في الواجهة، ولا يتم تعطيل أي Trigger. تُسجل العملية في Audit Log.
+- لا يمكن للحساب الذي يفتقد Profile إصلاح نفسه بصفته Owner/Manager؛ لا توجد صفة موثوقة يمكن التحقق منها قبل وجود Profile، والـRPC يتطلب مسؤولًا نشطًا من جلسة إدارية منفصلة.
 
 ## Information Architecture decision
 

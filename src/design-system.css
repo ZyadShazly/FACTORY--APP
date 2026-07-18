@@ -123,7 +123,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .bootstrap-spinner { width: 34px; height: 34px; border: 3px solid var(--color-border); border-top-color: var(--color-wood); border-radius: 50%; animation: bootstrap-spin .8s linear infinite; }
 @keyframes bootstrap-spin { to { transform: rotate(360deg); } }
 .bootstrap-account-reference { max-width: 560px; display: flex; flex-direction: column; gap: 7px; padding: 14px; border: 1px solid var(--color-border); border-radius: 12px; background: var(--color-surface); color: var(--color-text-muted); }
-.bootstrap-account-reference code { direction: ltr; color: var(--color-wood); user-select: all; overflow-wrap: anywhere; }
+.bootstrap-account-reference strong { direction: ltr; color: var(--color-wood); overflow-wrap: anywhere; }
+.copy-support-id { align-self: center; display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--color-border); border-radius: 9px; padding: 8px 12px; background: var(--color-surface-muted); color: var(--color-wood); cursor: pointer; font-weight: 800; }
+.copy-support-id:disabled { cursor: not-allowed; opacity: .55; }
+.copy-support-error { color: var(--color-danger); }
 .bootstrap-actions { display: flex; gap: 9px; flex-wrap: wrap; justify-content: center; }
 .recovery-button { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--color-border); border-radius: 9px; padding: 9px 14px; background: var(--color-surface); color: var(--color-text); cursor: pointer; font-weight: 800; }
 .recovery-button.primary { border-color: var(--color-wood); background: var(--color-wood); color: white; }
