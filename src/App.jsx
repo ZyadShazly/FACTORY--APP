@@ -2,9 +2,9 @@ import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { supabase } from "./supabaseClient";
 import {
   LayoutDashboard, Package, Layers, Factory, ShoppingCart, Truck, Users,
-  BarChart3, Plus, Trash2, AlertCircle, CheckCircle2, Wallet, Boxes, LogOut,
+  BarChart3, Plus, Trash2, AlertCircle, CheckCircle2, Wallet, Boxes,
   CalendarClock, ShieldCheck, Pencil, X, ReceiptText, ClipboardList,
-  BriefcaseBusiness, FolderOpen, UserRoundCog, BadgeDollarSign, HardHat, ScrollText, ChevronDown,
+  BriefcaseBusiness, FolderOpen, UserRoundCog, BadgeDollarSign, HardHat, ScrollText, ChevronDown, Settings,
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
@@ -17,11 +17,25 @@ import { AuditLogTab, PERMISSION_LABELS } from "./v22/audit";
 import { demoData, demoProfile } from "./v22/demoData";
 import { PROJECT_FILES_TABLE } from "./v22/fileTypes";
 import { syncMutation } from "./v22/mutations";
-import { combinedRealtimeStatus, dataTableKeysForRole, isActiveProfile, REALTIME_TABLE_TO_KEY, resolveAllowedTab, TABLES } from "./realtime";
-import { buildNavigationGroups, loadNavigationState, NAV_GROUP_STORAGE_KEY } from "./navigation";
+import { combinedRealtimeStatus, dataTableKeysForRole, REALTIME_TABLE_TO_KEY, resolveAllowedTab, TABLES } from "./realtime";
+import { buildNavigationGroups, loadNavigationState, NAV_GROUPS, NAV_GROUP_STORAGE_KEY } from "./navigation";
 import { canAdministerTarget, canAssignRole, identityProtectionReason, isAdministrativeRole, PRODUCTION_ALLOWED_PAGES, SELF_SIGNUP_ROLES, SYSTEM_ROLES } from "./identity";
+import { withTimeout } from "./bootstrap";
+import { useProfileBootstrap } from "./auth/useProfileBootstrap";
+import { BootstrapFailure, BootstrapLoading } from "./auth/BootstrapScreens";
+import { AppShell } from "./layout/AppShell";
+import { SettingsPage } from "./settings/SettingsPage";
 
 const V22_DEMO = (import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEMO === "true") && new URLSearchParams(window.location.search).get("demo") === "v22";
+const DEMO_ROLE = ["owner", "manager", "accountant", "production"].includes(new URLSearchParams(window.location.search).get("role")) ? new URLSearchParams(window.location.search).get("role") : "owner";
+const DEMO_ACCOUNT_STATE = new URLSearchParams(window.location.search).get("accountState");
+const DEMO_CONNECTION_STATE = new URLSearchParams(window.location.search).get("connection");
+const ACTIVE_DEMO_PROFILE = V22_DEMO ? {
+  ...demoProfile,
+  role: DEMO_ROLE,
+  full_name: SYSTEM_ROLES[DEMO_ROLE]?.label || demoProfile.full_name,
+  permissions: DEMO_ROLE === "production" ? { pages: ["production"] } : {},
+} : demoProfile;
 
 /* ---------------------------------- ثيم ---------------------------------- */
 const C = {
@@ -41,12 +55,12 @@ const NAV_BY_ROLE = {
   accountant: ["projects", "projectFiles", "inventory", "purchases", "expenses", "materials", "products", "production", "sales", "rentals", "suppliers", "customers", "employees", "payroll", "dailyLabor"],
   production: ["projects", "projectFiles", "inventory", "production"],
 };
-const ALL_PAGE_IDS = ["dashboard", "projects", "projectFiles", "inventory", "purchases", "expenses", "materials", "products", "production", "sales", "rentals", "suppliers", "customers", "employees", "payroll", "dailyLabor", "reports", "auditLog", "team"];
+const ALL_PAGE_IDS = ["dashboard", "projects", "projectFiles", "inventory", "purchases", "expenses", "materials", "products", "production", "sales", "rentals", "suppliers", "customers", "employees", "payroll", "dailyLabor", "reports", "auditLog", "team", "settings"];
 const PAGE_LABELS = {
   projects: "المشاريع", projectFiles: "ملفات المشاريع", employees: "الموظفون", payroll: "المرتبات", dailyLabor: "العمالة اليومية", auditLog: "سجل التدقيق",
   dashboard: "لوحة التحكم", inventory: "المخزون", purchases: "المشتريات", expenses: "المصروفات", materials: "المواد الخام", products: "المنتجات والتكلفة",
   production: "أوامر الإنتاج", sales: "المبيعات", rentals: "الإيجارات",
-  suppliers: "الموردين", customers: "العملاء", reports: "التقارير", team: "الفريق والصلاحيات",
+  suppliers: "الموردين", customers: "العملاء", reports: "التقارير", team: "الفريق والصلاحيات", settings: "الإعدادات",
 };
 function permissionsForProfile(profile) {
   const actions = actionPermissions(profile);
@@ -71,7 +85,7 @@ function permissionsForProfile(profile) {
   }
   const saved = profile?.permissions || {};
   const isAccountant = profile?.role === "accountant";
-  const legacyPages = Array.isArray(saved.pages) ? saved.pages : (NAV_BY_ROLE[profile?.role] || []);
+  const legacyPages = (Array.isArray(saved.pages) ? saved.pages : (NAV_BY_ROLE[profile?.role] || [])).filter((page) => page !== "settings");
   const modulePages = [actions.projects_view && "projects", actions.project_files_view && "projectFiles", actions.payroll_view && "payroll", actions.daily_labor_view && "dailyLabor"].filter(Boolean);
   if (actions.audit_log_view) modulePages.push("auditLog");
   return {
@@ -109,29 +123,34 @@ const PAGE_DESCRIPTIONS = {
   reports: "تحليل الأداء المالي والتشغيلي لاتخاذ قرارات أوضح.",
   auditLog: "تتبع العمليات والتغييرات الحساسة داخل النظام.",
   team: "إدارة المستخدمين والأدوار والصلاحيات بأمان.",
+  settings: "إعدادات الإدارة وأدوات الاسترداد الآمن للحسابات.",
 };
 
 async function fetchTableRows(key, table) {
   let fetchResult;
-  if (key === "projects") fetchResult = await supabase.rpc("get_projects_visible");
-  else if (key === "payroll") fetchResult = await supabase.rpc("get_payroll_visible");
+  try {
+  if (key === "projects") fetchResult = await withTimeout(supabase.rpc("get_projects_visible"), undefined, `انتهت مهلة تحميل ${PAGE_LABELS[key] || table}`);
+  else if (key === "payroll") fetchResult = await withTimeout(supabase.rpc("get_payroll_visible"), undefined, `انتهت مهلة تحميل ${PAGE_LABELS[key] || table}`);
   else if (key === "auditLog") {
-    fetchResult = await supabase
+    fetchResult = await withTimeout(supabase
       .from(table)
       .select("*, actor:profiles!audit_log_actor_id_fkey(full_name,email)")
-      .order("created_at", { ascending: true });
+      .order("created_at", { ascending: true }), undefined, `انتهت مهلة تحميل ${PAGE_LABELS[key] || table}`);
     if (fetchResult.error) {
       console.warn("[AuditLog] actor profile relation unavailable; using legacy rows", fetchResult.error);
-      fetchResult = await supabase.from(table).select("*").order("created_at", { ascending: true });
+      fetchResult = await withTimeout(supabase.from(table).select("*").order("created_at", { ascending: true }));
     }
   }
   else {
-    fetchResult = await supabase.from(table).select("*").order("created_at", { ascending: true });
+    fetchResult = await withTimeout(supabase.from(table).select("*").order("created_at", { ascending: true }), undefined, `انتهت مهلة تحميل ${PAGE_LABELS[key] || table}`);
     // Backward-compatible fallback until the project_files created_at migration is applied.
     if (key === "projectFiles" && fetchResult.error?.code === "42703") {
       console.warn("[ProjectFiles] created_at is missing; falling back to uploaded_at", fetchResult.error);
-      fetchResult = await supabase.from(PROJECT_FILES_TABLE).select("*").order("uploaded_at", { ascending: true });
+      fetchResult = await withTimeout(supabase.from(PROJECT_FILES_TABLE).select("*").order("uploaded_at", { ascending: true }));
     }
+  }
+  } catch (error) {
+    fetchResult = { data: null, error };
   }
   if (key === "projectFiles") console.info("[ProjectFiles] fetchResult", { table: PROJECT_FILES_TABLE, fetchResult });
   if (fetchResult.error) console.error(`[NEXTEP] Failed to fetch ${table}`, fetchResult.error);
@@ -350,15 +369,14 @@ function AuthGate({ notice = "" }) {
 
 /* --------------------------------- التطبيق --------------------------------- */
 export default function App() {
-  const [session, setSession] = useState(V22_DEMO ? { user: { id: demoProfile.id } } : undefined);
-  const [profile, setProfile] = useState(V22_DEMO ? demoProfile : undefined);
+  const { session, profile, status: bootstrapStatus, error: bootstrapError, notice: authNotice, fetchProfile, retry: retryBootstrap, signOut } = useProfileBootstrap({
+    supabase, demo: V22_DEMO, demoProfile: ACTIVE_DEMO_PROFILE,
+  });
   const [data, setData] = useState(V22_DEMO ? demoData : null);
   const [tab, setTab] = useState(V22_DEMO ? "projects" : null);
-  const [authNotice, setAuthNotice] = useState("");
-  const [bootstrapError, setBootstrapError] = useState("");
   const [dataWarnings, setDataWarnings] = useState([]);
   const [mutationFeedback, setMutationFeedback] = useState({ type: "success", message: "" });
-  const [realtimeStatus, setRealtimeStatus] = useState(V22_DEMO ? "DEMO" : "CONNECTING");
+  const [realtimeStatus, setRealtimeStatus] = useState(V22_DEMO ? (DEMO_CONNECTION_STATE === "offline" ? "RECONNECTING" : "DEMO") : "CONNECTING");
   const [openNavGroups, setOpenNavGroups] = useState(loadNavigationState);
 
   useEffect(() => {
@@ -369,45 +387,18 @@ export default function App() {
     }
   }, [openNavGroups]);
 
+  const selectedGroupId = useMemo(() => NAV_GROUPS.find((group) => group.pages.includes(tab))?.id, [tab]);
   useEffect(() => {
-    if (V22_DEMO) return;
-    supabase.auth.getSession().then(({ data: { session }, error }) => {
-      if (error) setBootstrapError(`تعذر التحقق من جلسة المستخدم: ${error.message}`);
-      setSession(session);
-    });
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => setSession(session));
-    return () => sub.subscription.unsubscribe();
-  }, []);
-
-  const fetchProfile = useCallback(async (userId) => {
-    const fetchResult = await supabase.from("profiles").select("*").eq("id", userId).maybeSingle();
-    if (fetchResult.error) {
-      console.error("[Realtime:profile] refetch failed", fetchResult.error);
-      setBootstrapError(`تعذر تحميل بيانات الحساب: ${fetchResult.error.message}`);
-      return fetchResult;
-    }
-    setBootstrapError("");
-    const nextProfile = fetchResult.data;
-    if (nextProfile && !isActiveProfile(nextProfile)) {
-      console.warn("[Realtime:profile] account suspended", { userId, status: nextProfile.status });
-      setAuthNotice("تم إيقاف حسابك. تواصل مع مدير النظام لإعادة تفعيله.");
-      setProfile(null);
-      await supabase.auth.signOut({ scope: "local" });
-      return fetchResult;
-    }
-    setProfile(nextProfile || null);
-    return fetchResult;
-  }, []);
+    if (!selectedGroupId) return;
+    setOpenNavGroups((current) => current[selectedGroupId] === false ? { ...current, [selectedGroupId]: true } : current);
+  }, [selectedGroupId]);
 
   useEffect(() => {
     if (V22_DEMO) return;
     if (session === undefined) return;
-    if (!session) { setProfile(null); setData(null); return; }
-    setProfile((current) => current?.id === session.user.id ? current : undefined);
+    if (!session) { setData(null); return; }
     setData(null);
-    setAuthNotice("");
-    fetchProfile(session.user.id);
-  }, [session?.user?.id, fetchProfile]);
+  }, [session?.user?.id]);
 
   const refetchTable = useCallback(async (key) => {
     if (V22_DEMO) return;
@@ -461,7 +452,7 @@ export default function App() {
           console.info("[Realtime] connected; reconciling missed changes");
           void Promise.all([
             ...activeTableKeys.map((key) => refetchTable(key)),
-            fetchProfile(session.user.id),
+            fetchProfile(session.user.id, { background: true }),
           ]);
         }
       }
@@ -524,12 +515,10 @@ export default function App() {
             if (disposed || generation !== connectGeneration) return;
             console.info("[Realtime:profile] postgres_changes", { event: payload.eventType, userId: session.user.id });
             if (payload.eventType === "DELETE") {
-              setAuthNotice("تم حذف أو تعطيل حسابك. تواصل مع مدير النظام.");
-              setProfile(null);
-              await supabase.auth.signOut({ scope: "local" });
+              await signOut("تم حذف أو تعطيل حسابك. تواصل مع مدير النظام.");
               return;
             }
-            await fetchProfile(session.user.id);
+            await fetchProfile(session.user.id, { background: true });
           }
         );
 
@@ -566,7 +555,7 @@ export default function App() {
       connectGeneration += 1;
       void removeChannels();
     };
-  }, [session?.user?.id, profile?.role, refetchTable, fetchProfile]);
+  }, [session?.user?.id, profile?.role, refetchTable, fetchProfile, signOut]);
 
   const permissions = useMemo(() => profile ? permissionsForProfile(profile) : null, [profile]);
   useEffect(() => {
@@ -574,15 +563,13 @@ export default function App() {
     setTab((currentTab) => resolveAllowedTab(currentTab, permissions.pages || []));
   }, [permissions]);
 
-  if (session === undefined || (session && profile === undefined)) {
-    if (session && bootstrapError) {
-      return <ErrorScreen message={bootstrapError} onRetry={() => { setBootstrapError(""); setProfile(undefined); void fetchProfile(session.user.id); }} />;
-    }
-    return <LoadingScreen text="جارِ التحميل..." />;
-  }
-  if (!session) return <AuthGate notice={authNotice || bootstrapError} />;
-  if (profile === null) return <LoadingScreen text="جارِ إعداد حسابك..." />;
-  if (!data) return <LoadingScreen text="جارِ تحميل البيانات..." />;
+  if (V22_DEMO && DEMO_ACCOUNT_STATE === "missing") return <BootstrapFailure missingProfile message="تم تسجيل الدخول، لكن ملف الحساب الإداري غير موجود." session={{ user: { id: "00000000-0000-0000-0000-000000000099", email: "missing-profile@nextep.demo" } }} onRetry={() => {}} onSignOut={() => {}}/>;
+  if (bootstrapStatus === "checking-session" || bootstrapStatus === "loading-profile") return <BootstrapLoading text={bootstrapStatus === "loading-profile" ? "جارِ تحميل بيانات حسابك..." : "جارِ التحقق من الجلسة..."}/>;
+  if (bootstrapStatus === "error") return <BootstrapFailure message={bootstrapError} session={session} onRetry={retryBootstrap} onSignOut={() => signOut()}/>;
+  if (bootstrapStatus === "missing-profile") return <BootstrapFailure missingProfile message={bootstrapError} session={session} onRetry={retryBootstrap} onSignOut={() => signOut()}/>;
+  if (!session) return <AuthGate notice={authNotice} />;
+  if (!profile) return <BootstrapFailure message="تعذر تحديد حالة الحساب." session={session} onRetry={retryBootstrap} onSignOut={() => signOut()}/>;
+  if (!data) return <BootstrapLoading text="جارِ تحميل بيانات مساحة العمل..." />;
 
   const role = profile.role;
   const activeTab = resolveAllowedTab(tab, permissions.pages);
@@ -606,6 +593,7 @@ export default function App() {
     { id: "reports", label: "التقارير", icon: BarChart3 },
     { id: "auditLog", label: "سجل التدقيق", icon: ScrollText },
     { id: "team", label: "الفريق والصلاحيات", icon: ShieldCheck },
+    { id: "settings", label: "الإعدادات", icon: Settings },
   ];
   const NAV = ALL_NAV.filter((n) => permissions.pages.includes(n.id));
   const navigationGroups = buildNavigationGroups(NAV, permissions.pages);
@@ -631,49 +619,13 @@ export default function App() {
     return result.error?.message || null;
   }
 
-  return (
-    <div dir="rtl" className="app-shell">
-      <aside className="app-sidebar">
-        <div className="sidebar-brand">
-          <img src="/logo.png" alt="NEXTEP" />
-          <div className="sidebar-user">
-            <div className="sidebar-avatar">{(profile.full_name || profile.email || "N").trim().charAt(0)}</div>
-            <div className="sidebar-user-copy"><strong>{profile.full_name || profile.email}</strong><span>{ROLES[role]?.label}</span></div>
-          </div>
-          {import.meta.env.DEV && <div className="realtime-indicator"><span className={`realtime-dot ${realtimeStatus === "CONNECTED" ? "connected" : ""}`} />Realtime: {realtimeStatus}</div>}
-        </div>
-        <nav className="sidebar-nav" aria-label="التنقل الرئيسي">
-          {navigationGroups.map((group) => {
-            const isOpen = openNavGroups[group.id] !== false;
-            return (
-              <section className={`nav-group ${group.id === activeGroup?.id ? "active" : ""}`} key={group.id}>
-                <button className="nav-group-toggle" type="button" aria-expanded={isOpen} onClick={() => setOpenNavGroups((current) => ({ ...current, [group.id]: !isOpen }))}>
-                  <span>{group.label}</span><ChevronDown size={15} className={isOpen ? "open" : ""} />
-                </button>
-                {isOpen && <div className="nav-group-items">
-                  {group.items.map((item) => {
-                    const Icon = item.icon;
-                    const itemActive = activeTab === item.id;
-                    return <button key={item.id} className={`nav-item ${itemActive ? "active" : ""}`} aria-current={itemActive ? "page" : undefined} onClick={() => setTab(item.id)}>
-                      <Icon size={17} /><span>{item.label}</span>
-                    </button>;
-                  })}
-                </div>}
-              </section>
-            );
-          })}
-        </nav>
-        <button className="sidebar-signout" onClick={() => supabase.auth.signOut()}>
-          <LogOut size={15} /> تسجيل الخروج
-        </button>
-      </aside>
+  const retryVisibleData = () => Promise.all(dataTableKeysForRole(role).map((key) => refetchTable(key)));
 
-      <main className="app-main">
-        <div className="app-context-bar"><span>{activeGroup?.label}</span><strong>{activePage?.label}</strong></div>
-        <div className="app-content">
-        {!activeTab && <Card><Empty text="لا توجد صفحات مسموحة لهذا الحساب حاليًا. تواصل مع مدير النظام لتحديث صلاحياتك." /></Card>}
-        {dataWarnings.length > 0 && <Banner type="error">تعذر تحديث بعض البيانات ({dataWarnings.map((key) => PAGE_LABELS[key] || key).join("، ")}). البيانات المعروضة قد تكون غير مكتملة.</Banner>}
-        {realtimeStatus === "RECONNECTING" && <Banner type="error">انقطع التحديث اللحظي مؤقتًا. يحاول النظام إعادة الاتصال تلقائيًا.</Banner>}
+  return (
+    <AppShell navigationGroups={navigationGroups} openGroups={openNavGroups} setOpenGroups={setOpenNavGroups} activeGroup={activeGroup} activePage={activePage} activeTab={activeTab} profile={profile} roleLabel={ROLES[role]?.label} realtimeStatus={realtimeStatus} warnings={dataWarnings} onNavigate={setTab} onRetryData={retryVisibleData} onSignOut={() => signOut()}>
+        {!activeTab && <div className="module-state no-permission"><ShieldCheck size={30}/><strong>لا توجد صلاحية للوصول</strong><p>لا توجد صفحات مسموحة لهذا الحساب حاليًا. تواصل مع مدير النظام لتحديث صلاحياتك.</p></div>}
+        {dataWarnings.length > 0 && <div className="module-state error compact"><AlertCircle size={20}/><div><strong>تعذر تحديث بعض البيانات</strong><p>{dataWarnings.map((key) => PAGE_LABELS[key] || key).join("، ")} — قد تكون البيانات المعروضة غير مكتملة.</p></div><button type="button" onClick={retryVisibleData}>إعادة المحاولة</button></div>}
+        {!["CONNECTED", "DEMO"].includes(realtimeStatus) && <div className="module-state offline compact"><AlertCircle size={20}/><div><strong>{realtimeStatus === "RECONNECTING" ? "جارِ إعادة الاتصال" : "الاتصال اللحظي غير جاهز"}</strong><p>يمكنك متابعة القراءة، وستتم مزامنة التغييرات تلقائيًا عند عودة الاتصال.</p></div><button type="button" onClick={retryVisibleData}>المحاولة الآن</button></div>}
         {activeTab === "dashboard" && <Dashboard data={data} navigate={setTab} permissions={permissions} />}
         {activeTab === "projects" && <ProjectsTab data={data} profile={profile} permissions={permissions} refresh={refetchTable} />}
         {activeTab === "projectFiles" && <ProjectFilesHub data={data} permissions={permissions} refresh={refetchTable} />}
@@ -693,28 +645,10 @@ export default function App() {
         {activeTab === "reports" && permissions.view_financials && <ReportsTab data={data} />}
         {activeTab === "auditLog" && permissions.audit_log_view && <AuditLogTab data={data} />}
         {activeTab === "team" && <TeamTab profiles={data.profiles} refresh={refetchTable} currentProfile={profile} />}
-        </div>
-      </main>
+        {activeTab === "settings" && <SettingsPage currentProfile={profile} onRepaired={() => refetchTable("profiles")} />}
       <Toast type={mutationFeedback.type} message={mutationFeedback.message} onDismiss={() => setMutationFeedback((current) => ({ ...current, message: "" }))} />
-    </div>
+    </AppShell>
   );
-}
-
-function LoadingScreen({ text }) {
-  return (
-    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: C.bg, color: C.muted, fontFamily: "Tajawal, sans-serif" }}>
-      {text}
-    </div>
-  );
-}
-
-function ErrorScreen({ message, onRetry }) {
-  return <div dir="rtl" style={{ minHeight: "100vh", display: "flex", flexDirection: "column", gap: 12, alignItems: "center", justifyContent: "center", padding: 24, textAlign: "center", background: C.bg, color: C.text, fontFamily: "Tajawal, sans-serif" }}>
-    <AlertCircle size={34} color={C.red} />
-    <strong>تعذر تحميل النظام</strong>
-    <span>{message}</span>
-    <Btn onClick={onRetry}>إعادة المحاولة</Btn>
-  </div>;
 }
 
 /* --------------------------------- Dashboard -------------------------------- */
@@ -1655,7 +1589,7 @@ const GENERAL_PERMISSION_LABELS = {
   can_edit_products: "تعديل المنتجات الموجودة",
 };
 const PERMISSION_SECTIONS = [
-  { id: "pages", label: "الصفحات والوحدات", type: "page", keys: ALL_PAGE_IDS },
+  { id: "pages", label: "الصفحات والوحدات", type: "page", keys: ALL_PAGE_IDS.filter((page) => page !== "settings") },
   { id: "general", label: "الصلاحيات العامة", type: "permission", keys: Object.keys(GENERAL_PERMISSION_LABELS) },
   { id: "projects", label: "المشاريع والملفات", type: "permission", keys: ACTION_PERMISSIONS.filter((key) => key.startsWith("project")) },
   { id: "payroll", label: "الرواتب", type: "permission", keys: ACTION_PERMISSIONS.filter((key) => key.startsWith("payroll")) },
