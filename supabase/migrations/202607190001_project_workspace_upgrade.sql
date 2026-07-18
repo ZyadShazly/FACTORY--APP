@@ -499,7 +499,8 @@ begin
   where id=target_project returning * into p;
   insert into public.project_activities(project_id,actor_id,action_type,description,metadata)
   values(target_project,actor,'lifecycle_changed','تم تغيير دورة حياة المشروع',jsonb_build_object('to',next_lifecycle,'reason',reason));
-  return to_jsonb(p);
+  return case when private.project_has_permission('project_financials_view') then to_jsonb(p)
+    else to_jsonb(p)-array['expected_cost','actual_cost','revenue','profit'] end;
 end
 $$;
 

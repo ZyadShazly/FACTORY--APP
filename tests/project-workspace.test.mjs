@@ -103,6 +103,12 @@ test("RLS and projection deny anon, require active visibility, and hide finance"
   assert.match(migration, /to_jsonb\(p\) - array\['expected_cost','actual_cost','revenue','profit'\]/);
   assert.match(migration, /to_jsonb\(current_row\)-array\['expected_cost','actual_cost','revenue','profit'\]/);
   assert.doesNotMatch(migration, /'before',to_jsonb\(current_row\),/);
+  const lifecycleRpc = migration.slice(
+    migration.indexOf("create or replace function public.transition_project_lifecycle"),
+    migration.indexOf("create or replace function public.update_project_execution_stage"),
+  );
+  assert.match(lifecycleRpc, /return case when private\.project_has_permission\('project_financials_view'\) then to_jsonb\(p\)/);
+  assert.doesNotMatch(lifecycleRpc, /return to_jsonb\(p\);/);
   assert.match(migration, /project_milestones_select.*to authenticated.*private\.project_can_view/s);
   assert.match(migration, /project_members_select.*to authenticated.*private\.project_can_view/s);
 });
