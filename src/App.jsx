@@ -25,6 +25,7 @@ import { useProfileBootstrap } from "./auth/useProfileBootstrap";
 import { BootstrapFailure, BootstrapLoading } from "./auth/BootstrapScreens";
 import { AppShell } from "./layout/AppShell";
 import { SettingsPage } from "./settings/SettingsPage";
+import { WorkCalendarTab } from "./v23/workCalendar";
 
 const V22_DEMO = (import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEMO === "true") && new URLSearchParams(window.location.search).get("demo") === "v22";
 const DEMO_ROLE = ["owner", "manager", "accountant", "production"].includes(new URLSearchParams(window.location.search).get("role")) ? new URLSearchParams(window.location.search).get("role") : "owner";
@@ -55,9 +56,9 @@ const NAV_BY_ROLE = {
   accountant: ["projects", "projectFiles", "inventory", "purchases", "expenses", "materials", "products", "production", "sales", "rentals", "suppliers", "customers", "employees", "payroll", "dailyLabor"],
   production: ["projects", "projectFiles", "inventory", "production"],
 };
-const ALL_PAGE_IDS = ["dashboard", "projects", "projectFiles", "inventory", "purchases", "expenses", "materials", "products", "production", "sales", "rentals", "suppliers", "customers", "employees", "payroll", "dailyLabor", "reports", "auditLog", "team", "settings"];
+const ALL_PAGE_IDS = ["dashboard", "projects", "projectFiles", "inventory", "purchases", "expenses", "materials", "products", "production", "sales", "rentals", "suppliers", "customers", "employees", "workCalendar", "payroll", "dailyLabor", "reports", "auditLog", "team", "settings"];
 const PAGE_LABELS = {
-  projects: "المشاريع", projectFiles: "ملفات المشاريع", employees: "الموظفون", payroll: "المرتبات", dailyLabor: "العمالة اليومية", auditLog: "سجل التدقيق",
+  projects: "المشاريع", projectFiles: "ملفات المشاريع", employees: "الموظفون", workCalendar: "تقويم العمل والعطلات", payroll: "المرتبات", dailyLabor: "العمالة اليومية", auditLog: "سجل التدقيق",
   dashboard: "لوحة التحكم", inventory: "المخزون", purchases: "المشتريات", expenses: "المصروفات", materials: "المواد الخام", products: "المنتجات والتكلفة",
   production: "أوامر الإنتاج", sales: "المبيعات", rentals: "الإيجارات",
   suppliers: "الموردين", customers: "العملاء", reports: "التقارير", team: "الفريق والصلاحيات", settings: "الإعدادات",
@@ -86,7 +87,7 @@ function permissionsForProfile(profile) {
   const saved = profile?.permissions || {};
   const isAccountant = profile?.role === "accountant";
   const legacyPages = (Array.isArray(saved.pages) ? saved.pages : (NAV_BY_ROLE[profile?.role] || [])).filter((page) => page !== "settings");
-  const modulePages = [actions.projects_view && "projects", actions.project_files_view && "projectFiles", actions.payroll_view && "payroll", actions.daily_labor_view && "dailyLabor"].filter(Boolean);
+  const modulePages = [actions.projects_view && "projects", actions.project_files_view && "projectFiles", actions.payroll_calendar_view && "workCalendar", actions.payroll_view && "payroll", actions.daily_labor_view && "dailyLabor"].filter(Boolean);
   if (actions.audit_log_view) modulePages.push("auditLog");
   return {
     pages: [...new Set([...legacyPages, ...modulePages])],
@@ -102,6 +103,7 @@ const EMPTY_DATA = {
   materials: [], materialPurchases: [], products: [], productionOrders: [],
   sales: [], rentals: [], suppliers: [], supplierPayments: [], customers: [], customerReceipts: [], expenses: [],
   profiles: [], projects: [], projectFiles: [], projectActivities: [], employees: [], payroll: [], dailyLabor: [], projectCosts: [], auditLog: [],
+  departments: [], workSchedules: [], workScheduleDays: [], holidayCalendar: [], holidayScopes: [],
 };
 const PAGE_DESCRIPTIONS = {
   dashboard: "ملخص تنفيذي لأهم مؤشرات العمل والتنبيهات والأنشطة الحديثة.",
@@ -118,6 +120,7 @@ const PAGE_DESCRIPTIONS = {
   suppliers: "متابعة الموردين والمستحقات والمدفوعات.",
   customers: "إدارة بيانات العملاء والأرصدة والتحصيلات.",
   employees: "إدارة فريق العمل والبيانات الوظيفية.",
+  workCalendar: "إدارة أسبوع العمل والورديات والعطلات بإصدارات تاريخية قابلة للتدقيق.",
   payroll: "إعداد الرواتب ومراجعتها واعتماد دورة الصرف.",
   dailyLabor: "تسجيل العمالة اليومية والتكلفة والحضور.",
   reports: "تحليل الأداء المالي والتشغيلي لاتخاذ قرارات أوضح.",
@@ -588,6 +591,7 @@ export default function App() {
     { id: "suppliers", label: "الموردين", icon: Truck },
     { id: "customers", label: "العملاء", icon: Users },
     { id: "employees", label: "الموظفون", icon: UserRoundCog },
+    { id: "workCalendar", label: "تقويم العمل والعطلات", icon: CalendarClock },
     { id: "payroll", label: "المرتبات", icon: BadgeDollarSign },
     { id: "dailyLabor", label: "العمالة اليومية", icon: HardHat },
     { id: "reports", label: "التقارير", icon: BarChart3 },
@@ -640,6 +644,8 @@ export default function App() {
         {activeTab === "suppliers" && <SuppliersTab data={data} insertRow={insertRow} updateRow={updateRow} deleteRow={deleteRow} canManage={isAdministrativeRole(role)} />}
         {activeTab === "customers" && <CustomersTab data={data} insertRow={insertRow} updateRow={updateRow} deleteRow={deleteRow} canManage={isAdministrativeRole(role)} />}
         {activeTab === "employees" && role !== "production" && <EmployeesTab data={data} profile={profile} refresh={refetchTable} />}
+        {activeTab === "workCalendar" && permissions.payroll_calendar_view && <WorkCalendarTab data={data} profile={profile} permissions={permissions} refresh={refetchTable} />}
+        {activeTab === "payroll" && permissions.payroll_view && data.payroll.some((row) => row.status === "draft" && row.calendar_stale) && <div className="module-state error compact"><AlertCircle size={20}/><div><strong>مسودة الراتب تحتاج إعادة حساب</strong><p>تغير تقويم العمل بعد إنشاء المسودة. تمنع قاعدة البيانات اعتمادها حتى إعادة الحساب أو استخدام صلاحية التجاوز الموثقة.</p></div></div>}
         {activeTab === "payroll" && permissions.payroll_view && <PayrollTab data={data} profile={profile} permissions={permissions} refresh={refetchTable} />}
         {activeTab === "dailyLabor" && permissions.daily_labor_view && <DailyLaborTab data={data} profile={profile} permissions={permissions} refresh={refetchTable} />}
         {activeTab === "reports" && permissions.view_financials && <ReportsTab data={data} />}

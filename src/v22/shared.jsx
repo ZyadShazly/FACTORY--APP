@@ -16,6 +16,7 @@ export const ACTION_PERMISSIONS = [
   "projects_view", "projects_create", "projects_edit", "projects_delete", "project_files_view",
   "project_files_upload", "project_files_delete", "project_financials_view", "payroll_view",
   "payroll_create", "payroll_edit", "payroll_approve", "payroll_bonus_manage", "payroll_mark_paid",
+  "payroll_calendar_view", "payroll_calendar_manage", "payroll_calendar_approve", "payroll_calendar_stale_override",
   "daily_labor_view", "daily_labor_create", "daily_labor_edit", "daily_labor_delete",
   "daily_labor_pay", "audit_log_view",
 ];
@@ -33,6 +34,9 @@ export function actionPermissions(profile) {
   const saved = profile?.permissions || {};
   const resolved = Object.fromEntries(ACTION_PERMISSIONS.map((key) => [key, saved[key] ?? defaults.includes(key)]));
   resolved.audit_log_view = false;
+  if (profile?.role === "production") {
+    for (const key of ACTION_PERMISSIONS.filter((permission) => permission.startsWith("payroll_calendar_"))) resolved[key] = false;
+  }
   return resolved;
 }
 

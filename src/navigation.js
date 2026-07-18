@@ -3,7 +3,7 @@ export const NAV_GROUPS = [
   { id: "projects", label: "إدارة المشاريع", pages: ["projects", "projectFiles"] },
   { id: "operations", label: "التشغيل والإنتاج", pages: ["inventory", "materials", "products", "production"] },
   { id: "finance", label: "المالية", pages: ["purchases", "expenses", "sales", "rentals", "suppliers", "customers"] },
-  { id: "hr", label: "الموارد البشرية", pages: ["employees", "payroll", "dailyLabor"] },
+  { id: "hr", label: "الموارد البشرية", pages: ["employees", "workCalendar", "payroll", "dailyLabor"] },
   { id: "analytics", label: "التقارير والتحليلات", pages: ["reports"] },
   { id: "admin", label: "الإدارة", pages: ["auditLog", "team", "settings"] },
 ];
