@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Package, Layers, Factory, ShoppingCart, Truck, Users,
   BarChart3, Plus, Trash2, AlertCircle, CheckCircle2, Wallet, Boxes,
   CalendarClock, ShieldCheck, Pencil, X, ReceiptText, ClipboardList,
-  BriefcaseBusiness, FolderOpen, UserRoundCog, BadgeDollarSign, HardHat, ScrollText, ChevronDown, Settings,
+  BriefcaseBusiness, FolderOpen, UserRoundCog, BadgeDollarSign, HardHat, ScrollText, ChevronDown, Settings, Wrench,
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
@@ -26,11 +26,14 @@ import { BootstrapFailure, BootstrapLoading } from "./auth/BootstrapScreens";
 import { AppShell } from "./layout/AppShell";
 import { SettingsPage } from "./settings/SettingsPage";
 import { WorkCalendarTab } from "./v23/workCalendar";
+import { AssetExternalConfirmation, AssetsPage } from "./assets/AssetsPage";
 
 const V22_DEMO = (import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEMO === "true") && new URLSearchParams(window.location.search).get("demo") === "v22";
 const DEMO_ROLE = ["owner", "manager", "accountant", "production"].includes(new URLSearchParams(window.location.search).get("role")) ? new URLSearchParams(window.location.search).get("role") : "owner";
 const DEMO_ACCOUNT_STATE = new URLSearchParams(window.location.search).get("accountState");
 const DEMO_CONNECTION_STATE = new URLSearchParams(window.location.search).get("connection");
+const ASSET_CONFIRMATION_MODE = new URLSearchParams(window.location.search).has("assetConfirmation");
+const ASSET_QR_MODE = new URLSearchParams(window.location.search).has("assetQr");
 const ACTIVE_DEMO_PROFILE = V22_DEMO ? {
   ...demoProfile,
   role: DEMO_ROLE,
@@ -56,12 +59,12 @@ const NAV_BY_ROLE = {
   accountant: ["projects", "projectFiles", "inventory", "purchases", "expenses", "materials", "products", "production", "sales", "rentals", "suppliers", "customers", "employees", "payroll", "dailyLabor"],
   production: ["projects", "projectFiles", "inventory", "production"],
 };
-const ALL_PAGE_IDS = ["dashboard", "projects", "projectFiles", "inventory", "purchases", "expenses", "materials", "products", "production", "sales", "rentals", "suppliers", "customers", "employees", "workCalendar", "payroll", "dailyLabor", "reports", "auditLog", "team", "settings"];
+const ALL_PAGE_IDS = ["dashboard", "projects", "projectFiles", "inventory", "purchases", "expenses", "materials", "products", "production", "assets", "sales", "rentals", "suppliers", "customers", "employees", "workCalendar", "payroll", "dailyLabor", "reports", "auditLog", "team", "settings"];
 const PAGE_LABELS = {
   projects: "المشاريع", projectFiles: "ملفات المشاريع", employees: "الموظفون", workCalendar: "تقويم العمل والعطلات", payroll: "المرتبات", dailyLabor: "العمالة اليومية", auditLog: "سجل التدقيق",
   dashboard: "لوحة التحكم", inventory: "المخزون", purchases: "المشتريات", expenses: "المصروفات", materials: "المواد الخام", products: "المنتجات والتكلفة",
-  production: "أوامر الإنتاج", sales: "المبيعات", rentals: "الإيجارات",
-  suppliers: "الموردين", customers: "العملاء", reports: "التقارير", team: "الفريق والصلاحيات", settings: "الإعدادات",
+  production: "أوامر الإنتاج", assets: "الأصول والعِدّة", sales: "المبيعات", rentals: "الإيجارات",
+  suppliers: "الموردين", customers: "العملاء", reports: "التقارير", team: "الفريق والصلاحيات", settings: "الإعدادات", assetAlerts: "تنبيهات الأصول",
 };
 function permissionsForProfile(profile) {
   const actions = actionPermissions(profile);
@@ -87,7 +90,7 @@ function permissionsForProfile(profile) {
   const saved = profile?.permissions || {};
   const isAccountant = profile?.role === "accountant";
   const legacyPages = (Array.isArray(saved.pages) ? saved.pages : (NAV_BY_ROLE[profile?.role] || [])).filter((page) => page !== "settings");
-  const modulePages = [actions.projects_view && "projects", actions.project_files_view && "projectFiles", actions.payroll_calendar_view && "workCalendar", actions.payroll_view && "payroll", actions.daily_labor_view && "dailyLabor"].filter(Boolean);
+  const modulePages = [actions.projects_view && "projects", actions.project_files_view && "projectFiles", actions.assets_view && "assets", actions.payroll_calendar_view && "workCalendar", actions.payroll_view && "payroll", actions.daily_labor_view && "dailyLabor"].filter(Boolean);
   if (actions.audit_log_view) modulePages.push("auditLog");
   return {
     pages: [...new Set([...legacyPages, ...modulePages])],
@@ -104,6 +107,7 @@ const EMPTY_DATA = {
   sales: [], rentals: [], suppliers: [], supplierPayments: [], customers: [], customerReceipts: [], expenses: [],
   profiles: [], projects: [], projectFiles: [], projectActivities: [], employees: [], payroll: [], dailyLabor: [], projectCosts: [], auditLog: [],
   departments: [], workSchedules: [], workScheduleDays: [], holidayCalendar: [], holidayScopes: [],
+  assetCategories: [], assetLocations: [], assets: [], assetAssignments: [], assetAssignmentItems: [], assetReturnEvents: [], assetReturnItems: [], assetSettlements: [], assetMovements: [], assetAttachments: [], assetAlerts: [],
 };
 const PAGE_DESCRIPTIONS = {
   dashboard: "ملخص تنفيذي لأهم مؤشرات العمل والتنبيهات والأنشطة الحديثة.",
@@ -115,6 +119,7 @@ const PAGE_DESCRIPTIONS = {
   materials: "تعريف الخامات ومتابعة التكلفة والرصيد المتاح.",
   products: "إدارة المنتجات ومكونات التصنيع والتكلفة التقديرية.",
   production: "تخطيط أوامر الإنتاج ومتابعة التنفيذ والكميات.",
+  assets: "إدارة الأصول والعِدّة والعهد والإرجاعات وسجل الحركة.",
   sales: "تسجيل المبيعات ومتابعة حركة المنتجات والعملاء.",
   rentals: "إدارة عمليات الإيجار وحالة الوحدات المستأجرة.",
   suppliers: "متابعة الموردين والمستحقات والمدفوعات.",
@@ -133,6 +138,7 @@ async function fetchTableRows(key, table) {
   let fetchResult;
   try {
   if (key === "projects") fetchResult = await withTimeout(supabase.rpc("get_projects_visible"), undefined, `انتهت مهلة تحميل ${PAGE_LABELS[key] || table}`);
+  else if (key === "assets") fetchResult = await withTimeout(supabase.rpc("get_assets_visible"), undefined, `انتهت مهلة تحميل ${PAGE_LABELS[key] || table}`);
   else if (key === "payroll") fetchResult = await withTimeout(supabase.rpc("get_payroll_visible"), undefined, `انتهت مهلة تحميل ${PAGE_LABELS[key] || table}`);
   else if (key === "auditLog") {
     fetchResult = await withTimeout(supabase
@@ -376,7 +382,7 @@ export default function App() {
     supabase, demo: V22_DEMO, demoProfile: ACTIVE_DEMO_PROFILE,
   });
   const [data, setData] = useState(V22_DEMO ? demoData : null);
-  const [tab, setTab] = useState(V22_DEMO ? "projects" : null);
+  const [tab, setTab] = useState(V22_DEMO ? (ASSET_QR_MODE ? "assets" : "projects") : (ASSET_QR_MODE ? "assets" : null));
   const [dataWarnings, setDataWarnings] = useState([]);
   const [mutationFeedback, setMutationFeedback] = useState({ type: "success", message: "" });
   const [realtimeStatus, setRealtimeStatus] = useState(V22_DEMO ? (DEMO_CONNECTION_STATE === "offline" ? "RECONNECTING" : "DEMO") : "CONNECTING");
@@ -427,7 +433,7 @@ export default function App() {
     let channels = [];
     const channelStatuses = { data: "CONNECTING", profile: "CONNECTING" };
     const tableRefreshState = new Map();
-    const activeTableKeys = dataTableKeysForRole(profile.role);
+    const activeTableKeys = dataTableKeysForRole(profile.role, Boolean(profile.permissions?.assets_view));
     const activeTableEntries = Object.entries(TABLES).filter(([key]) => activeTableKeys.includes(key));
 
     (async () => {
@@ -501,11 +507,20 @@ export default function App() {
       setRealtimeStatus("CONNECTING");
 
       const dataChannel = supabase.channel(`factory-data-${session.user.id}`);
-      Object.entries(REALTIME_TABLE_TO_KEY).filter(([, key]) => activeTableKeys.includes(key)).forEach(([table, key]) => {
+      Object.entries(REALTIME_TABLE_TO_KEY).filter(([, key]) => activeTableKeys.includes(key) || (key === "assetRealtimeSignal" && activeTableKeys.includes("assets"))).forEach(([table, key]) => {
         dataChannel.on("postgres_changes", { event: "*", schema: "public", table }, (payload) => {
           if (disposed || generation !== connectGeneration) return;
           console.info("[Realtime:data] postgres_changes", { table, key, event: payload.eventType });
+          if (key === "assetRealtimeSignal") {
+            requestTableRefresh("assets");
+            if (activeTableKeys.includes("assetAlerts")) requestTableRefresh("assetAlerts");
+            return;
+          }
           requestTableRefresh(key);
+          if (key.startsWith("asset")) {
+            if (key !== "assets" && activeTableKeys.includes("assets")) requestTableRefresh("assets");
+            if (activeTableKeys.includes("assetAlerts")) requestTableRefresh("assetAlerts");
+          }
         });
       });
 
@@ -566,6 +581,7 @@ export default function App() {
     setTab((currentTab) => resolveAllowedTab(currentTab, permissions.pages || []));
   }, [permissions]);
 
+  if (ASSET_CONFIRMATION_MODE) return <AssetExternalConfirmation/>;
   if (V22_DEMO && DEMO_ACCOUNT_STATE === "missing") return <BootstrapFailure missingProfile message="تم تسجيل الدخول، لكن ملف الحساب الإداري غير موجود." session={{ user: { id: "00000000-0000-0000-0000-000000000099", email: "missing-profile@nextep.demo" } }} onRetry={() => {}} onSignOut={() => {}}/>;
   if (bootstrapStatus === "checking-session" || bootstrapStatus === "loading-profile") return <BootstrapLoading text={bootstrapStatus === "loading-profile" ? "جارِ تحميل بيانات حسابك..." : "جارِ التحقق من الجلسة..."}/>;
   if (bootstrapStatus === "error") return <BootstrapFailure message={bootstrapError} session={session} onRetry={retryBootstrap} onSignOut={() => signOut()}/>;
@@ -586,6 +602,7 @@ export default function App() {
     { id: "materials", label: "المواد الخام", icon: Package },
     { id: "products", label: "المنتجات والتكلفة", icon: Layers },
     { id: "production", label: "أوامر الإنتاج", icon: Factory },
+    { id: "assets", label: "الأصول والعِدّة", icon: Wrench },
     { id: "sales", label: "المبيعات", icon: ShoppingCart },
     { id: "rentals", label: "الإيجارات", icon: CalendarClock },
     { id: "suppliers", label: "الموردين", icon: Truck },
@@ -623,7 +640,7 @@ export default function App() {
     return result.error?.message || null;
   }
 
-  const retryVisibleData = () => Promise.all(dataTableKeysForRole(role).map((key) => refetchTable(key)));
+  const retryVisibleData = () => Promise.all(dataTableKeysForRole(role, Boolean(permissions.assets_view)).map((key) => refetchTable(key)));
 
   return (
     <AppShell navigationGroups={navigationGroups} openGroups={openNavGroups} setOpenGroups={setOpenNavGroups} activeGroup={activeGroup} activePage={activePage} activeTab={activeTab} profile={profile} roleLabel={ROLES[role]?.label} realtimeStatus={realtimeStatus} warnings={dataWarnings} onNavigate={setTab} onRetryData={retryVisibleData} onSignOut={() => signOut()}>
@@ -639,6 +656,7 @@ export default function App() {
         {activeTab === "materials" && <MaterialsTab data={data} canDelete={permissions.can_delete} insertRow={insertRow} deleteRow={deleteRow} updateRow={updateRow} />}
         {activeTab === "products" && <ProductsTab data={data} canCreate={permissions.can_create_products} canEdit={permissions.can_edit_products} canDelete={permissions.can_delete} hideProfitInfo={!permissions.view_financials} insertRow={insertRow} deleteRow={deleteRow} updateRow={updateRow} />}
         {activeTab === "production" && <ProductionTab data={data} insertRow={insertRow} updateRow={updateRow} deleteRow={deleteRow} canManage={isAdministrativeRole(role)} canViewFinancials={permissions.view_financials} />}
+        {activeTab === "assets" && permissions.assets_view && <AssetsPage data={data} profile={profile} permissions={permissions} refresh={refetchTable} />}
         {activeTab === "sales" && <SalesTab data={data} insertRow={insertRow} updateRow={updateRow} deleteRow={deleteRow} canManage={isAdministrativeRole(role)} />}
         {activeTab === "rentals" && <RentalsTab data={data} insertRow={insertRow} updateRow={updateRow} deleteRow={deleteRow} canManage={isAdministrativeRole(role)} />}
         {activeTab === "suppliers" && <SuppliersTab data={data} insertRow={insertRow} updateRow={updateRow} deleteRow={deleteRow} canManage={isAdministrativeRole(role)} />}
@@ -650,7 +668,7 @@ export default function App() {
         {activeTab === "dailyLabor" && permissions.daily_labor_view && <DailyLaborTab data={data} profile={profile} permissions={permissions} refresh={refetchTable} />}
         {activeTab === "reports" && permissions.view_financials && <ReportsTab data={data} />}
         {activeTab === "auditLog" && permissions.audit_log_view && <AuditLogTab data={data} />}
-        {activeTab === "team" && <TeamTab profiles={data.profiles} refresh={refetchTable} currentProfile={profile} />}
+        {activeTab === "team" && <TeamTab profiles={data.profiles} employees={data.employees} refresh={refetchTable} currentProfile={profile} />}
         {activeTab === "settings" && <SettingsPage currentProfile={profile} onRepaired={() => refetchTable("profiles")} />}
       <Toast type={mutationFeedback.type} message={mutationFeedback.message} onDismiss={() => setMutationFeedback((current) => ({ ...current, message: "" }))} />
     </AppShell>
@@ -697,6 +715,8 @@ function Dashboard({ data, navigate, permissions }) {
       activeEmployees: data.employees.filter((employee) => !["inactive", "suspended"].includes(employee.status)).length,
       pendingPayroll: data.payroll.filter((row) => row.status !== "paid").length,
       todayLabor: data.dailyLabor.filter((row) => row.work_date === today).length,
+      activeAssetAssignments: data.assetAssignments.filter((row) => ["pending_receiver_confirmation", "issued", "partially_returned", "settlement_pending"].includes(row.status)).length,
+      assetAlertCount: data.assetAlerts.length,
     };
   }, [data]);
 
@@ -717,6 +737,7 @@ function Dashboard({ data, navigate, permissions }) {
         <DashboardMetric label="إنتاج اليوم" value={`${fmt(stats.todayProduction)} وحدة`} tone="info" />
         <DashboardMetric label="أوامر هذا الشهر" value={stats.ordersThisMonth} />
         <DashboardMetric label="أصناف منخفضة" value={stats.lowMaterials.length + stats.lowProducts.length} tone={(stats.lowMaterials.length + stats.lowProducts.length) ? "warning" : "success"} />
+        {canGo("assets") && <DashboardMetric label="عهد أصول نشطة" value={stats.activeAssetAssignments} tone={stats.activeAssetAssignments ? "info" : "success"} />}
       </DashboardSection>
 
       {permissions.view_financials && <DashboardSection title="المالية" description="السيولة والربحية والتحصيلات" action={quickAction("reports", "فتح التقارير")}>
@@ -735,7 +756,8 @@ function Dashboard({ data, navigate, permissions }) {
         <div className="dashboard-alerts">
           {stats.lowMaterials.slice(0, 3).map((item) => <div className="dashboard-alert" key={`material-${item.id}`}><AlertCircle size={17} /><span><strong>{item.name}</strong> — الرصيد {fmt(item.stock)} {item.unit}</span></div>)}
           {stats.lowProducts.slice(0, 3).map((item) => <div className="dashboard-alert" key={`product-${item.id}`}><AlertCircle size={17} /><span><strong>{item.name}</strong> — المتاح {fmt(item.stock)} وحدة</span></div>)}
-          {!stats.lowMaterials.length && !stats.lowProducts.length && <div className="dashboard-clear"><CheckCircle2 size={18} /> لا توجد تنبيهات مخزون حرجة حاليًا.</div>}
+          {stats.assetAlertCount > 0 && <div className="dashboard-alert"><AlertCircle size={17}/><span><strong>تنبيهات الأصول والعِدّة</strong> — {stats.assetAlertCount} عنصر يحتاج متابعة</span></div>}
+          {!stats.lowMaterials.length && !stats.lowProducts.length && !stats.assetAlertCount && <div className="dashboard-clear"><CheckCircle2 size={18} /> لا توجد تنبيهات مخزون أو أصول حرجة حاليًا.</div>}
         </div>
       </DashboardSection>
 
@@ -1600,19 +1622,22 @@ const PERMISSION_SECTIONS = [
   { id: "projects", label: "المشاريع والملفات", type: "permission", keys: ACTION_PERMISSIONS.filter((key) => key.startsWith("project")) },
   { id: "payroll", label: "الرواتب", type: "permission", keys: ACTION_PERMISSIONS.filter((key) => key.startsWith("payroll")) },
   { id: "labor", label: "العمالة اليومية", type: "permission", keys: ACTION_PERMISSIONS.filter((key) => key.startsWith("daily_labor")) },
+  { id: "assets", label: "الأصول والعِدّة", type: "permission", keys: ACTION_PERMISSIONS.filter((key) => key.startsWith("assets_")) },
   { id: "audit", label: "التدقيق", type: "permission", keys: ["audit_log_view"] },
 ];
 
-function TeamTab({ profiles, refresh, currentProfile }) {
+function TeamTab({ profiles, employees, refresh, currentProfile }) {
   const [pending, setPending] = useState({});
   const [message, setMessage] = useState({ type: "", text: "" });
   const [openSections, setOpenSections] = useState({});
   const [savingUserId, setSavingUserId] = useState(null);
   const [deletingUserId, setDeletingUserId] = useState(null);
+  const [linkingUserId, setLinkingUserId] = useState(null);
+  const [linkReasons, setLinkReasons] = useState({});
 
   useEffect(() => {
     const initial = {};
-    for (const profile of profiles || []) initial[profile.id] = { role: profile.role, status: profile.status || "active", ...permissionsForProfile(profile) };
+    for (const profile of profiles || []) initial[profile.id] = { role: profile.role, status: profile.status || "active", employee_id: profile.employee_id || "", ...permissionsForProfile(profile) };
     setPending(initial);
     console.info("[permissions] currentState", initial);
   }, [profiles]);
@@ -1628,7 +1653,7 @@ function TeamTab({ profiles, refresh, currentProfile }) {
   }
 
   function itemAllowed(role, section, key) {
-    if (role === "production") return section.type === "page" && PRODUCTION_ALLOWED_PAGES.includes(key);
+    if (role === "production") return (section.type === "page" && PRODUCTION_ALLOWED_PAGES.includes(key)) || (section.type === "permission" && ["assets_view","assets_issue","assets_return"].includes(key));
     if (role === "accountant") return !(section.type === "page" && ["team", "auditLog"].includes(key)) && key !== "audit_log_view";
     return true;
   }
@@ -1707,6 +1732,28 @@ function TeamTab({ profiles, refresh, currentProfile }) {
     setMessage({ type: "success", text: "تم حذف الحساب من النظام بأمان." });
   }
 
+  async function saveEmployeeLink(profileId) {
+    const current = pending[profileId];
+    const reason = (linkReasons[profileId] || "").trim();
+    if (!reason) return setMessage({ type: "error", text: "اكتب سبب ربط هوية الحساب بالموظف." });
+    setMessage({ type: "", text: "" });
+    setLinkingUserId(profileId);
+    const mutationResult = await supabase.rpc("admin_link_profile_employee", {
+      target_user_id: profileId,
+      target_employee_id: current?.employee_id || null,
+      reason,
+    });
+    console.info("[profiles:employee-link] mutationResult", mutationResult);
+    if (mutationResult.error || !mutationResult.data?.ok) {
+      setLinkingUserId(null);
+      return setMessage({ type: "error", text: mutationResult.error?.message || "تعذر حفظ ربط الموظف بالحساب." });
+    }
+    await Promise.all([load(), refresh("employees")]);
+    setLinkReasons((previous) => ({ ...previous, [profileId]: "" }));
+    setLinkingUserId(null);
+    setMessage({ type: "success", text: "تم حفظ رابط الهوية المعياري وتسجيله في سجل التدقيق." });
+  }
+
   if (!profiles) return <Empty text="جارِ التحميل..." />;
   const allOpen = PERMISSION_SECTIONS.every((section) => openSections[section.id]);
   return <div>
@@ -1719,7 +1766,7 @@ function TeamTab({ profiles, refresh, currentProfile }) {
     </div>
     <div className="team-grid">
       {profiles.map((profile) => {
-        const current = pending[profile.id] || { role: profile.role, status: profile.status || "active", ...permissionsForProfile(profile) };
+        const current = pending[profile.id] || { role: profile.role, status: profile.status || "active", employee_id: profile.employee_id || "", ...permissionsForProfile(profile) };
         const protectionReason = identityProtectionReason(currentProfile, profile);
         const protectedFields = Boolean(protectionReason);
         const automaticAccess = isAdministrativeRole(current.role);
@@ -1743,6 +1790,23 @@ function TeamTab({ profiles, refresh, currentProfile }) {
           {protectionReason && <div className="protected-note"><ShieldCheck size={17} /><span><strong>حقول محمية</strong>{protectionReason}</span></div>}
           {current.role === "owner" && <div className="automatic-access-note"><ShieldCheck size={18} /><span><strong>صلاحيات مالك النظام تلقائية</strong>يمتلك جميع صلاحيات النظام من الدور مباشرة ولا يعتمد على Checkboxes مخزنة.</span></div>}
           {current.role === "manager" && <div className="automatic-access-note manager"><ShieldCheck size={18} /><span><strong>صلاحيات تشغيلية كاملة</strong>مدير النظام لا يعتمد على Checkboxes، ولا يمكن لمدير آخر إدارته أو تعديل Audit Log.</span></div>}
+          {currentProfile.role === "owner" && <div className="identity-link-box">
+            <strong>ربط الحساب بموظف</strong>
+            <p>هذا هو الرابط المعياري المستخدم في تأكيد هوية مستلم العهدة، ولا يعتمد على الاسم أو الهاتف.</p>
+            <Field label="الموظف المرتبط">
+              <Select value={current.employee_id || ""} onChange={(event) => patchUser(profile.id, { employee_id: event.target.value })}>
+                <option value="">لا يوجد موظف مرتبط</option>
+                {(employees || []).filter((employee) => employee.status === "active").map((employee) => {
+                  const linkedElsewhere = profiles.some((candidate) => candidate.id !== profile.id && candidate.employee_id === employee.id);
+                  return <option key={employee.id} value={employee.id} disabled={linkedElsewhere}>{employee.full_name}{linkedElsewhere ? " — مرتبط بحساب آخر" : ""}</option>;
+                })}
+              </Select>
+            </Field>
+            <Field label="سبب الربط أو التغيير">
+              <Input value={linkReasons[profile.id] || ""} onChange={(event) => setLinkReasons((previous) => ({ ...previous, [profile.id]: event.target.value }))} placeholder="سبب موثق لسجل التدقيق" />
+            </Field>
+            <Btn variant="ghost" disabled={linkingUserId === profile.id || (current.employee_id || "") === (profile.employee_id || "")} onClick={() => saveEmployeeLink(profile.id)}>{linkingUserId === profile.id ? "جارِ حفظ الربط..." : "حفظ ربط الموظف"}</Btn>
+          </div>}
           {!automaticAccess && <div className="permission-accordion-list">
             {PERMISSION_SECTIONS.map((section) => {
               const enabledCount = section.keys.filter((key) => isChecked(current, section, key)).length;

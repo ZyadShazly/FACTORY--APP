@@ -1,0 +1,113 @@
+# Assets & Tools Management — Phase 1
+
+## النطاق
+
+توفر المرحلة سجل الأصول والتصنيفات والمواقع وإصدار العهد وتأكيدها والإرجاع الجزئي والكامل وتسوية الفقد أو التلف وسجل حركة غير قابل للتعديل. لا تشمل الصيانة المتقدمة أو السيارات أو الإهلاك أو تكامل WhatsApp المدفوع.
+
+## مصدر الحقيقة
+
+`asset_movements` هو مصدر حقيقة الرصيد. حقول `total_quantity` و`available_quantity` و`assigned_quantity` داخل `assets` أرصدة Cached للأداء فقط، وتحدثها Trigger في نفس معاملة الحركة. تعرض `asset_balance_reconciliation()` مقارنة Ledger بالأرصدة المخزنة لاكتشاف أي انحراف دوريًا.
+
+## نموذج الأصل
+
+- `serialized`: سجل لكل قطعة؛ الكمية 1، وSerial/QR فريدان عند وجودهما، وعهدة نشطة واحدة فقط.
+- `quantity`: سجل لصنف كمي يدعم الإصدار والإرجاع الجزئي.
+- لا يتغير `tracking_mode` بعد أول حركة.
+- لا تخفض الكمية عن الرصيد المعين أو المعلق؛ التخفيض Adjustment Ledger موثق فقط.
+
+## دورة العهدة
+
+`draft → pending_receiver_confirmation → issued → partially_returned → fully_returned → closed`
+
+- تلغى `draft` مباشرة.
+- بعد الحجز أو الإصدار لا يوجد انتقال إلى `cancelled`. الاسترجاع الإداري الطارئ يتم عبر `reverse_asset_assignment` وحركات `reversed` كاملة.
+- كل إصدار يقفل صف الأصل ويتحقق من الرصيد والحالة التشغيلية قبل الحركة.
+
+## الإرجاع والتسويات
+
+يمكن إنشاء عدة Return Events، ولا تتجاوز مجموعاتها المتبقي. لا تعود الكمية إلى المتاح قبل تأكيد المستلم الأصلي. الكمية التالفة لا تصبح متاحة. الفقد والسرقة والتلف والشطب تحتاج تسوية، وAccountant لا يعتمد تسوية أنشأها بنفسه.
+
+## التأكيد الخارجي
+
+- Token عشوائي، ولا يخزن سوى SHA-256 hash.
+- الرابط مؤقت ولمرة واحدة، ويعرض صفحة منتهية بعد الاستخدام أو الانتهاء.
+- الاسم والهاتف مقنعان، ولا تعرض التكلفة أو روابط التنقل.
+- خمس محاولات فاشلة تقفل الرابط 15 دقيقة.
+- المرحلة الحالية توفر Copy Message و`wa.me`؛ Provider/Webhook الفعلي مؤجل.
+
+## الصلاحيات
+
+Owner وManager تلقائيًا. Accountant حسب المنح. Production يمكن منحه فقط `assets_view` و`assets_issue` و`assets_return`. حقول الشراء والمورد لا تعاد إلا للإدارة أو حامل `assets_reports`. كل Business Mutation تمر عبر RPC محمية، بينما رفع المرفقات له RLS محدودة على bucket خاص.
+
+## التنبيهات
+
+`asset_alerts` View مشتقة للعهد المتأخرة، التأكيد المعلق، الضمان القريب، والمفقود/المسروق/تحت الصيانة. تتحدث الواجهة عند أي Realtime change في جداول Assets.
+
+## QR Contract
+
+`qr_value` معرف فريد وليس تفويضًا. المسح يفتح `?assetQr=<value>`، وبعد تسجيل الدخول تطبق `assets_view` وتظهر الأوامر حسب الصلاحية. الأصل الكمي يطلب الكمية عند الإصدار.
+
+## Migration
+
+بعد `202607180002_payroll_calendar_foundation.sql` طبّق:
+
+`202607180003_assets_tools_foundation.sql`
+
+إذا كانت Migration السابقة مطبقة بالفعل، طبّق بعدها مباشرة:
+
+`202607180004_fix_assets_pgcrypto_schema.sql`
+
+الـHotfix يؤهل وظائف `pgcrypto` صراحةً داخل schema `extensions`، ويعيد إنشاء RPCs المتأثرة ويصلح Stored Defaults دون إعادة إنشاء الجداول.
+
+ثم طبّق `202607180005_fix_asset_alerts_access.sql` لإتاحة بيانات تنبيهات الأصول الآمنة فقط عبر View منفذة بصلاحيات المالك، مع استمرار حجب `public.assets` المباشر والحقول المالية.
+
+ثم طبّق `202607180006_asset_confirmation_emergency_controls.sql` وبعدها مباشرة `202607180007_bind_asset_employee_profile_identity.sql`. إذا كانت `006` مطبقة سابقًا، فمسار الاسترداد هو تطبيق `007` فقط؛ فهي تسجل الروابط القديمة غير المعيارية، تحيدها، ثم تعيد تعريف RPCs والتأكيدات فوق العلاقة المعيارية.
+
+بعدهما طبّق `202607180008_assets_security_performance_hardening.sql`. تغلق هذه
+الـMigration تنفيذ دوال Triggers والـhelpers الداخلية أمام `PUBLIC` و`anon`
+و`authenticated`، وتثبت `search_path`، وتضيف فهارس مفاتيح الربط الأكثر استخدامًا.
+لا تغيّر صلاحيات Business RPCs التي تستدعيها الواجهة.
+
+### Supabase Advisor — استثناءات تصميم مقبولة
+
+- يبقى `public.assets` مع RLS وبدون سياسات وصول مباشر؛ القراءة تتم عبر RPCs آمنة.
+- يبقى `public.asset_alerts` Security-barrier View منفذًا بصلاحيات المالك، مع
+  `has_permission('assets_view')` وإسقاط آمن من ستة أعمدة فقط.
+- تبقى RPCs الخاصة بمعاينة/تأكيد رابط الحيازة متاحة لـ`anon` عمدًا؛ مع استمرار
+  Token hashing والانتهاء وRate limiting وتسجيل `identity_verified=false`.
+- أي تحذير Advisor خارج جداول ودوال Assets يعد Legacy warning منفصلًا ولا توسع
+  هذه المرحلة نطاقها لمعالجته.
+
+تحذير CORS الخاص بـ`manifest.webmanifest` على Vercel Preview المحمي ناتج عن تحويل الطلب إلى بوابة Vercel Authentication. ملف الـmanifest ومرجعه صالحان؛ لا تُضعف Deployment Protection أو تضف Wildcard CORS، واختبره على نطاق الإنتاج غير المحمي أو بجلسة Vercel/Bypass صالحة.
+
+## نموذج الثقة في التأكيد
+
+- `authenticated_employee`: تأكيد موثق بحساب المستخدم المرتبط بالعهدة.
+- `otp`: محجوز لتكامل فعلي مستقبلًا؛ لا يوجد OTP وهمي أو رمز داخل رسالة الرابط نفسها.
+- `bearer_link`: إثبات حيازة الرابط فقط، وليس تحققًا من هوية الموظف.
+- `admin_override`: إجراء Owner استثنائي موثق بسبب وأثر وفاعل ووقت.
+
+التأكيد الموثق يعتمد حصريًا على العلاقة المعيارية `profiles.employee_id → employees.id`. لا تُستنتج الهوية من الاسم أو البريد أو الهاتف. يربط Owner الحساب بموظف نشط واحد من شاشة الفريق عبر `admin_link_profile_employee` الموثقة، ولا يمكن ربط الموظف بأكثر من حساب. الموظف المرتبط يؤكد بحسابه فقط، بينما يظل رابط الحيازة متاحًا فقط للموظف الذي لا يملك حسابًا مرتبطًا.
+
+تسجل Migration `202607180007_bind_asset_employee_profile_identity.sql` أي روابط قديمة غير معيارية داخل `asset_identity_binding_migration_report` قبل إزالة الرابط غير الآمن. وإذا سبق تسجيل `authenticated_employee` بلا علاقة معيارية، يتحول مؤشر الثقة إلى `bearer_link` مع بقاء التاريخ التشغيلي وتقرير المراجعة وسجل التدقيق.
+
+التحقق الخارجي الإنتاجي بالهاتف يحتاج OTP Provider مستقلًا يرسل الرمز إلى رقم المستلم المحفوظ عبر قناة منفصلة. عند وجود حساب نظام للمستلم يجب ربط `receiver_profile_id` وتفضيل التأكيد بالحساب. تُنشأ الروابط من `VITE_PUBLIC_APP_URL`؛ روابط Vercel Preview المحمية قد لا تفتح للمستلم ولا علاقة لذلك باتصال Supabase Realtime.
+
+## عمليات Owner الطارئة
+
+- إلغاء إصدار معلّق: `pending_receiver_confirmation → reversed` مع إعادة `available` وخفض `assigned` بحركات تعويضية.
+- عكس عهدة صادرة: `issued → reversed` فقط إذا لم توجد إرجاعات أو تسويات لاحقة.
+- إلغاء طلب إرجاع: `pending_receiver_confirmation → cancelled` دون أي حركة رصيد.
+- تأكيد استلام فعلي: Return Event من `pending_receiver_confirmation → confirmed` وتطبيق أثر الإرجاع المعتاد بطريقة `admin_override`.
+
+كل عملية تحتاج سببًا، تحقق Owner صريحًا، Row Locks، Audit Log، وحركات Ledger غير قابلة للتعديل عند وجود أثر مخزني.
+
+## Realtime للأصول
+
+كل جداول Assets مضافة إلى `supabase_realtime`. لأن `public.assets` يظل محجوبًا لحماية الحقول المالية، ينشر Trigger تغييره إلى singleton آمن باسم `asset_realtime_signal`. يشترك العميل في الإشارة ثم يعيد جلب الأصول عبر `get_assets_visible()`؛ وبذلك لا يحتاج Realtime إلى كشف جدول الأصول الخام. الاتصال يعيد إنشاء Channel واحدة بعد إزالة القديمة، مع Backoff وCleanup عند Logout/Unmount وحالة مرئية وزر إعادة محاولة.
+
+ثم تحقق من `asset_balance_reconciliation()`، ومن وجود bucket الخاص `asset-attachments` وسياسات Realtime/RLS.
+
+## قبول التشغيل
+
+اختبر بحسابين: إصدار أصل فردي، أصل كمي جزئي، تأكيد الاستلام، إرجاعين جزئيين، إرجاع كامل، تسوية فقد وسرقة، maker-checker، Realtime، QR، رابط منتهي، Rate Limit، Offline/Retry، وProduction دون حقول مالية. شغّل `npm test` و`npm run build` واختبار RTL على Desktop و375px.

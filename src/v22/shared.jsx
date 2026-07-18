@@ -19,6 +19,7 @@ export const ACTION_PERMISSIONS = [
   "payroll_calendar_view", "payroll_calendar_manage", "payroll_calendar_approve", "payroll_calendar_stale_override",
   "daily_labor_view", "daily_labor_create", "daily_labor_edit", "daily_labor_delete",
   "daily_labor_pay", "audit_log_view",
+  "assets_view", "assets_manage", "assets_issue", "assets_receive", "assets_return", "assets_adjust", "assets_approve_loss", "assets_reports",
 ];
 
 const ACCOUNTANT_DEFAULTS = [
@@ -36,6 +37,7 @@ export function actionPermissions(profile) {
   resolved.audit_log_view = false;
   if (profile?.role === "production") {
     for (const key of ACTION_PERMISSIONS.filter((permission) => permission.startsWith("payroll_calendar_"))) resolved[key] = false;
+    for (const key of ACTION_PERMISSIONS.filter((permission) => permission.startsWith("assets_") && !["assets_view", "assets_issue", "assets_return"].includes(permission))) resolved[key] = false;
   }
   return resolved;
 }
