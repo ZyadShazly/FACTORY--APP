@@ -6,6 +6,8 @@ function normalize(path, transforms) {
   fs.writeFileSync(path, text);
 }
 
+const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 normalize('src/v22/shared.jsx', [
   [/(?:import \{ formatMoney, userFacingError \} from "\.\.\/userExperience";\r?\n)+/g, 'import { formatMoney, userFacingError } from "../userExperience";\n'],
 ]);
@@ -19,9 +21,9 @@ const returnStatus = '<small className="table-sub">الرابط: {confirmationSt
 const assignmentResend = '{a.status==="pending_receiver_confirmation"&&permissions.assets_issue&&<Button variant="ghost" onClick={()=>renewLink(a.id,"issue",a)}><ExternalLink size={14}/> إرسال/إعادة إرسال الرابط</Button>}';
 
 normalize('src/assets/AssetsPage.jsx', [
-  [new RegExp(`(?:${assignmentStatus.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})+`, 'g'), assignmentStatus],
-  [new RegExp(`(?:${returnStatus.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})+`, 'g'), returnStatus],
-  [assignmentResend + assignmentResend, assignmentResend],
+  [new RegExp(`(?:${escapeRegex(assignmentStatus)})+`, 'g'), assignmentStatus],
+  [new RegExp(`(?:${escapeRegex(returnStatus)})+`, 'g'), returnStatus],
+  [new RegExp(`(?:${escapeRegex(assignmentResend)}){2,}`, 'g'), assignmentResend],
 ]);
 
 normalize('src/v22/projectWorkspace.jsx', [
