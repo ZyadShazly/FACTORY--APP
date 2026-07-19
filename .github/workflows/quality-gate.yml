@@ -37,16 +37,12 @@ jobs:
       - name: Build
         id: build
         continue-on-error: true
-        run: |
-          npm run build > build.log 2>&1
-      - name: Prepare build diagnostics
-        if: steps.build.outcome == 'failure'
-        run: tail -n 80 build.log > build-failure.txt
+        run: npm run build > build.log 2>&1
       - uses: actions/upload-artifact@v4
         if: steps.build.outcome == 'failure'
         with:
           name: build-failure
-          path: build-failure.txt
+          path: build.log
       - name: Enforce build result
         if: steps.build.outcome == 'failure'
         run: exit 1
