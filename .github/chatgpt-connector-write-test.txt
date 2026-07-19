@@ -1,2 +1,0 @@
-ChatGPT Codex Connector write test.
-Safe temporary file.
