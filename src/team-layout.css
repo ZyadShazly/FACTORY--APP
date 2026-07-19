@@ -1,0 +1,117 @@
+/* Team & permissions layout hardening.
+   Loaded after the shared styles so legacy Card flex/grid rules cannot squeeze
+   account sections into narrow vertical columns. */
+
+.team-grid {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  gap: 16px !important;
+  width: 100%;
+  min-width: 0;
+}
+
+.team-card {
+  display: block !important;
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  overflow: hidden;
+}
+
+.team-card > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.team-card-head,
+.team-controls,
+.protected-note,
+.automatic-access-note,
+.identity-link-box,
+.permission-accordion-list,
+.team-card-actions {
+  width: 100%;
+}
+
+.team-card-head {
+  flex-wrap: wrap;
+}
+
+.team-identity {
+  flex: 1 1 260px;
+  overflow: hidden;
+}
+
+.team-identity strong,
+.team-identity span,
+.protected-note span,
+.automatic-access-note span,
+.identity-link-box p,
+.permission-options span {
+  writing-mode: horizontal-tb !important;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  white-space: normal;
+}
+
+.team-controls {
+  grid-template-columns: repeat(2, minmax(220px, 1fr)) !important;
+}
+
+.team-controls > *,
+.identity-link-box > * {
+  min-width: 0;
+}
+
+.team-controls input,
+.team-controls select,
+.identity-link-box input,
+.identity-link-box select {
+  width: 100%;
+  min-width: 0;
+}
+
+.identity-link-box {
+  grid-template-columns: repeat(2, minmax(220px, 1fr)) !important;
+}
+
+.permission-options {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)) !important;
+}
+
+.team-card-actions {
+  align-items: center;
+}
+
+@media (min-width: 1180px) {
+  .team-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .team-card.role-owner,
+  .team-card.role-manager,
+  .team-card:has(.identity-link-box),
+  .team-card:has(.permission-accordion-list) {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 760px) {
+  .team-controls,
+  .identity-link-box {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .team-card-head {
+    align-items: flex-start;
+  }
+
+  .role-badge {
+    max-width: 100%;
+  }
+
+  .team-card-actions > button {
+    width: 100%;
+    justify-content: center;
+  }
+}
