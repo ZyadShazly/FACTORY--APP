@@ -50,10 +50,10 @@
 
 ## جاهزية التفعيل
 
-`project_activation_readiness` يعيد checks مسماة للبيانات الأساسية والتواريخ
-ومدير المشروع. فحص `estimated_budget_approval` موجود كعقد توسعة فقط وحالته
-`not_implemented` وغير حاجب في هذا Sprint. لا توجد ميزانية تقديرية أو اعتماد
-وهمي.
+أنشأت Migration `001` عقد الجاهزية الأولي دون ميزانية وهمية. توسع Migration
+`202607190003_project_estimated_budget.sql` نفس الدالة لتجعل اعتماد الميزانية
+حاجبًا للمشاريع الجديدة، مع الحفاظ على إعفاء المشاريع القديمة المخزن وإتاحة
+تجاوز Owner موثق لمرة واحدة.
 
 ## نموذج الإنجاز
 
@@ -113,9 +113,15 @@ source payroll revision، وdedup key. لم يُنفذ حساب شهري أو خ
 دقيقة وعضوية الإدارة عند الحاجة. Trigger/helpers الداخلية مسحوب منها EXECUTE
 لـ`PUBLIC`, `anon`, و`authenticated`. `anon` لا يملك أي وصول للمشاريع.
 
+## الميزانية التقديرية والامتدادات التالية
+
+تنفذ Migration `202607190003_project_estimated_budget.sql` الميزانية التقديرية
+ذات النسخ والاعتماد وحاجز التفعيل. التفاصيل وعقد العهدة النقدية المستقبلية في
+`docs/PROJECT_ESTIMATED_BUDGET.md`.
+
 ## خارج النطاق
 
-Quotations، Estimated Budget الكاملة، Actual Cost allocation المتقدمة، MRP، GL،
+Quotations، Actual Cost allocation المتقدمة، MRP، GL،
 AR، AP، Petty Cash، Cash Custody، forecast، profitability analysis، ومحرك توزيع
 رواتب المصنع لم تُنفذ في هذا PR.
 
