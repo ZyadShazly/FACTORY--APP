@@ -4,9 +4,7 @@ function edit(path, rules) {
   let text = fs.readFileSync(path, 'utf8');
   const original = text;
   for (const rule of rules) {
-    const next = typeof rule.search === 'string'
-      ? text.replace(rule.search, rule.replace)
-      : text.replace(rule.search, rule.replace);
+    const next = text.replace(rule.search, rule.replace);
     if (next === text) console.warn(`[ux-patch] skipped ${path}: ${rule.name}`);
     text = next;
   }
@@ -33,8 +31,7 @@ edit('src/assets/AssetsPage.jsx', [
   { name:'assignment link status', search:'{ASSIGNMENT_STATUS[a.status]}<ConfirmationBadge method={a.confirmation_method}/>', replace:'{ASSIGNMENT_STATUS[a.status]}<ConfirmationBadge method={a.confirmation_method}/><small className="table-sub">الرابط: {confirmationStatusLabel(a)}</small>' },
   { name:'return link status', search:'<td>{r.status}<ConfirmationBadge method={r.confirmation_method}/></td>', replace:'<td>{r.status}<ConfirmationBadge method={r.confirmation_method}/><small className="table-sub">الرابط: {confirmationStatusLabel(r)}</small></td>' },
   { name:'external missing state', search:'if(!id||!secret)return setState({status:"expired"})', replace:'if(!id||!secret)return setState({status:"not_found"})' },
-  { name:'explicit external messages', search:/if\(\["expired","invalid","rate_limited"\]\.includes\(state\.status\)\)return <ExternalState title="الرابط غير متاح" text=\{state\.status==="rate_limited"\?"تم تجاوز عدد المحاولات\. حاول لاحقًا\.":"انتهت صلاحية الرابط أو تم استخدامه من قبل\."\}\/>;
-/, replace:'const linkMessages={not_found:["الرابط غير صحيح","تعذر العثور على عملية مرتبطة بهذا الرابط."],invalid:["الرابط غير صحيح","رمز التأكيد غير صحيح."],expired:["انتهت صلاحية الرابط","انتهت مدة التأكيد وما زالت العملية معلقة. اطلب رابطًا جديدًا."],rate_limited:["تم إيقاف المحاولات مؤقتًا","تم تجاوز عدد المحاولات. حاول لاحقًا."],already_confirmed:["تم التأكيد مسبقًا","هذه العملية مكتملة بالفعل."],already_used:["تم استخدام الرابط","تم استخدام هذا الرابط من قبل."],cancelled:["تم إلغاء العملية","لا يمكن استخدام رابط تابع لعملية ملغاة."],replaced:["تم استبدال الرابط","استخدم آخر رابط تم إرساله."],pending_without_link:["لا يوجد رابط نشط","العملية معلقة لكن لم يتم إنشاء رابط لها."],not_pending:["تغيرت حالة العملية","حدّث الصفحة لمعرفة الحالة الحالية."]};if(linkMessages[state.status])return <ExternalState title={linkMessages[state.status][0]} text={linkMessages[state.status][1]}/>;\n' },
+  { name:'explicit external messages', search:'if(["expired","invalid","rate_limited"].includes(state.status))return <ExternalState title="الرابط غير متاح" text={state.status==="rate_limited"?"تم تجاوز عدد المحاولات. حاول لاحقًا.":"انتهت صلاحية الرابط أو تم استخدامه من قبل."}/>;', replace:'const linkMessages={not_found:["الرابط غير صحيح","تعذر العثور على عملية مرتبطة بهذا الرابط."],invalid:["الرابط غير صحيح","رمز التأكيد غير صحيح."],expired:["انتهت صلاحية الرابط","انتهت مدة التأكيد وما زالت العملية معلقة. اطلب رابطًا جديدًا."],rate_limited:["تم إيقاف المحاولات مؤقتًا","تم تجاوز عدد المحاولات. حاول لاحقًا."],already_confirmed:["تم التأكيد مسبقًا","هذه العملية مكتملة بالفعل."],already_used:["تم استخدام الرابط","تم استخدام هذا الرابط من قبل."],cancelled:["تم إلغاء العملية","لا يمكن استخدام رابط تابع لعملية ملغاة."],replaced:["تم استبدال الرابط","استخدم آخر رابط تم إرساله."],pending_without_link:["لا يوجد رابط نشط","العملية معلقة لكن لم يتم إنشاء رابط لها."],not_pending:["تغيرت حالة العملية","حدّث الصفحة لمعرفة الحالة الحالية."]};if(linkMessages[state.status])return <ExternalState title={linkMessages[state.status][0]} text={linkMessages[state.status][1]}/>;' },
 ]);
 
 edit('src/v22/projects.jsx', [
