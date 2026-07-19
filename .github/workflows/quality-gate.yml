@@ -34,4 +34,11 @@ jobs:
           fi
       - run: npm ci
       - run: npm test
-      - run: npm run build
+      - name: Build
+        run: |
+          if ! npm run build > build.log 2>&1; then
+            echo "BUILD_FAILURE_BEGIN"
+            tail -n 60 build.log
+            echo "BUILD_FAILURE_END"
+            exit 1
+          fi
