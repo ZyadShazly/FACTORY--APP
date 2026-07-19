@@ -58,7 +58,11 @@ begin
 
   perform set_config('app.project_workspace_rpc','on',true);
   update public.projects p
-  set actual_cost = coalesce((select sum(c.amount) from public.project_actual_cost_entries c where c.project_id=p.id and c.status='approved'),0),
+  set actual_cost = coalesce((
+        select sum(c.amount)
+        from public.project_actual_cost_entries c
+        where c.project_id=p.id and c.status='approved'
+      ),0),
       updated_by=actor
   where p.id=saved.project_id;
 
@@ -73,14 +77,16 @@ security definer
 set search_path = public, private, pg_temp
 as $$
 with project_row as (
-  select p.id, coalesce(p.expected_cost,0)::numeric expected_cost,
+  select p.id,
+         coalesce(p.expected_cost,0)::numeric expected_cost,
          coalesce(p.actual_cost,0)::numeric actual_cost,
          coalesce(p.revenue,0)::numeric revenue,
          coalesce(p.effective_progress_percentage,p.progress_percentage,0)::numeric progress_percentage
   from public.projects p
   where p.id=target_project and private.project_can_view(p.id)
 ), approved_budget as (
-  select v.id, coalesce(v.expected_total,0)::numeric expected_total,
+  select v.id,
+         coalesce(v.expected_total_cost,0)::numeric expected_total_cost,
          coalesce(v.target_sale_price,0)::numeric target_sale_price
   from public.project_budget_versions v
   where v.project_id=target_project and v.status='approved'
@@ -91,11 +97,23 @@ with project_row as (
   from public.project_actual_cost_entries
   where project_id=target_project and status='approved'
   group by cost_category
-), category_budget as (
-  select coalesce(i.cost_category,'other') cost_category, sum(coalesce(i.line_total,0))::numeric total
+), normalized_budget_items as (
+  select case
+    when i.category in ('wood','mdf','plywood','hpl','acrylic','glass','metal','paint','electrical_materials','accessories','consumables','other_materials') then 'material'
+    when i.category in ('factory_employees','daily_labor','overtime','technicians','site_labor','temporary_labor') then 'labor'
+    when i.category in ('transportation','delivery','loading','unloading','accommodation','travel','permits','site_expenses') then 'transport'
+    when i.category in ('rented_equipment') then 'rental'
+    when i.category in ('approved_asset_usage_cost','fuel','operation','depreciation_allocation','maintenance_allocation') then 'asset_consumption'
+    when i.category in ('subcontractor') then 'subcontract'
+    else 'other'
+  end cost_category,
+  i.total_with_waste::numeric amount
   from public.project_budget_items i
-  join approved_budget b on b.id=i.version_id
-  group by coalesce(i.cost_category,'other')
+  join approved_budget b on b.id=i.budget_version_id
+), category_budget as (
+  select cost_category, sum(amount)::numeric total
+  from normalized_budget_items
+  group by cost_category
 ), category_keys as (
   select cost_category from category_actual
   union
@@ -105,7 +123,9 @@ with project_row as (
          coalesce(b.total,0) budget,
          coalesce(a.total,0) actual,
          coalesce(a.total,0)-coalesce(b.total,0) variance,
-         case when coalesce(b.total,0)=0 then null else round(((coalesce(a.total,0)-b.total)/b.total)*100,2) end variance_percentage
+         case when coalesce(b.total,0)=0 then null
+              else round(((coalesce(a.total,0)-b.total)/b.total)*100,2)
+         end variance_percentage
   from category_keys k
   left join category_budget b using(cost_category)
   left join category_actual a using(cost_category)
@@ -113,11 +133,12 @@ with project_row as (
 select case when private.actual_cost_has_permission('project_actual_cost_view') then
   jsonb_build_object(
     'project_id',p.id,
-    'estimated_cost',coalesce(b.expected_total,p.expected_cost),
+    'estimated_cost',coalesce(b.expected_total_cost,p.expected_cost),
     'actual_cost',p.actual_cost,
-    'remaining_budget',coalesce(b.expected_total,p.expected_cost)-p.actual_cost,
-    'variance',p.actual_cost-coalesce(b.expected_total,p.expected_cost),
-    'variance_percentage',case when coalesce(b.expected_total,p.expected_cost)=0 then null else round(((p.actual_cost-coalesce(b.expected_total,p.expected_cost))/coalesce(b.expected_total,p.expected_cost))*100,2) end,
+    'remaining_budget',coalesce(b.expected_total_cost,p.expected_cost)-p.actual_cost,
+    'variance',p.actual_cost-coalesce(b.expected_total_cost,p.expected_cost),
+    'variance_percentage',case when coalesce(b.expected_total_cost,p.expected_cost)=0 then null
+      else round(((p.actual_cost-coalesce(b.expected_total_cost,p.expected_cost))/coalesce(b.expected_total_cost,p.expected_cost))*100,2) end,
     'revenue',p.revenue,
     'gross_profit',p.revenue-p.actual_cost,
     'gross_margin_percentage',case when p.revenue=0 then null else round(((p.revenue-p.actual_cost)/p.revenue)*100,2) end,
