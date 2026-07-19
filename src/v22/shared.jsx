@@ -2,6 +2,7 @@ import React from "react";
 import { AlertCircle, CheckCircle2, Loader2, X } from "lucide-react";
 import { formatMoney, userFacingError } from "../userExperience";
 import { formatMoney, userFacingError } from "../userExperience";
+import { formatMoney, userFacingError } from "../userExperience";
 
 export const theme = {
   bg: "var(--color-app-bg)", panel: "var(--color-surface)", panelAlt: "var(--color-surface-muted)", border: "var(--color-border)",
