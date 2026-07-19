@@ -20,8 +20,8 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - name: Apply deterministic UX patch
-        run: node scripts/run-system-ux-patch.mjs
+      - name: Apply resilient UX patch
+        run: node scripts/apply-system-ux-hardening-safe.mjs
       - name: Persist generated source changes
         if: github.event_name == 'push' && github.ref_name == 'agent/system-ux-hardening'
         run: |
