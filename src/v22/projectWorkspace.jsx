@@ -8,6 +8,7 @@ import {
   PROJECT_PRIORITIES, PROJECT_PROGRESS_MODES, projectWorkspaceSummary,
 } from "./projectDomain";
 import { ProjectBudgetTab } from "./projectBudget";
+import { ProjectActualCostTab } from "./projectActualCost";
 import "./projectWorkspace.css";
 
 const TABS = [
@@ -174,7 +175,7 @@ export function ProjectWorkspace({ project, data, profile, permissions, refresh,
     {tab === "expenses" && <LinkedRows title="المصروفات المرتبطة" rows={summary.expenses} empty="لا توجد مصروفات مرتبطة" render={(row)=><><span>{row.category||"مصروف"}</span><small>{row.expense_date||row.created_at?.slice(0,10)} · {permissions.project_financials_view?money(row.amount):"القيمة محجوبة"}</small></>}/>} 
     {tab === "assets" && <LinkedRows title="العُهد والأصول المرتبطة" rows={summary.assignments} empty="لا توجد عهد مفتوحة مرتبطة" render={(row)=><><span>{row.assignment_code||"عهدة"}</span><small>{row.status} · العهدة نفسها ليست تكلفة مشروع</small></>}/>} 
     {tab === "budget" && <ProjectBudgetTab project={project} data={data} permissions={permissions} refresh={refresh}/>}
-    {tab === "actualCost" && <Panel><h3>أساس التكلفة الفعلية الحالي</h3><p className="workspace-note">المصدر الحالي هو `project_costs`. عهدة الأصل ليست تكلفة، والنقد المسلم للموظف يظل رصيد عهدة/ذمة حتى اعتماد سطر تسوية فريد المصدر. لا توجد محاكاة لتوزيع رواتب المصنع أو وحدة عهدة نقدية في هذا الإصدار.</p><PermissionGuard allow={permissions.project_financials_view} fallback={<div className="workspace-no-permission"><ShieldCheck size={24}/>لا تملك صلاحية عرض ماليات المشروع.</div>}><div className="cost-breakdown">{Object.entries({material:"مواد",production:"إنتاج",payroll:"رواتب",daily_labor:"عمالة يومية",expense:"مصروفات",transport:"نقل",other:"أخرى"}).map(([key,label])=><div key={key}><span>{label}</span><b>{money(costsByType[key])}</b></div>)}</div></PermissionGuard></Panel>}
+    {tab === "actualCost" && <PermissionGuard allow={permissions.project_financials_view} fallback={<div className="workspace-no-permission"><ShieldCheck size={24}/>لا تملك صلاحية عرض ماليات المشروع.</div>}><ProjectActualCostTab project={project} profile={profile}/></PermissionGuard>}
     {tab === "reports" && <ComingSoon title="تقارير المشروع المتقدمة" description="التنبؤ والربحية المتقدمة والتقارير المقارنة مؤجلة حتى اكتمال الميزانية والتكلفة الفعلية."/>}
     {tab === "activity" && <ProjectTimeline activities={summary.activities}/>} 
   </div>;
