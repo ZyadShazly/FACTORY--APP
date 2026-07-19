@@ -14,9 +14,9 @@ DECLARE
   v_receipt_item uuid;
   v_invoice uuid;
 BEGIN
-  select id into v_user from public.profiles order by created_at nulls last limit 1;
-  select id into v_project from public.projects order by created_at nulls last limit 1;
-  select id into v_supplier from public.suppliers order by created_at nulls last limit 1;
+  select id into v_user from public.profiles limit 1;
+  select id into v_project from public.projects limit 1;
+  select id into v_supplier from public.suppliers limit 1;
 
   if v_user is null or v_supplier is null then
     raise exception 'Procurement smoke test requires at least one profile and supplier';
