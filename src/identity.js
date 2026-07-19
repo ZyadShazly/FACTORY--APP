@@ -7,7 +7,7 @@ export const SYSTEM_ROLES = Object.freeze({
 
 export const PROTECTED_ROLES = Object.freeze(["owner", "manager"]);
 export const SELF_SIGNUP_ROLES = Object.freeze(["accountant", "production"]);
-export const PRODUCTION_ALLOWED_PAGES = Object.freeze(["inventory", "materials", "products", "production", "assets"]);
+export const PRODUCTION_ALLOWED_PAGES = Object.freeze(["projects", "projectFiles", "inventory", "materials", "products", "production", "assets"]);
 
 export function isAdministrativeRole(role) {
   return role === "owner" || role === "manager";

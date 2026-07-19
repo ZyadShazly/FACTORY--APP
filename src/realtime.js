@@ -3,6 +3,9 @@ export const REALTIME_TABLE_TO_KEY = Object.freeze({
   projects: "projects",
   project_files: "projectFiles",
   project_activities: "projectActivities",
+  project_milestones: "projectMilestones",
+  project_members: "projectMembers",
+  project_realtime_signal: "projectRealtimeSignal",
   employees: "employees",
   payroll: "payroll",
   daily_labor: "dailyLabor",
@@ -38,10 +41,10 @@ export const REALTIME_TABLE_TO_KEY = Object.freeze({
 });
 
 export const TABLES = Object.freeze(
-  { ...Object.fromEntries(Object.entries(REALTIME_TABLE_TO_KEY).filter(([,key])=>key!=="assetRealtimeSignal").map(([table, key]) => [key, table])), assetAlerts: "asset_alerts" }
+  { ...Object.fromEntries(Object.entries(REALTIME_TABLE_TO_KEY).filter(([,key])=>!["assetRealtimeSignal","projectRealtimeSignal"].includes(key)).map(([table, key]) => [key, table])), assetAlerts: "asset_alerts" }
 );
 
-const PRODUCTION_DATA_KEYS = Object.freeze(["materials", "products", "productionOrders"]);
+const PRODUCTION_DATA_KEYS = Object.freeze(["projects", "projectFiles", "projectActivities", "projectMilestones", "projectMembers", "materials", "products", "productionOrders"]);
 const PRODUCTION_ASSET_KEYS = Object.freeze(["assetCategories", "assetLocations", "assets", "assetAssignments", "assetAssignmentItems", "assetReturnEvents", "assetReturnItems", "assetMovements", "assetAttachments", "assetAlerts"]);
 
 export function dataTableKeysForRole(role, assetsAllowed = false) {

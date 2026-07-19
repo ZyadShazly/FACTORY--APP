@@ -77,14 +77,14 @@ function permissionsForProfile(profile) {
   };
   if (profile?.role === "production") {
     const hasSavedPages = Array.isArray(profile?.permissions?.pages);
-    const savedPages = hasSavedPages ? profile.permissions.pages.filter((page) => PRODUCTION_ALLOWED_PAGES.includes(page)) : ["production"];
+    const savedPages = hasSavedPages ? profile.permissions.pages.filter((page) => PRODUCTION_ALLOWED_PAGES.includes(page)) : ["projects", "production"];
     return {
-      pages: savedPages,
+      pages: [...new Set(["projects", ...savedPages])],
       can_delete: false,
       view_financials: false,
       can_create_products: false,
       can_edit_products: false,
-      ...Object.fromEntries(ACTION_PERMISSIONS.map((key) => [key, false])),
+      ...actions,
     };
   }
   const saved = profile?.permissions || {};
@@ -105,7 +105,7 @@ const MATERIAL_UNITS = ["قطعة", "متر", "متر مربع", "متر مكع�
 const EMPTY_DATA = {
   materials: [], materialPurchases: [], products: [], productionOrders: [],
   sales: [], rentals: [], suppliers: [], supplierPayments: [], customers: [], customerReceipts: [], expenses: [],
-  profiles: [], projects: [], projectFiles: [], projectActivities: [], employees: [], payroll: [], dailyLabor: [], projectCosts: [], auditLog: [],
+  profiles: [], projects: [], projectFiles: [], projectActivities: [], projectMilestones: [], projectMembers: [], projectRealtimeSignal: [], employees: [], payroll: [], dailyLabor: [], projectCosts: [], auditLog: [],
   departments: [], workSchedules: [], workScheduleDays: [], holidayCalendar: [], holidayScopes: [],
   assetCategories: [], assetLocations: [], assets: [], assetAssignments: [], assetAssignmentItems: [], assetReturnEvents: [], assetReturnItems: [], assetSettlements: [], assetMovements: [], assetAttachments: [], assetAlerts: [],
 };
@@ -507,13 +507,17 @@ export default function App() {
       setRealtimeStatus("CONNECTING");
 
       const dataChannel = supabase.channel(`factory-data-${session.user.id}`);
-      Object.entries(REALTIME_TABLE_TO_KEY).filter(([, key]) => activeTableKeys.includes(key) || (key === "assetRealtimeSignal" && activeTableKeys.includes("assets"))).forEach(([table, key]) => {
+      Object.entries(REALTIME_TABLE_TO_KEY).filter(([, key]) => activeTableKeys.includes(key) || (key === "assetRealtimeSignal" && activeTableKeys.includes("assets")) || (key === "projectRealtimeSignal" && activeTableKeys.includes("projects"))).forEach(([table, key]) => {
         dataChannel.on("postgres_changes", { event: "*", schema: "public", table }, (payload) => {
           if (disposed || generation !== connectGeneration) return;
           console.info("[Realtime:data] postgres_changes", { table, key, event: payload.eventType });
           if (key === "assetRealtimeSignal") {
             requestTableRefresh("assets");
             if (activeTableKeys.includes("assetAlerts")) requestTableRefresh("assetAlerts");
+            return;
+          }
+          if (key === "projectRealtimeSignal") {
+            requestTableRefresh("projects");
             return;
           }
           requestTableRefresh(key);
@@ -1653,7 +1657,10 @@ function TeamTab({ profiles, employees, refresh, currentProfile }) {
   }
 
   function itemAllowed(role, section, key) {
-    if (role === "production") return (section.type === "page" && PRODUCTION_ALLOWED_PAGES.includes(key)) || (section.type === "permission" && ["assets_view","assets_issue","assets_return"].includes(key));
+    if (role === "production") return (section.type === "page" && PRODUCTION_ALLOWED_PAGES.includes(key)) || (section.type === "permission" && [
+      "assets_view", "assets_issue", "assets_return", "projects_view", "project_files_view",
+      "project_files_upload", "projects_manage_milestones", "projects_update_progress",
+    ].includes(key));
     if (role === "accountant") return !(section.type === "page" && ["team", "auditLog"].includes(key)) && key !== "audit_log_view";
     return true;
   }

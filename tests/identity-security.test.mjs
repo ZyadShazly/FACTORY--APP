@@ -67,7 +67,7 @@ test("hierarchy hotfix protects RPC, trigger, RLS, deletion and audit", async ()
 });
 
 test("production customization stays inside the safe operational boundary", () => {
-  assert.deepEqual([...PRODUCTION_ALLOWED_PAGES], ["inventory", "materials", "products", "production", "assets"]);
+  assert.deepEqual([...PRODUCTION_ALLOWED_PAGES], ["projects", "projectFiles", "inventory", "materials", "products", "production", "assets"]);
   for (const forbidden of ["team", "auditLog", "payroll", "reports", "expenses"]) {
     assert.equal(PRODUCTION_ALLOWED_PAGES.includes(forbidden), false);
   }

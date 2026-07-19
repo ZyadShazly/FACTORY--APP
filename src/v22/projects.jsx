@@ -1,15 +1,13 @@
-import React, { useMemo, useState } from "react";
-import { isAdministrativeRole } from "../identity";
-import { ArrowRight, Calendar, Download, Eye, File, FolderOpen, MapPin, Paperclip, Pencil, Plus, Trash2, Upload } from "lucide-react";
+import React, { useEffect, useMemo, useState } from "react";
+import { Calendar, Download, Eye, File, MapPin, Paperclip, Plus, Trash2, Upload } from "lucide-react";
 import { supabase } from "../supabaseClient";
-import { Button, ConfirmDialog, DataTable, EmptyState, ErrorState, Field, Input, money, number, PageTitle, Panel, PermissionGuard, Select, StatCard, SuccessState, TextArea, Toast, today } from "./shared";
+import { Button, EmptyState, ErrorState, Field, Input, money, number, PageTitle, Panel, PermissionGuard, Select, SuccessState, TextArea, Toast, today } from "./shared";
 import { buildProjectFilePath, FILE_CATEGORIES, isSupportedProjectFile, PROJECT_FILES_ACCEPT, PROJECT_FILES_BUCKET, PROJECT_FILES_TABLE } from "./fileTypes";
 import { syncMutation } from "./mutations";
+import { PROJECT_EXECUTION_STAGES, PROJECT_LIFECYCLES } from "./projectDomain";
+import { ProjectWorkspace } from "./projectWorkspace";
 
-export const PROJECT_STATUSES = {
-  design: "التصميم", approval: "الاعتماد", manufacturing: "التصنيع", painting: "الدهان",
-  installation: "التركيب", delivered: "تم التسليم", on_hold: "متوقف", cancelled: "ملغي",
-};
+export const PROJECT_STATUSES = PROJECT_EXECUTION_STAGES;
 export { FILE_CATEGORIES } from "./fileTypes";
 
 export function ProjectStatusBadge({ status }) {
@@ -22,15 +20,15 @@ export function ProgressBar({ value = 0 }) {
 
 export function ProjectCard({ project, customer, showFinancials, onOpen }) {
   return <button className="project-card" onClick={onOpen}>
-    <div className="project-card-head"><div><small>{project.project_code}</small><h3>{project.project_name}</h3></div><ProjectStatusBadge status={project.status} /></div>
+    <div className="project-card-head"><div><small>{project.project_code}</small><h3>{project.project_name}</h3></div><div className="project-card-badges"><span className={`project-status lifecycle-${project.lifecycle}`}>{PROJECT_LIFECYCLES[project.lifecycle] || "مشروع قائم"}</span><ProjectStatusBadge status={project.execution_stage || project.status} /></div></div>
     <div className="project-meta"><span><MapPin size={14} />{project.location || "بدون موقع"}</span><span><Calendar size={14} />{project.delivery_date || "غير محدد"}</span></div>
     {customer && <div className="project-customer">العميل: {customer.name}</div>}
-    <ProgressBar value={project.progress_percentage} />
+    <ProgressBar value={project.effective_progress_percentage ?? project.progress_percentage} />
     {showFinancials && <div className="project-card-finance"><span>التكلفة الفعلية <b>{money(project.actual_cost)}</b></span><span>الربح <b className={number(project.profit) >= 0 ? "positive" : "negative"}>{money(project.profit)}</b></span></div>}
   </button>;
 }
 
-const emptyProject = { project_code: "", project_name: "", customer_id: "", location: "", start_date: today(), delivery_date: "", status: "design", progress_percentage: 0, expected_cost: 0, revenue: 0, notes: "" };
+const emptyProject = { project_code: "", project_name: "", customer_id: "", location: "", start_date: today(), delivery_date: "", priority:"normal", expected_cost: 0, revenue: 0, notes: "" };
 
 export function ProjectsTab({ data, profile, permissions, refresh, initialProjectId = null }) {
   const [selectedId, setSelectedId] = useState(initialProjectId);
@@ -43,6 +41,7 @@ export function ProjectsTab({ data, profile, permissions, refresh, initialProjec
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const selected = data.projects.find((row) => row.id === selectedId);
+  useEffect(() => { window.scrollTo({ top: 0, behavior: "auto" }); }, [selectedId]);
   const projects = useMemo(() => data.projects.filter((project) => {
     const q = search.trim().toLowerCase();
     return (!q || `${project.project_code} ${project.project_name} ${project.location || ""}`.toLowerCase().includes(q))
@@ -53,19 +52,19 @@ export function ProjectsTab({ data, profile, permissions, refresh, initialProjec
   async function createProject(e) {
     e.preventDefault(); setError(""); setSuccess("");
     const payload = { ...form, customer_id: form.customer_id || null, delivery_date: form.delivery_date || null,
-      progress_percentage: number(form.progress_percentage), expected_cost: number(form.expected_cost), revenue: number(form.revenue), created_by: profile.id };
-    const mutationResult = await supabase.from("projects").insert(payload).select().single();
+      expected_cost: number(form.expected_cost), revenue: number(form.revenue) };
+    const mutationResult = await supabase.rpc("create_project_draft", { payload });
     const result = await syncMutation({ scope:"projects:create", mutationResult, refetch:()=>refresh("projects") });
     if (result.error) return setError(result.error.message);
     const activityRefetchResult = await refresh("projectActivities");
     console.info("[projects:create] activityRefetchResult", activityRefetchResult);
     if (activityRefetchResult?.error) return setError(activityRefetchResult.error.message);
-    setForm(emptyProject); setShowForm(false); setSuccess("تم إنشاء المشروع بنجاح"); setSelectedId(mutationResult.data.id);
+    setForm(emptyProject); setShowForm(false); setSuccess("تم إنشاء مسودة المشروع بنجاح"); setSelectedId(mutationResult.data.id);
   }
 
   if (selected) return <ProjectDetails project={selected} data={data} profile={profile} permissions={permissions} refresh={refresh} onBack={() => setSelectedId(null)} />;
   return <div>
-    <PageTitle eyebrow="V2.2 · إدارة المشروعات" title="المشاريع" description="متابعة كل مشروع من التصميم حتى التسليم مع التكلفة والملفات وسجل النشاط."
+    <PageTitle eyebrow="Project Workspace" title="المشاريع" description="إدارة دورة حياة المشروع ومراحل التنفيذ والفريق والملفات والروابط التشغيلية من مساحة واحدة."
       actions={<PermissionGuard allow={permissions.projects_create}><Button onClick={() => setShowForm(true)}><Plus size={16} /> مشروع جديد</Button></PermissionGuard>} />
     <ErrorState error={error} /><SuccessState message={success} />
     <Panel className="v22-filters">
@@ -90,47 +89,10 @@ export function ProjectsTab({ data, profile, permissions, refresh, initialProjec
   </div>;
 }
 
-function ProjectDetails({ project, data, profile, permissions, refresh, onBack }) {
-  const [editing, setEditing] = useState(false); const [error, setError] = useState(""); const [confirmDelete, setConfirmDelete] = useState(false);
-  const [patch, setPatch] = useState({ status: project.status, progress_percentage: project.progress_percentage, expected_cost: project.expected_cost, revenue: project.revenue, notes: project.notes || "" });
-  const costs = data.projectCosts.filter((c) => c.project_id === project.id);
-  const costsByType = Object.fromEntries(["material","production","payroll","daily_labor","expense","transport","other"].map((type) => [type, costs.filter((c) => c.cost_type === type).reduce((sum, c) => sum + number(c.amount), 0)]));
-  const actual = Object.values(costsByType).reduce((a, b) => a + b, 0);
-  const profit = number(project.revenue) - actual; const margin = number(project.revenue) ? profit / number(project.revenue) * 100 : 0;
-  async function save() {
-    setError(""); const update = { progress_percentage: number(patch.progress_percentage), notes: patch.notes };
-    if (isAdministrativeRole(profile.role)) update.status = patch.status;
-    if (permissions.project_financials_view && profile.role !== "production") Object.assign(update, { expected_cost: number(patch.expected_cost), revenue: number(patch.revenue) });
-    const mutationResult = await supabase.from("projects").update(update).eq("id", project.id); const result = await syncMutation({ scope:"projects:update", mutationResult, refetch:()=>refresh("projects") }); if (result.error) return setError(result.error.message); const activityRefetchResult=await refresh("projectActivities"); console.info("[projects:update] activityRefetchResult",activityRefetchResult); if(activityRefetchResult?.error)return setError(activityRefetchResult.error.message); setEditing(false);
-  }
-  async function remove() { const mutationResult = await supabase.from("projects").delete().eq("id", project.id); const result=await syncMutation({scope:"projects:delete",mutationResult,refetch:()=>refresh("projects")}); if(result.error)return setError(result.error.message); onBack(); }
-  return <div>
-    <PageTitle eyebrow={project.project_code} title={project.project_name} description={project.location || "لا يوجد موقع مسجل"} actions={<><Button variant="ghost" onClick={onBack}><ArrowRight size={16} /> كل المشاريع</Button><Button variant="ghost" onClick={() => setEditing(!editing)}><Pencil size={15} /> تحديث</Button><PermissionGuard allow={permissions.projects_delete}><Button variant="danger" onClick={() => setConfirmDelete(true)}><Trash2 size={15} /> حذف</Button></PermissionGuard></>} />
-    <div className="project-detail-heading"><ProjectStatusBadge status={project.status} /><ProgressBar value={project.progress_percentage} /></div><ErrorState error={error} />
-    {editing && <Panel className="project-edit"><div className="v22-form-grid">
-      <PermissionGuard allow={isAdministrativeRole(profile.role)}><Field label="الحالة"><Select value={patch.status} onChange={(e) => setPatch({ ...patch, status: e.target.value })}>{Object.entries(PROJECT_STATUSES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</Select></Field></PermissionGuard>
-      <Field label="نسبة الإنجاز"><Input type="number" min="0" max="100" value={patch.progress_percentage} onChange={(e) => setPatch({ ...patch, progress_percentage: e.target.value })} /></Field>
-      <PermissionGuard allow={permissions.project_financials_view && profile.role !== "production"}><Field label="التكلفة المتوقعة"><Input type="number" value={patch.expected_cost} onChange={(e) => setPatch({ ...patch, expected_cost: e.target.value })} /></Field><Field label="الإيراد"><Input type="number" value={patch.revenue} onChange={(e) => setPatch({ ...patch, revenue: e.target.value })} /></Field></PermissionGuard>
-      <Field label="الملاحظات" wide><TextArea value={patch.notes} onChange={(e) => setPatch({ ...patch, notes: e.target.value })} /></Field>
-    </div><div className="v22-actions"><Button onClick={save}>حفظ التحديث</Button></div></Panel>}
-    <PermissionGuard allow={permissions.project_financials_view}><div className="v22-grid cols-5 project-stats"><StatCard label="التكلفة المتوقعة" value={money(project.expected_cost)} /><StatCard label="التكلفة الفعلية" value={money(actual)} /><StatCard label="الإيراد" value={money(project.revenue)} /><StatCard label="الربح" value={money(profit)} tone={profit >= 0 ? "positive" : "negative"} /><StatCard label="هامش الربح" value={`${margin.toFixed(1)}%`} /></div></PermissionGuard>
-    <div className="project-detail-grid">
-      <div className="v22-grid"><ProjectTimeline activities={data.projectActivities.filter((a) => a.project_id === project.id)} /><RelatedProjectData project={project} data={data} permissions={permissions} costs={costsByType} /></div>
-      <div><FileUploader project={project} files={data.projectFiles.filter((f) => f.project_id === project.id)} permissions={permissions} profile={profile} refresh={refresh} /></div>
-    </div>
-    <ConfirmDialog open={confirmDelete} danger title="حذف المشروع؟" description="سيتم حذف المشروع وكل الملفات والأنشطة المرتبطة به. لا يمكن التراجع عن ذلك." confirmLabel="حذف نهائي" onCancel={() => setConfirmDelete(false)} onConfirm={remove} />
-  </div>;
-}
+function ProjectDetails(props) { return <ProjectWorkspace {...props} FileUploader={FileUploader} ProjectTimeline={ProjectTimeline}/>; }
 
-function ProjectTimeline({ activities }) {
+export function ProjectTimeline({ activities }) {
   return <Panel><h3 className="v22-section-title">الخط الزمني والنشاط</h3>{activities.length ? <div className="project-timeline">{[...activities].sort((a,b) => new Date(b.created_at)-new Date(a.created_at)).map((a) => <div key={a.id}><i /><div><strong>{a.description}</strong><span>{new Date(a.created_at).toLocaleString("ar-EG")}</span></div></div>)}</div> : <EmptyState title="لا يوجد نشاط بعد" />}</Panel>;
-}
-
-function RelatedProjectData({ project, data, permissions, costs }) {
-  const orders = data.productionOrders.filter((x) => x.project_id === project.id); const labor = data.dailyLabor.filter((x) => x.project_id === project.id); const expenses = data.expenses.filter((x) => x.project_id === project.id);
-  return <Panel><h3 className="v22-section-title">التكلفة والبيانات المرتبطة</h3><div className="related-counts"><span>أوامر الإنتاج <b>{orders.length}</b></span><span>ورديات العمالة <b>{labor.length}</b></span><span>المصروفات <b>{expenses.length}</b></span><span>الملفات <b>{data.projectFiles.filter((f) => f.project_id === project.id).length}</b></span></div>
-    <PermissionGuard allow={permissions.project_financials_view}><div className="cost-breakdown">{Object.entries({ material:"مواد", production:"إنتاج", payroll:"توزيع رواتب", daily_labor:"عمالة يومية", expense:"مصروفات", transport:"نقل", other:"أخرى" }).map(([key,label]) => <div key={key}><span>{label}</span><b>{money(costs[key])}</b></div>)}</div></PermissionGuard>
-  </Panel>;
 }
 
 export function FileUploader({ project, files, permissions, profile, refresh }) {

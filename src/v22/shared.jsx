@@ -14,7 +14,9 @@ export const today = () => new Date().toISOString().slice(0, 10);
 
 export const ACTION_PERMISSIONS = [
   "projects_view", "projects_create", "projects_edit", "projects_delete", "project_files_view",
-  "project_files_upload", "project_files_delete", "project_financials_view", "payroll_view",
+  "project_files_upload", "project_files_delete", "project_financials_view",
+  "projects_manage_lifecycle", "projects_manage_milestones", "projects_manage_team", "projects_update_progress", "projects_close", "projects_override",
+  "payroll_view",
   "payroll_create", "payroll_edit", "payroll_approve", "payroll_bonus_manage", "payroll_mark_paid",
   "payroll_calendar_view", "payroll_calendar_manage", "payroll_calendar_approve", "payroll_calendar_stale_override",
   "daily_labor_view", "daily_labor_create", "daily_labor_edit", "daily_labor_delete",
@@ -38,6 +40,9 @@ export function actionPermissions(profile) {
   if (profile?.role === "production") {
     for (const key of ACTION_PERMISSIONS.filter((permission) => permission.startsWith("payroll_calendar_"))) resolved[key] = false;
     for (const key of ACTION_PERMISSIONS.filter((permission) => permission.startsWith("assets_") && !["assets_view", "assets_issue", "assets_return"].includes(permission))) resolved[key] = false;
+    for (const key of ACTION_PERMISSIONS.filter((permission) => permission.startsWith("project") && !["projects_view", "project_files_view", "project_files_upload", "projects_manage_milestones", "projects_update_progress"].includes(permission))) resolved[key] = false;
+    resolved.projects_view = true;
+    resolved.project_files_view = true;
   }
   return resolved;
 }
