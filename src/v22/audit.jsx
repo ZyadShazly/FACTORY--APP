@@ -12,6 +12,7 @@ const TABLE_LABELS = {
   departments:"الأقسام",work_schedules:"جداول العمل",work_schedule_days:"أيام جداول العمل",
   holiday_calendar:"تقويم العطلات",holiday_scopes:"نطاقات العطلات",
   asset_categories:"تصنيفات الأصول",asset_locations:"مواقع الأصول",assets:"الأصول",asset_assignments:"العهد",asset_assignment_items:"بنود العهد",asset_return_events:"الإرجاعات",asset_return_items:"بنود الإرجاع",asset_settlements:"تسويات الأصول",asset_movements:"حركة الأصول",asset_attachments:"مرفقات الأصول",
+  project_budget_versions:"نسخ ميزانية المشاريع",project_budget_sections:"أقسام الميزانية",project_budget_items:"بنود الميزانية",project_budget_templates:"قوالب الميزانية",
 };
 const ACTION_LABELS = {
   insert:"إضافة", update:"تعديل", delete:"حذف",
@@ -25,6 +26,7 @@ export const PERMISSION_LABELS = {
   project_files_view:"عرض ملفات المشاريع",project_files_upload:"رفع ملفات المشاريع",project_files_delete:"حذف ملفات المشاريع",
   project_financials_view:"عرض ماليات المشاريع",payroll_view:"عرض الرواتب",payroll_create:"إنشاء الرواتب",payroll_edit:"تعديل الرواتب",
   projects_manage_lifecycle:"إدارة دورة حياة المشاريع",projects_manage_milestones:"إدارة مراحل التنفيذ",projects_manage_team:"إدارة فريق المشروع",projects_update_progress:"تحديث إنجاز المشروع",projects_close:"إغلاق المشروع",projects_override:"تجاوز استثنائي للمشروع",
+  project_budget_view:"عرض الميزانية",project_budget_create:"إنشاء نسخة ميزانية",project_budget_edit:"تعديل مسودة الميزانية",project_budget_submit:"إرسال الميزانية للاعتماد",project_budget_approve:"اعتماد الميزانية",project_budget_reject:"رفض الميزانية",project_budget_view_financials:"عرض قيم الميزانية المالية",project_budget_manage_templates:"إدارة قوالب الميزانية",project_budget_override_activation:"تجاوز متطلب الميزانية للتفعيل",
   payroll_approve:"اعتماد الرواتب",payroll_bonus_manage:"إدارة المكافآت",payroll_mark_paid:"صرف الرواتب",
   payroll_calendar_view:"عرض تقويم العمل",payroll_calendar_manage:"إدارة تقويم العمل",
   payroll_calendar_approve:"اعتماد تقويم العمل",payroll_calendar_stale_override:"تجاوز تقادم تقويم مسودة الراتب",
