@@ -42,8 +42,8 @@ edit('src/v22/projects.jsx', [
 
 edit('src/v22/projectWorkspace.jsx', [
   { name:'hide unfinished reports tab', search:'["reports", "التقارير", FileText],\n   ["activity", "سجل النشاط", History],', replace:'["activity", "سجل النشاط", History],' },
-  { name:'collapse management area', search:'<div className="workspace-actions-grid">', replace:'<details className="workspace-management"><summary>إدارة حالة المشروع والإنجاز</summary><div className="workspace-actions-grid">' },
-  { name:'close management area', search:'</PermissionGuard></div>\n       <Panel><h3>آخر النشاط</h3>', replace:'</PermissionGuard></div></details>\n       <Panel><h3>آخر النشاط</h3>' },
+  { name:'normalize management wrapper', search:/(?:<details className="workspace-management"><summary>إدارة حالة المشروع والإنجاز<\/summary>)+<div className="workspace-actions-grid">/, replace:'<details className="workspace-management"><summary>إدارة حالة المشروع والإنجاز</summary><div className="workspace-actions-grid">' },
+  { name:'add management close', search:/<\/PermissionGuard><\/div>(?!<\/details>)\n       <Panel><h3>آخر النشاط<\/h3>/, replace:'</PermissionGuard></div></details>\n       <Panel><h3>آخر النشاط</h3>' },
 ]);
 
 console.log('[ux-patch] completed');
