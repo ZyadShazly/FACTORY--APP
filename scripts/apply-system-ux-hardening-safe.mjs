@@ -15,7 +15,8 @@ function edit(path, rules) {
 }
 
 edit('src/v22/shared.jsx', [
-  { name:'UX import', search:'import { AlertCircle, CheckCircle2, Loader2, X } from "lucide-react";', replace:'import { AlertCircle, CheckCircle2, Loader2, X } from "lucide-react";\nimport { formatMoney, userFacingError } from "../userExperience";' },
+  { name:'normalize UX imports', search:/(?:import \{ formatMoney, userFacingError \} from "\.\.\/userExperience";\n)+/, replace:'import { formatMoney, userFacingError } from "../userExperience";\n' },
+  { name:'UX import', search:/import \{ AlertCircle, CheckCircle2, Loader2, X \} from "lucide-react";\n(?!import \{ formatMoney, userFacingError \})/, replace:'import { AlertCircle, CheckCircle2, Loader2, X } from "lucide-react";\nimport { formatMoney, userFacingError } from "../userExperience";\n' },
   { name:'currency formatter', search:/export const money = \(value\) => `\$\{Number\(value \|\| 0\)\.toLocaleString\("ar-EG", \{ minimumFractionDigits: 2, maximumFractionDigits: 2 \}\)\} ج\.م`;/, replace:'export const money = (value) => formatMoney(value);' },
   { name:'friendly error state', search:'return error ? <div className="v22-alert error"><AlertCircle size={17} />{error}</div> : null;', replace:'return error ? <div className="v22-alert error"><AlertCircle size={17} />{userFacingError(error)}</div> : null;' },
 ]);
@@ -25,6 +26,8 @@ edit('src/v22/payroll.jsx', [
 ]);
 
 edit('src/assets/AssetsPage.jsx', [
+  { name:'normalize assignment link labels', search:/(?:<small className="table-sub">الرابط: \{confirmationStatusLabel\(a\)\}<\/small>)+/g, replace:'<small className="table-sub">الرابط: {confirmationStatusLabel(a)}</small>' },
+  { name:'normalize return link labels', search:/(?:<small className="table-sub">الرابط: \{confirmationStatusLabel\(r\)\}<\/small>)+/g, replace:'<small className="table-sub">الرابط: {confirmationStatusLabel(r)}</small>' },
   { name:'asset UX imports', search:'import{Button,DataTable,EmptyState,ErrorState,Field,Input,PageTitle,Panel,Select,StatCard,SuccessState,TextArea}from"../v22/shared";', replace:'import{Button,DataTable,EmptyState,ErrorState,Field,Input,PageTitle,Panel,Select,StatCard,SuccessState,TextArea,money}from"../v22/shared";\nimport{confirmationStatusLabel,userFacingError}from"../userExperience";' },
   { name:'friendly asset RPC errors', search:/async function rpc\(name,args\)\{const result=await supabase\.rpc\(name,args\);console\.info\(`\[Assets\] \$\{name\}`,result\);if\(result\.error\)throw result\.error;if\(result\.data\?\.ok===false\)throw new Error\(result\.data\.error\|\|"تعذر تنفيذ العملية"\);return result\.data\}/, replace:'async function rpc(name,args){const result=await supabase.rpc(name,args);console.info(`[Assets] ${name}`,result);if(result.error)throw new Error(userFacingError(result.error));if(result.data?.ok===false)throw new Error(userFacingError(result.data.error));return result.data}' },
   { name:'currency report', search:/`\$\{data\.assets\.reduce\(\(s,a\)=>s\+Number\(a\.purchase_cost\|\|0\),0\)\.toLocaleString\('ar-SA'\)\} ر\.س`/, replace:'money(data.assets.reduce((s,a)=>s+Number(a.purchase_cost||0),0))' },
@@ -35,6 +38,7 @@ edit('src/assets/AssetsPage.jsx', [
 ]);
 
 edit('src/v22/projects.jsx', [
+  { name:'normalize result count', search:/(?:<div className="projects-result-count">عدد النتائج: <b>\{projects\.length\}<\/b><\/div>)+/g, replace:'<div className="projects-result-count">عدد النتائج: <b>{projects.length}</b></div>' },
   { name:'stage filter', search:'&& (!status || project.status === status)', replace:'&& (!status || (project.execution_stage || project.status) === status)' },
   { name:'draft button label', search:'<Button type="submit">حفظ المشروع</Button>', replace:'<Button type="submit">إنشاء مسودة المشروع</Button>' },
   { name:'result count', search:'{projects.length ? <div className="projects-grid">', replace:'<div className="projects-result-count">عدد النتائج: <b>{projects.length}</b></div>{projects.length ? <div className="projects-grid">' },
