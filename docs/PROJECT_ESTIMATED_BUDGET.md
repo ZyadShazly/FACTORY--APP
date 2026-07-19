@@ -77,10 +77,10 @@ currency code remains configurable.
 
 ## Approval and activation
 
-Submission requires at least one positive item. Approval locks the project and
-budget, recalculates totals, confirms positive complete totals, supersedes the
-old approved version, and updates the Project Workspace expected cost and target
-sale price atomically.
+Submission requires at least one positive item and calculates the final totals
+before freezing the submitted snapshot. Approval locks the project and budget,
+validates those immutable positive totals, supersedes the old approved version,
+and updates the Project Workspace expected cost and target sale price atomically.
 
 For a new project, `ready_for_activation → active` requires:
 
