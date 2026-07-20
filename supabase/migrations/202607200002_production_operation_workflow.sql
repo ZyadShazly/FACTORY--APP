@@ -15,9 +15,8 @@ as $$
 declare
   actor uuid:=auth.uid();
   role_name text:=public.current_identity_role();
-  current_row public.production_order_operations%rowtype;
+  current_row record;
   saved public.production_order_operations%rowtype;
-  order_status text;
 begin
   if actor is null or role_name not in ('owner','manager','production') then
     raise exception 'Production operation access required';
@@ -32,13 +31,14 @@ begin
     raise exception 'Actual minutes cannot be negative';
   end if;
 
-  select o.*,po.status into current_row,order_status
+  select o.*,po.status as order_status
+  into current_row
   from public.production_order_operations o
   join public.production_orders po on po.id=o.production_order_id
   where o.id=target_operation
   for update of o,po;
 
-  if not found or order_status not in ('released','in_progress') then
+  if not found or current_row.order_status not in ('released','in_progress') then
     raise exception 'Released or in-progress production order required';
   end if;
   if current_row.status in ('completed','skipped') then
