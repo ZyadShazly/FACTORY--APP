@@ -35,7 +35,18 @@ jobs:
             git push
           fi
       - run: npm ci
-      - run: npm test
+      - name: Test
+        id: test
+        continue-on-error: true
+        run: npm test > test.log 2>&1
+      - uses: actions/upload-artifact@v4
+        if: steps.test.outcome == 'failure'
+        with:
+          name: test-failure
+          path: test.log
+      - name: Enforce test result
+        if: steps.test.outcome == 'failure'
+        run: exit 1
       - name: Build
         id: build
         continue-on-error: true
