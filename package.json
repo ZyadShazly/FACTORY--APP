@@ -4,11 +4,11 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "predev": "node scripts/apply-critical-operational-ui.mjs && node scripts/apply-operational-bug-closure.mjs",
+    "predev": "node scripts/apply-critical-operational-ui.mjs && node scripts/apply-operational-bug-closure.mjs && node scripts/apply-reporting-workspace.mjs",
     "dev": "node scripts/dev.mjs",
-    "prebuild": "node scripts/apply-critical-operational-ui.mjs && node scripts/apply-operational-bug-closure.mjs",
+    "prebuild": "node scripts/apply-critical-operational-ui.mjs && node scripts/apply-operational-bug-closure.mjs && node scripts/apply-reporting-workspace.mjs",
     "build": "node scripts/build.mjs",
-    "pretest": "node scripts/apply-critical-operational-ui.mjs && node scripts/apply-operational-bug-closure.mjs",
+    "pretest": "node scripts/apply-critical-operational-ui.mjs && node scripts/apply-operational-bug-closure.mjs && node scripts/apply-reporting-workspace.mjs",
     "test": "node --test tests/*.test.mjs",
     "preview": "vite preview"
   },
