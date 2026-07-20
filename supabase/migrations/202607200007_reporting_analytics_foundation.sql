@@ -86,9 +86,9 @@ begin
       ) x
     ), '[]'::jsonb),
     'actual_cost_by_month', coalesce((
-      select jsonb_agg(to_jsonb(x) order by x.month)
+      select jsonb_agg(to_jsonb(x) order by x.period_month)
       from (
-        select date_trunc('month', cost_date)::date month, sum(amount) amount
+        select date_trunc('month', cost_date)::date as period_month, sum(amount) amount
         from public.project_actual_cost_entries
         where status = 'approved' and cost_date between from_date and to_date
         group by 1
