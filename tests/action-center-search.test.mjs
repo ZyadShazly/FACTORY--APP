@@ -15,7 +15,7 @@ test('action center and search are protected RPCs',()=>{
 });
 
 test('production search is role-scoped and bounded',()=>{
-  assert.match(migration,/role_name in \('owner','manager','accountant','production'\)/i);
+  assert.match(migration,/role_name not in \('owner','manager','accountant','production'\)/i);
   assert.match(migration,/least\(coalesce\(limit_count,20\),50\)/i);
   assert.match(migration,/length\(q\) < 2/i);
   assert.match(migration,/receiver_profile_id=actor or aa\.receiver_employee_id=actor_employee/i);
