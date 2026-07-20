@@ -4,11 +4,11 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "predev": "node scripts/run-system-ux-patch.mjs && node scripts/apply-critical-operational-ui.mjs",
+    "predev": "node scripts/apply-critical-operational-ui.mjs",
     "dev": "node scripts/dev.mjs",
-    "prebuild": "node scripts/run-system-ux-patch.mjs && node scripts/apply-critical-operational-ui.mjs",
+    "prebuild": "node scripts/apply-critical-operational-ui.mjs",
     "build": "node scripts/build.mjs",
-    "pretest": "node scripts/run-system-ux-patch.mjs && node scripts/apply-critical-operational-ui.mjs",
+    "pretest": "node scripts/apply-critical-operational-ui.mjs",
     "test": "node --test tests/*.test.mjs",
     "preview": "vite preview"
   },
