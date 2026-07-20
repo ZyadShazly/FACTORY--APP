@@ -1,0 +1,71 @@
+import React,{useEffect,useState}from"react";
+import{supabase}from"../supabaseClient";
+import{Button,Field,Notice,Panel,friendlyError,inputStyle,money}from"./ui";
+
+const LABEL={draft:"مسودة",submitted:"مرسل للاعتماد",approved:"معتمد",rejected:"مرفوض",converted:"تم التحويل",received:"عرض مستلم",selected:"مختار",partially_received:"استلام جزئي",fully_received:"مستلم بالكامل",invoiced:"مفوتر"};
+const emptyWorkspace={requests:[],request_items:[],quotes:[],quote_items:[],orders:[],order_items:[],receipts:[],receipt_items:[],invoices:[],invoice_lines:[],capabilities:{}};
+
+export function ProcurementWorkspace({data}){
+ const[ws,setWs]=useState(emptyWorkspace);
+ const[inventory,setInventory]=useState({warehouses:[]});
+ const[error,setError]=useState("");const[ok,setOk]=useState("");const[loading,setLoading]=useState(true);
+ const[request,setRequest]=useState({project_id:"",material_id:"",description:"",quantity:"",unit:"قطعة",estimated_unit_cost:"",justification:""});
+ const[quote,setQuote]=useState({request_id:"",supplier_id:"",unit_price:"",currency:"SAR"});
+ const[receipt,setReceipt]=useState({order_id:"",warehouse_id:"",delivery_ref:""});
+ const[invoice,setInvoice]=useState({order_id:"",invoice_number:"",invoice_date:new Date().toISOString().slice(0,10)});
+
+ async function load(){
+  setLoading(true);setError("");
+  const[p,i]=await Promise.all([supabase.rpc("get_procurement_workspace_v2",{target_project:null}),supabase.rpc("get_inventory_workspace")]);
+  if(p.error)setError(friendlyError(p.error));else setWs(p.data||emptyWorkspace);
+  if(i.error)setError(current=>current||friendlyError(i.error));else setInventory(i.data||{warehouses:[]});
+  setLoading(false);
+ }
+ useEffect(()=>{void load()},[]);
+ async function call(name,args,msg){setError("");setOk("");const{error}=await supabase.rpc(name,args);if(error)return setError(friendlyError(error));setOk(msg);await load()}
+
+ async function saveRequest(){
+  if(!request.description.trim()||Number(request.quantity)<=0)return setError("أدخل وصفًا وكمية صحيحة.");
+  await call("save_purchase_request",{payload:{project_id:request.project_id||null,required_date:null,priority:"normal",justification:request.justification,items:[{material_id:request.material_id||null,description:request.description,quantity:Number(request.quantity),unit:request.unit,estimated_unit_cost:Number(request.estimated_unit_cost||0),sequence:1}]}},"تم حفظ طلب الشراء كمسودة.");
+ }
+ async function saveQuote(){
+  const items=ws.request_items.filter(i=>i.purchase_request_id===quote.request_id);
+  if(!quote.request_id||!quote.supplier_id||!items.length)return setError("اختر طلبًا معتمدًا وموردًا.");
+  await call("save_supplier_quote",{payload:{purchase_request_id:quote.request_id,supplier_id:quote.supplier_id,supplier_reference:null,quote_date:new Date().toISOString().slice(0,10),currency:quote.currency,payment_terms:null,delivery_days:null,items:items.map(i=>({purchase_request_item_id:i.id,quantity:Number(i.quantity),unit_price:Number(quote.unit_price||0),discount_amount:0,tax_amount:0}))}},"تم تسجيل عرض المورد.");
+ }
+ async function receiveOrder(){
+  if(!receipt.order_id||!receipt.warehouse_id)return setError("اختر أمر الشراء والمخزن المستلم.");
+  const items=ws.order_items.filter(i=>i.purchase_order_id===receipt.order_id&&Number(i.received_quantity)<Number(i.quantity));
+  if(!items.length)return setError("لا توجد كميات متبقية للاستلام.");
+  await call("confirm_goods_receipt_to_inventory",{payload:{purchase_order_id:receipt.order_id,supplier_delivery_reference:receipt.delivery_ref,notes:null,items:items.map(i=>({purchase_order_item_id:i.id,quantity_received:Number(i.quantity)-Number(i.received_quantity),accepted_quantity:Number(i.quantity)-Number(i.received_quantity),condition:"accepted"}))},target_warehouse:receipt.warehouse_id,target_location:null},"تم تأكيد الاستلام وترحيل الكميات للمخزون في عملية واحدة.");
+ }
+ async function approveInvoice(){
+  const order=ws.orders.find(o=>o.id===invoice.order_id);const items=ws.order_items.filter(i=>i.purchase_order_id===invoice.order_id);
+  if(!order||!invoice.invoice_number||!items.length)return setError("اختر أمر شراء وأدخل رقم الفاتورة.");
+  await call("approve_supplier_invoice",{payload:{invoice_number:invoice.invoice_number,purchase_order_id:invoice.order_id,invoice_date:invoice.invoice_date,due_date:null,notes:null,items:items.map(i=>({purchase_order_item_id:i.id,goods_receipt_item_id:null,description:i.description,quantity:Number(i.quantity),unit_price:Number(i.unit_price),discount_amount:Number(i.discount_amount||0),tax_amount:Number(i.tax_amount||0),budget_item_id:i.budget_item_id||null,milestone_id:i.milestone_id||null}))}},"تم اعتماد الفاتورة وتسجيل التكلفة الفعلية مرة واحدة.");
+ }
+
+ const approvedRequests=ws.requests.filter(r=>r.status==="approved");
+ const receivedQuotes=ws.quotes.filter(q=>["received","selected"].includes(q.status));
+ const receivableOrders=ws.orders.filter(o=>["approved","sent","partially_received"].includes(o.status));
+ const invoiceableOrders=ws.orders.filter(o=>["partially_received","fully_received"].includes(o.status));
+
+ return <div><h2>المشتريات والتوريد</h2><p style={{color:"var(--color-text-muted)"}}>المسار الوحيد المعتمد: طلب شراء ← اعتماد ← عرض مورد ← أمر شراء ← استلام للمخزون ← فاتورة.</p>
+ {error&&<Notice type="error">{error}</Notice>}{ok&&<Notice>{ok}</Notice>}
+ {loading?<Notice>جارِ تحميل دورة المشتريات...</Notice>:<>
+  <Panel title="طلب شراء جديد"><div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"end"}}>
+   <Field label="المشروع"><select style={inputStyle} value={request.project_id} onChange={e=>setRequest({...request,project_id:e.target.value})}><option value="">بدون مشروع</option>{data.projects.map(p=><option key={p.id} value={p.id}>{p.project_name||p.name}</option>)}</select></Field>
+   <Field label="المادة"><select style={inputStyle} value={request.material_id} onChange={e=>setRequest({...request,material_id:e.target.value})}><option value="">اختر</option>{data.materials.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}</select></Field>
+   <Field label="الوصف"><input style={inputStyle} value={request.description} onChange={e=>setRequest({...request,description:e.target.value})}/></Field>
+   <Field label="الكمية"><input type="number" style={inputStyle} value={request.quantity} onChange={e=>setRequest({...request,quantity:e.target.value})}/></Field>
+   <Field label="تكلفة تقديرية"><input type="number" style={inputStyle} value={request.estimated_unit_cost} onChange={e=>setRequest({...request,estimated_unit_cost:e.target.value})}/></Field>
+   <Button onClick={saveRequest}>حفظ المسودة</Button>
+  </div></Panel>
+  <Panel title="طلبات الشراء"><div style={{display:"grid",gap:8}}>{ws.requests.map(r=><div key={r.id} style={{border:"1px solid var(--color-border)",borderRadius:10,padding:10,display:"flex",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}><span><strong>{r.request_number}</strong> — {LABEL[r.status]||r.status}</span><span style={{display:"flex",gap:6}}>{r.status==="draft"&&<Button onClick={()=>call("submit_purchase_request",{target_id:r.id},"تم إرسال الطلب للاعتماد.")}>إرسال</Button>}{r.status==="submitted"&&ws.capabilities.approve_request&&<Button onClick={()=>call("decide_purchase_request",{target_id:r.id,approve:true,reason:null},"تم اعتماد الطلب.")}>اعتماد</Button>}</span></div>)}{!ws.requests.length&&<span>لا توجد طلبات شراء.</span>}</div></Panel>
+  {ws.capabilities.quote&&<Panel title="تسجيل عرض مورد"><div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"end"}}><Field label="الطلب المعتمد"><select style={inputStyle} value={quote.request_id} onChange={e=>setQuote({...quote,request_id:e.target.value})}><option value="">اختر</option>{approvedRequests.map(r=><option key={r.id} value={r.id}>{r.request_number}</option>)}</select></Field><Field label="المورد"><select style={inputStyle} value={quote.supplier_id} onChange={e=>setQuote({...quote,supplier_id:e.target.value})}><option value="">اختر</option>{data.suppliers.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></Field><Field label="سعر الوحدة"><input type="number" style={inputStyle} value={quote.unit_price} onChange={e=>setQuote({...quote,unit_price:e.target.value})}/></Field><Button onClick={saveQuote}>حفظ العرض</Button></div></Panel>}
+  {ws.capabilities.order&&<Panel title="عروض الموردين"><div style={{display:"grid",gap:8}}>{receivedQuotes.map(q=><div key={q.id} style={{display:"flex",justifyContent:"space-between",padding:10,border:"1px solid var(--color-border)",borderRadius:9}}><span>{q.quote_number} — {LABEL[q.status]||q.status}</span>{q.status==="received"&&<Button onClick={()=>call("create_purchase_order_from_quote",{target_quote:q.id},"تم إنشاء أمر الشراء.")}>إنشاء أمر شراء</Button>}</div>)}{!receivedQuotes.length&&<span>لا توجد عروض مستلمة.</span>}</div></Panel>}
+  <Panel title="أوامر الشراء"><div style={{display:"grid",gap:8}}>{ws.orders.map(o=><div key={o.id} style={{padding:10,border:"1px solid var(--color-border)",borderRadius:9}}><strong>{o.order_number}</strong> — {LABEL[o.status]||o.status} — {money(o.total_amount)}</div>)}{!ws.orders.length&&<span>لا توجد أوامر شراء.</span>}</div></Panel>
+  {ws.capabilities.receive&&<Panel title="تأكيد الاستلام والترحيل للمخزون"><div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"end"}}><Field label="أمر الشراء"><select style={inputStyle} value={receipt.order_id} onChange={e=>setReceipt({...receipt,order_id:e.target.value})}><option value="">اختر</option>{receivableOrders.map(o=><option key={o.id} value={o.id}>{o.order_number}</option>)}</select></Field><Field label="المخزن"><select style={inputStyle} value={receipt.warehouse_id} onChange={e=>setReceipt({...receipt,warehouse_id:e.target.value})}><option value="">اختر</option>{inventory.warehouses.map(w=><option key={w.id} value={w.id}>{w.name}</option>)}</select></Field><Field label="مرجع التسليم"><input style={inputStyle} value={receipt.delivery_ref} onChange={e=>setReceipt({...receipt,delivery_ref:e.target.value})}/></Field><Button onClick={receiveOrder}>استلام وترحيل</Button></div></Panel>}
+  {ws.capabilities.invoice&&<Panel title="اعتماد فاتورة المورد"><div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"end"}}><Field label="أمر الشراء المستلم"><select style={inputStyle} value={invoice.order_id} onChange={e=>setInvoice({...invoice,order_id:e.target.value})}><option value="">اختر</option>{invoiceableOrders.map(o=><option key={o.id} value={o.id}>{o.order_number}</option>)}</select></Field><Field label="رقم الفاتورة"><input style={inputStyle} value={invoice.invoice_number} onChange={e=>setInvoice({...invoice,invoice_number:e.target.value})}/></Field><Field label="تاريخ الفاتورة"><input type="date" style={inputStyle} value={invoice.invoice_date} onChange={e=>setInvoice({...invoice,invoice_date:e.target.value})}/></Field><Button onClick={approveInvoice}>اعتماد الفاتورة</Button></div></Panel>}
+ </>}</div>;
+}
