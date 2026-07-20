@@ -1,5 +1,6 @@
 import React from "react";
 import { AlertCircle, CheckCircle2, Loader2, X } from "lucide-react";
+import { formatMoney, userFacingError } from "../userExperience";
 
 export const theme = {
   bg: "var(--color-app-bg)", panel: "var(--color-surface)", panelAlt: "var(--color-surface-muted)", border: "var(--color-border)",
@@ -7,7 +8,7 @@ export const theme = {
   muted: "var(--color-text-muted)", green: "var(--color-success)", red: "var(--color-danger)", blue: "var(--color-info)",
 };
 
-export const money = (value) => `${Number(value || 0).toLocaleString("ar-EG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ج.م`;
+export const money = (value) => formatMoney(value);
 export const number = (value) => Number.isFinite(Number(value)) ? Number(value) : 0;
 export const today = () => new Date().toISOString().slice(0, 10);
 
@@ -87,7 +88,7 @@ export function LoadingState({ text = "جارِ التحميل..." }) {
   return <div className="v22-state"><Loader2 className="spin" size={25} /><span>{text}</span></div>;
 }
 export function ErrorState({ error }) {
-  return error ? <div className="v22-alert error"><AlertCircle size={17} />{error}</div> : null;
+  return error ? <div className="v22-alert error"><AlertCircle size={17} />{userFacingError(error)}</div> : null;
 }
 export function SuccessState({ message }) {
   return message ? <div className="v22-alert success"><CheckCircle2 size={17} />{message}</div> : null;

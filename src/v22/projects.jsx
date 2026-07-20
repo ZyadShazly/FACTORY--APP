@@ -45,7 +45,7 @@ export function ProjectsTab({ data, profile, permissions, refresh, initialProjec
   const projects = useMemo(() => data.projects.filter((project) => {
     const q = search.trim().toLowerCase();
     return (!q || `${project.project_code} ${project.project_name} ${project.location || ""}`.toLowerCase().includes(q))
-      && (!status || project.status === status) && (!customer || project.customer_id === customer)
+      && (!status || (project.execution_stage || project.status) === status) && (!customer || project.customer_id === customer)
       && (!fromDate || project.start_date >= fromDate);
   }), [data.projects, search, status, customer, fromDate]);
 
@@ -73,7 +73,7 @@ export function ProjectsTab({ data, profile, permissions, refresh, initialProjec
       <Select value={customer} onChange={(e) => setCustomer(e.target.value)}><option value="">كل العملاء</option>{data.customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</Select>
       <Input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} aria-label="من تاريخ" />
     </Panel>
-    {projects.length ? <div className="projects-grid">{projects.map((project) => <ProjectCard key={project.id} project={project} customer={data.customers.find((c) => c.id === project.customer_id)} showFinancials={permissions.project_financials_view} onOpen={() => setSelectedId(project.id)} />)}</div> : <Panel><EmptyState title="لا توجد مشاريع مطابقة" description="غيّر عوامل البحث أو أضف مشروعًا جديدًا." /></Panel>}
+    <div className="projects-result-count">عدد النتائج: <b>{projects.length}</b></div>{projects.length ? <div className="projects-grid">{projects.map((project) => <ProjectCard key={project.id} project={project} customer={data.customers.find((c) => c.id === project.customer_id)} showFinancials={permissions.project_financials_view} onOpen={() => setSelectedId(project.id)} />)}</div> : <Panel><EmptyState title="لا توجد مشاريع مطابقة" description="غيّر عوامل البحث أو أضف مشروعًا جديدًا." /></Panel>}
     {showForm && <div className="v22-modal-backdrop"><form className="v22-modal" onSubmit={createProject}>
       <h3>إنشاء مشروع جديد</h3><div className="v22-form-grid">
         <Field label="كود المشروع"><Input required value={form.project_code} onChange={(e) => setForm({ ...form, project_code: e.target.value })} /></Field>
@@ -84,7 +84,7 @@ export function ProjectsTab({ data, profile, permissions, refresh, initialProjec
         <Field label="موعد التسليم"><Input type="date" value={form.delivery_date} onChange={(e) => setForm({ ...form, delivery_date: e.target.value })} /></Field>
         <PermissionGuard allow={permissions.project_financials_view}><Field label="التكلفة المتوقعة"><Input type="number" min="0" value={form.expected_cost} onChange={(e) => setForm({ ...form, expected_cost: e.target.value })} /></Field><Field label="الإيراد"><Input type="number" min="0" value={form.revenue} onChange={(e) => setForm({ ...form, revenue: e.target.value })} /></Field></PermissionGuard>
         <Field label="ملاحظات" wide><TextArea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></Field>
-      </div><ErrorState error={error} /><div className="v22-actions modal-actions"><Button type="button" variant="ghost" onClick={() => setShowForm(false)}>إلغاء</Button><Button type="submit">حفظ المشروع</Button></div>
+      </div><ErrorState error={error} /><div className="v22-actions modal-actions"><Button type="button" variant="ghost" onClick={() => setShowForm(false)}>إلغاء</Button><Button type="submit">إنشاء مسودة المشروع</Button></div>
     </form></div>}
   </div>;
 }

@@ -1,0 +1,50 @@
+name: quality-gate
+
+on:
+  push:
+    branches: [main, agent/system-ux-hardening]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Apply resilient UX patch
+        run: |
+          node scripts/apply-system-ux-hardening-safe.mjs
+          node scripts/normalize-generated-ux.mjs
+      - name: Persist generated source changes
+        if: github.event_name == 'push' && github.ref_name == 'agent/system-ux-hardening'
+        run: |
+          if ! git diff --quiet; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add src
+            git commit -m "refactor: apply system UX hardening"
+            git push
+          fi
+      - run: npm ci
+      - run: npm test
+      - name: Build
+        id: build
+        continue-on-error: true
+        run: npm run build > build.log 2>&1
+      - uses: actions/upload-artifact@v4
+        if: steps.build.outcome == 'failure'
+        with:
+          name: build-failure
+          path: build.log
+      - name: Enforce build result
+        if: steps.build.outcome == 'failure'
+        run: exit 1

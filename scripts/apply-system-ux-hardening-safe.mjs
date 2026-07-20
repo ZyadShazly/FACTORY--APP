@@ -1,0 +1,59 @@
+import fs from 'node:fs';
+
+function edit(path, rules) {
+  let text = fs.readFileSync(path, 'utf8');
+  const original = text;
+  for (const rule of rules) {
+    const next = text.replace(rule.search, rule.replace);
+    if (next === text) console.warn(`[ux-patch] skipped ${path}: ${rule.name}`);
+    text = next;
+  }
+  if (text !== original) {
+    fs.writeFileSync(path, text);
+    console.log(`[ux-patch] updated ${path}`);
+  }
+}
+
+edit('src/v22/shared.jsx', [
+  { name:'normalize UX imports', search:/(?:import \{ formatMoney, userFacingError \} from "\.\.\/userExperience";\n)+/, replace:'import { formatMoney, userFacingError } from "../userExperience";\n' },
+  { name:'UX import', search:/import \{ AlertCircle, CheckCircle2, Loader2, X \} from "lucide-react";\n(?!import \{ formatMoney, userFacingError \})/, replace:'import { AlertCircle, CheckCircle2, Loader2, X } from "lucide-react";\nimport { formatMoney, userFacingError } from "../userExperience";\n' },
+  { name:'currency formatter', search:/export const money = \(value\) => `\$\{Number\(value \|\| 0\)\.toLocaleString\("ar-EG", \{ minimumFractionDigits: 2, maximumFractionDigits: 2 \}\)\} ج\.م`;/, replace:'export const money = (value) => formatMoney(value);' },
+  { name:'friendly error state', search:'return error ? <div className="v22-alert error"><AlertCircle size={17} />{error}</div> : null;', replace:'return error ? <div className="v22-alert error"><AlertCircle size={17} />{userFacingError(error)}</div> : null;' },
+]);
+
+edit('src/v22/payroll.jsx', [
+  { name:'employee deactivation', search:/async function remove\(id\) \{ if\(!window\.confirm\("حذف سجل الموظف\?"\)\) return;[\s\S]*?setSuccess\("تم حذف سجل الموظف بنجاح"\); \}/, replace:'async function remove(id) { if(!window.confirm("سيتم تعطيل الموظف مع الاحتفاظ بكل سجلاته التاريخية. متابعة؟")) return; setError(""); setSuccess(""); const mutationResult=await supabase.rpc("deactivate_employee",{target_employee:id,reason:"تعطيل من شاشة الموظفين"}); const result=await syncMutation({scope:"employees:deactivate",mutationResult,refetch:()=>refresh("employees")}); if(result.error)return setError(result.error); setSuccess("تم تعطيل الموظف مع الاحتفاظ بالسجل التاريخي"); }' },
+]);
+
+edit('src/assets/AssetsPage.jsx', [
+  { name:'normalize assignment link labels', search:/(?:<small className="table-sub">الرابط: \{confirmationStatusLabel\(a\)\}<\/small>)+/g, replace:'<small className="table-sub">الرابط: {confirmationStatusLabel(a)}</small>' },
+  { name:'normalize return link labels', search:/(?:<small className="table-sub">الرابط: \{confirmationStatusLabel\(r\)\}<\/small>)+/g, replace:'<small className="table-sub">الرابط: {confirmationStatusLabel(r)}</small>' },
+  { name:'normalize duplicate renew functions', search:/( async function renewLink\(targetId,kind,assignment\)\{[^\n]+\}\n?){2,}/g, replace:'$1' },
+  { name:'asset UX imports', search:'import{Button,DataTable,EmptyState,ErrorState,Field,Input,PageTitle,Panel,Select,StatCard,SuccessState,TextArea}from"../v22/shared";', replace:'import{Button,DataTable,EmptyState,ErrorState,Field,Input,PageTitle,Panel,Select,StatCard,SuccessState,TextArea,money}from"../v22/shared";\nimport{confirmationStatusLabel,userFacingError}from"../userExperience";' },
+  { name:'friendly asset RPC errors', search:/async function rpc\(name,args\)\{const result=await supabase\.rpc\(name,args\);console\.info\(`\[Assets\] \$\{name\}`,result\);if\(result\.error\)throw result\.error;if\(result\.data\?\.ok===false\)throw new Error\(result\.data\.error\|\|"تعذر تنفيذ العملية"\);return result\.data\}/, replace:'async function rpc(name,args){const result=await supabase.rpc(name,args);console.info(`[Assets] ${name}`,result);if(result.error)throw new Error(userFacingError(result.error));if(result.data?.ok===false)throw new Error(userFacingError(result.data.error));return result.data}' },
+  { name:'currency report', search:/`\$\{data\.assets\.reduce\(\(s,a\)=>s\+Number\(a\.purchase_cost\|\|0\),0\)\.toLocaleString\('ar-SA'\)\} ر\.س`/, replace:'money(data.assets.reduce((s,a)=>s+Number(a.purchase_cost||0),0))' },
+  { name:'assignment link status', search:'{ASSIGNMENT_STATUS[a.status]}<ConfirmationBadge method={a.confirmation_method}/>', replace:'{ASSIGNMENT_STATUS[a.status]}<ConfirmationBadge method={a.confirmation_method}/><small className="table-sub">الرابط: {confirmationStatusLabel(a)}</small>' },
+  { name:'return link status', search:'<td>{r.status}<ConfirmationBadge method={r.confirmation_method}/></td>', replace:'<td>{r.status}<ConfirmationBadge method={r.confirmation_method}/><small className="table-sub">الرابط: {confirmationStatusLabel(r)}</small></td>' },
+  { name:'renew link function', search:/async function executeEmergency\(action\)\{const config=EMERGENCY_ACTIONS\[action\.type\];setBusy\(true\);setError\(""\);try\{const args=\{target_id:action\.targetId,reason:action\.reason\};if\(action\.type==="force_confirm_return"\)args\.physical_receipt_verified=action\.physicalVerified;await rpc\(config\.rpc,args\);await reload\(\);setEmergency\(null\);setSuccess\(config\.success\)\}catch\(e\)\{setError\(e\.message\)\}finally\{setBusy\(false\)\}\}(?!\s*async function renewLink)/, replace:'async function executeEmergency(action){const config=EMERGENCY_ACTIONS[action.type];setBusy(true);setError("");try{const args={target_id:action.targetId,reason:action.reason};if(action.type==="force_confirm_return")args.physical_receipt_verified=action.physicalVerified;await rpc(config.rpc,args);await reload();setEmergency(null);setSuccess(config.success)}catch(e){setError(e.message)}finally{setBusy(false)}}\n async function renewLink(targetId,kind,assignment){setBusy(true);setError("");try{const result=await rpc("renew_asset_confirmation_link",{target_id:targetId,target_kind:kind});if(result.status!=="valid")throw new Error(result.status==="already_confirmed"?"تم تأكيد العملية بالفعل.":"لا يمكن إنشاء رابط لهذه الحالة.");await reload();const base=publicConfirmationBase(import.meta.env.VITE_PUBLIC_APP_URL,location.origin,location.pathname),url=buildConfirmationUrl(base,result.confirmation_token,kind);setShare({url,message:whatsappMessage({code:assignment?.assignment_code||result.assignment_code,url,kind}),phone:assignment?.receiver_phone_snapshot,previewWarning:isPreviewConfirmationUrl(base)});setSuccess("تم إنشاء رابط تأكيد جديد وتسجيل إعادة الإرسال.")}catch(e){setError(userFacingError(e))}finally{setBusy(false)}}' },
+  { name:'assignment resend action', search:'{profile.role==="owner"&&<AssignmentEmergencyActions assignment={a} quantity={quantity} onSelect={setEmergency}/>}','replace':'{a.status==="pending_receiver_confirmation"&&permissions.assets_issue&&<Button variant="ghost" onClick={()=>renewLink(a.id,"issue",a)}><ExternalLink size={14}/> إرسال/إعادة إرسال الرابط</Button>}{profile.role==="owner"&&<AssignmentEmergencyActions assignment={a} quantity={quantity} onSelect={setEmergency}/>}' },
+  { name:'return resend action', search:'<td>{profile.role==="owner"&&<ReturnEmergencyActions event={r} quantity={quantity} onSelect={setEmergency}/>}</td>', replace:'<td><div className="asset-row-actions">{r.status==="pending_receiver_confirmation"&&permissions.assets_return&&<Button variant="ghost" onClick={()=>renewLink(r.id,"return",data.assetAssignments.find(a=>a.id===r.assignment_id))}><ExternalLink size={14}/> إرسال/إعادة إرسال الرابط</Button>}{profile.role==="owner"&&<ReturnEmergencyActions event={r} quantity={quantity} onSelect={setEmergency}/>}</div></td>' },
+  { name:'external missing state', search:'if(!id||!secret)return setState({status:"expired"})', replace:'if(!id||!secret)return setState({status:"not_found"})' },
+  { name:'external query error state', search:'setState(result.error?{status:"expired"}:result.data)', replace:'setState(result.error?{status:"not_found"}:result.data)' },
+  { name:'explicit external messages', search:'if(["expired","invalid","rate_limited"].includes(state.status))return <ExternalState title="الرابط غير متاح" text={state.status==="rate_limited"?"تم تجاوز عدد المحاولات. حاول لاحقًا.":"انتهت صلاحية الرابط أو تم استخدامه من قبل."}/>;', replace:'const linkMessages={not_found:["الرابط غير صحيح","تعذر العثور على عملية مرتبطة بهذا الرابط."],invalid:["الرابط غير صحيح","رمز التأكيد غير صحيح."],expired:["انتهت صلاحية الرابط","انتهت مدة التأكيد وما زالت العملية معلقة. اطلب رابطًا جديدًا."],rate_limited:["تم إيقاف المحاولات مؤقتًا","تم تجاوز عدد المحاولات. حاول لاحقًا."],already_confirmed:["تم التأكيد مسبقًا","هذه العملية مكتملة بالفعل."],already_used:["تم استخدام الرابط","تم استخدام هذا الرابط من قبل."],cancelled:["تم إلغاء العملية","لا يمكن استخدام رابط تابع لعملية ملغاة."],replaced:["تم استبدال الرابط","استخدم آخر رابط تم إرساله."],pending_without_link:["لا يوجد رابط نشط","العملية معلقة لكن لم يتم إنشاء رابط لها."],not_pending:["تغيرت حالة العملية","حدّث الصفحة لمعرفة الحالة الحالية."]};if(linkMessages[state.status])return <ExternalState title={linkMessages[state.status][0]} text={linkMessages[state.status][1]}/>;' },
+]);
+
+edit('src/v22/projects.jsx', [
+  { name:'normalize result count', search:/(?:<div className="projects-result-count">عدد النتائج: <b>\{projects\.length\}<\/b><\/div>)+/g, replace:'<div className="projects-result-count">عدد النتائج: <b>{projects.length}</b></div>' },
+  { name:'stage filter', search:'&& (!status || project.status === status)', replace:'&& (!status || (project.execution_stage || project.status) === status)' },
+  { name:'draft button label', search:'<Button type="submit">حفظ المشروع</Button>', replace:'<Button type="submit">إنشاء مسودة المشروع</Button>' },
+  { name:'result count', search:'{projects.length ? <div className="projects-grid">', replace:'<div className="projects-result-count">عدد النتائج: <b>{projects.length}</b></div>{projects.length ? <div className="projects-grid">' },
+]);
+
+edit('src/v22/projectWorkspace.jsx', [
+  { name:'hide unfinished reports tab', search:'["reports", "التقارير", FileText],\n   ["activity", "سجل النشاط", History],', replace:'["activity", "سجل النشاط", History],' },
+  { name:'normalize management wrapper', search:/(?:<details className="workspace-management"><summary>إدارة حالة المشروع والإنجاز<\/summary>)+<div className="workspace-actions-grid">/, replace:'<details className="workspace-management"><summary>إدارة حالة المشروع والإنجاز</summary><div className="workspace-actions-grid">' },
+  { name:'add management close', search:/<\/PermissionGuard><\/div>\s*<Panel><h3>آخر النشاط<\/h3>/, replace:'</PermissionGuard></div></details>\n       <Panel><h3>آخر النشاط</h3>' },
+  { name:'normalize extra management closes', search:/<\/PermissionGuard><\/div>(?:<\/details>)+\s*<Panel><h3>آخر النشاط<\/h3>/, replace:'</PermissionGuard></div></details>\n       <Panel><h3>آخر النشاط</h3>' },
+]);
+
+console.log('[ux-patch] completed');
