@@ -1,11 +1,11 @@
--- Fix ambiguous PL/pgSQL parameter names in production operation workflow.
+-- Fix ambiguous PL/pgSQL parameter references without changing the public RPC signature.
 begin;
 
 create or replace function public.update_production_operation_status(
   target_operation uuid,
   target_status text,
-  actual_minutes_value numeric default null,
-  operation_note_value text default null
+  actual_minutes numeric default null,
+  operation_note text default null
 )
 returns jsonb
 language plpgsql
@@ -17,6 +17,8 @@ declare
   role_name text:=public.current_identity_role();
   current_row record;
   saved public.production_order_operations%rowtype;
+  v_actual_minutes numeric:=$3;
+  v_operation_note text:=$4;
 begin
   if actor is null or role_name not in ('owner','manager','production') then
     raise exception 'Production operation access required';
@@ -27,7 +29,7 @@ begin
   if target_status='skipped' and role_name not in ('owner','manager') then
     raise exception 'Owner or manager role required to skip an operation';
   end if;
-  if actual_minutes_value is not null and actual_minutes_value<0 then
+  if v_actual_minutes is not null and v_actual_minutes<0 then
     raise exception 'Actual minutes cannot be negative';
   end if;
 
@@ -55,8 +57,8 @@ begin
   set status=target_status,
       started_at=case when target_status='in_progress' then coalesce(p.started_at,now()) else p.started_at end,
       completed_at=case when target_status in ('completed','skipped') then now() else p.completed_at end,
-      actual_minutes=coalesce(actual_minutes_value,p.actual_minutes),
-      note=coalesce(operation_note_value,p.note)
+      actual_minutes=coalesce(v_actual_minutes,p.actual_minutes),
+      note=coalesce(v_operation_note,p.note)
   where p.id=target_operation
   returning p.* into saved;
 
