@@ -3,8 +3,8 @@ begin;
 create or replace function public.update_production_operation_status(
   target_operation uuid,
   target_status text,
-  p_actual_minutes numeric default null,
-  p_operation_note text default null
+  actual_minutes numeric default null,
+  operation_note text default null
 )
 returns jsonb
 language plpgsql
@@ -20,7 +20,7 @@ begin
   end if;
   if target_status not in ('ready','in_progress','completed','skipped') then raise exception 'Invalid operation status'; end if;
   if target_status='skipped' and public.current_identity_role() not in ('owner','manager') then raise exception 'Owner or manager role required to skip an operation'; end if;
-  if p_actual_minutes is not null and p_actual_minutes<0 then raise exception 'Actual minutes cannot be negative'; end if;
+  if $3 is not null and $3<0 then raise exception 'Actual minutes cannot be negative'; end if;
   select o.*,po.status order_status into current_row
   from public.production_order_operations o
   join public.production_orders po on po.id=o.production_order_id
@@ -39,8 +39,8 @@ begin
   set status=target_status,
       started_at=case when target_status='in_progress' then coalesce(o.started_at,now()) else o.started_at end,
       completed_at=case when target_status in ('completed','skipped') then now() else o.completed_at end,
-      actual_minutes=coalesce(p_actual_minutes,o.actual_minutes),
-      note=coalesce(p_operation_note,o.note)
+      actual_minutes=coalesce($3,o.actual_minutes),
+      note=coalesce($4,o.note)
   where o.id=target_operation
   returning o.* into saved;
   if target_status='in_progress' then
