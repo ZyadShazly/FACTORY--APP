@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 
 const ui = fs.readFileSync("src/v22/dailyLabor.jsx", "utf8");
-const migration = fs.readFileSync("supabase/migrations/20260721161000_external_labor_review_workflow.sql", "utf8");
+const migration = fs.readFileSync("supabase/migrations/202607210003_external_labor_review_workflow.sql", "utf8");
 const fix = fs.readFileSync("supabase/migrations/20260721164000_external_labor_payment_parameter_fix.sql", "utf8");
 
 test("external labor requires opening details before approval or payment", () => {
