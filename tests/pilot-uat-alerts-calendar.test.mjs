@@ -17,11 +17,12 @@ test("asset alerts are loaded through a permission-aware RPC", async () => {
   assert.match(app, /key === "assetAlerts"[\s\S]*get_asset_alerts_visible/);
 });
 
-test("calendar warns when there is no active schedule and links to approval", async () => {
+test("calendar warns when there is no active schedule and opens the review workflow", async () => {
   const calendar = await readFile(calendarUrl, "utf8");
   assert.match(calendar, /draftSchedules/);
   assert.match(calendar, /activeSchedules/);
   assert.match(calendar, /لا يوجد جدول عمل مفعّل حاليًا/);
-  assert.match(calendar, /فتح جداول العمل للاعتماد/);
+  assert.match(calendar, /فتح جداول العمل/);
+  assert.match(calendar, /مراجعة جدول العمل قبل القرار/);
   assert.match(calendar, /setView\("schedules"\)/);
 });
