@@ -18,17 +18,65 @@ function patchApp() {
   const path = "src/App.jsx";
   let source = read(path);
 
+  source = replaceRequired(
+    source,
+    'import { EmployeesTab, PayrollTab } from "./v22/payroll";',
+    'import { EmployeesTab } from "./v22/payroll";\nimport { PayrollReviewTab as PayrollTab } from "./v22/PayrollReviewTab";',
+    "payroll review module route"
+  );
+
   if (!source.includes("function authErrorMessage(error)")) {
     source = replaceRequired(
       source,
       "/* ----------------------------- شاشة الدخول والتسجيل ----------------------------- */\nfunction AuthGate",
-      `/* ----------------------------- شاشة الدخول والتسجيل ----------------------------- */\nfunction authErrorMessage(error) {\n  const message = String(error?.message || error || "").toLowerCase();\n  if (message.includes("invalid login credentials")) return "بيانات الدخول غير صحيحة. راجع الإيميل وكلمة السر.";\n  if (message.includes("email not confirmed")) return "لازم تأكد الإيميل الأول، وبعدها سجّل دخول.";\n  if (message.includes("user already registered")) return "الحساب موجود بالفعل. استخدم تسجيل الدخول.";\n  if (message.includes("password") && message.includes("least")) return "كلمة السر أقصر من الحد المطلوب.";\n  if (message.includes("failed to fetch") || message.includes("network") || message.includes("timeout")) return "تعذر الاتصال بالخادم. راجع الإنترنت وحاول مرة أخرى.";\n  return error?.message || "تعذر إتمام العملية. حاول مرة أخرى.";\n}\n\nfunction AuthGate`,
+      `/* ----------------------------- شاشة الدخول والتسجيل ----------------------------- */
+function authErrorMessage(error) {
+  const message = String(error?.message || error || "").toLowerCase();
+  if (message.includes("invalid login credentials")) return "بيانات الدخول غير صحيحة. راجع الإيميل وكلمة السر.";
+  if (message.includes("email not confirmed")) return "لازم تأكد الإيميل الأول، وبعدها سجّل دخول.";
+  if (message.includes("user already registered")) return "الحساب موجود بالفعل. استخدم تسجيل الدخول.";
+  if (message.includes("password") && message.includes("least")) return "كلمة السر أقصر من الحد المطلوب.";
+  if (message.includes("failed to fetch") || message.includes("network") || message.includes("timeout")) return "تعذر الاتصال بالخادم. راجع الإنترنت وحاول مرة أخرى.";
+  return error?.message || "تعذر إتمام العملية. حاول مرة أخرى.";
+}
+
+function AuthGate`,
       "auth error mapper"
     );
   }
 
   const submitPattern = /  async function submit\(\) \{[\s\S]*?\n  \}\n\n  return \(/;
-  const replacement = `  async function submit() {\n    setErr(""); setInfo("");\n    if (!email.trim() || !password) return setErr("اكتب الإيميل وكلمة السر");\n    setBusy(true);\n    try {\n      if (mode === "login") {\n        const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });\n        if (error) setErr(authErrorMessage(error));\n      } else {\n        if (!fullName.trim()) return setErr("اكتب اسمك");\n        const { data: signData, error } = await supabase.auth.signUp({\n          email: email.trim(),\n          password,\n          options: { data: { full_name: fullName.trim(), role } },\n        });\n        if (error) return setErr(authErrorMessage(error));\n        if (signData?.session) {\n          const profileResult = await supabase.rpc("complete_my_profile");\n          if (profileResult.error) setErr(authErrorMessage(profileResult.error));\n        } else {\n          setInfo("تم إنشاء الحساب. افتح الإيميل وأكّد الحساب ثم سجّل دخول.");\n        }\n      }\n    } catch (error) {\n      setErr(authErrorMessage(error));\n    } finally {\n      setBusy(false);\n    }\n  }\n\n  return (`;
+  const replacement = `  async function submit() {
+    setErr(""); setInfo("");
+    if (!email.trim() || !password) return setErr("اكتب الإيميل وكلمة السر");
+    setBusy(true);
+    try {
+      if (mode === "login") {
+        const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+        if (error) setErr(authErrorMessage(error));
+      } else {
+        if (!fullName.trim()) return setErr("اكتب اسمك");
+        const { data: signData, error } = await supabase.auth.signUp({
+          email: email.trim(),
+          password,
+          options: { data: { full_name: fullName.trim(), role } },
+        });
+        if (error) return setErr(authErrorMessage(error));
+        if (signData?.session) {
+          const profileResult = await supabase.rpc("complete_my_profile");
+          if (profileResult.error) setErr(authErrorMessage(profileResult.error));
+        } else {
+          setInfo("تم إنشاء الحساب. افتح الإيميل وأكّد الحساب ثم سجّل دخول.");
+        }
+      }
+    } catch (error) {
+      setErr(authErrorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (`;
   if (!source.includes("options: { data: { full_name: fullName.trim(), role } }")) {
     if (!submitPattern.test(source)) throw new Error("Missing AuthGate submit function");
     source = source.replace(submitPattern, replacement);
@@ -47,8 +95,29 @@ function patchBootstrap() {
     "mutable bootstrap result"
   );
 
-  const oldBlock = `      if (!fetchResult.data) {\n        console.error("[Bootstrap] authenticated user has no profile", { userId });\n        setProfile(null);\n        setStatus("missing-profile");\n        setError("تم تسجيل الدخول، لكن ملف الحساب الإداري غير موجود.");\n        return fetchResult;\n      }`;
-  const newBlock = `      if (!fetchResult.data) {\n        const recoveryResult = await withTimeout(\n          supabase.rpc("complete_my_profile"),\n          undefined,\n          "استغرق استكمال ملف الحساب وقتًا أطول من المتوقع"\n        );\n        if (!recoveryResult.error && recoveryResult.data) {\n          fetchResult = { data: recoveryResult.data, error: null };\n        } else {\n          console.error("[Bootstrap] authenticated user has no profile", { userId, recoveryError: recoveryResult.error });\n          setProfile(null);\n          setStatus("missing-profile");\n          setError("تم تسجيل الدخول، لكن تعذر استكمال ملف الحساب. تواصل مع مدير النظام.");\n          return recoveryResult;\n        }\n      }`;
+  const oldBlock = `      if (!fetchResult.data) {
+        console.error("[Bootstrap] authenticated user has no profile", { userId });
+        setProfile(null);
+        setStatus("missing-profile");
+        setError("تم تسجيل الدخول، لكن ملف الحساب الإداري غير موجود.");
+        return fetchResult;
+      }`;
+  const newBlock = `      if (!fetchResult.data) {
+        const recoveryResult = await withTimeout(
+          supabase.rpc("complete_my_profile"),
+          undefined,
+          "استغرق استكمال ملف الحساب وقتًا أطول من المتوقع"
+        );
+        if (!recoveryResult.error && recoveryResult.data) {
+          fetchResult = { data: recoveryResult.data, error: null };
+        } else {
+          console.error("[Bootstrap] authenticated user has no profile", { userId, recoveryError: recoveryResult.error });
+          setProfile(null);
+          setStatus("missing-profile");
+          setError("تم تسجيل الدخول، لكن تعذر استكمال ملف الحساب. تواصل مع مدير النظام.");
+          return recoveryResult;
+        }
+      }`;
   source = replaceRequired(source, oldBlock, newBlock, "missing profile self recovery");
   write(path, source);
 }
