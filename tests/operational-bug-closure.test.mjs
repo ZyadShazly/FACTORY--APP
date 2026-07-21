@@ -37,19 +37,24 @@ test("asset assignment supports partial return continuation and stable sharing p
   assert.match(assets, /whatsappUrl\(share\.phone,share\.message\)/);
 });
 
-test("employees are suspended instead of deleted and finalized payroll stays immutable", () => {
+test("employee lifecycle is checked and finalized payroll stays immutable", () => {
   const payroll = source("src/v22/payroll.jsx");
   assert.doesNotMatch(payroll, /from\("employees"\)\.delete\(\)/);
-  assert.match(payroll, /update\(\{status:"suspended"\}\)/);
-  assert.match(payroll, /row\.status!=="draft"/);
-  assert.match(payroll, /p\.status==="draft"/);
+  assert.match(payroll, /supabase\.rpc\("set_employee_status"/);
+  assert.match(payroll, /supabase\.rpc\("delete_employee_if_unused"/);
+  assert.match(payroll, /row\.status !== "draft"/);
+  assert.match(payroll, /p\.status === "draft"/);
 });
 
 test("database migration provides defense in depth", () => {
   const migration = source("supabase/migrations/202607200001_operational_bug_closure.sql");
+  const employeeWorkflow = source("supabase/migrations/20260721100000_employee_management_workflow.sql");
+  const deleteGuard = source("supabase/migrations/20260721101000_employee_delete_guard_reconcile.sql");
   assert.match(migration, /create or replace function public\.complete_my_profile\(\)/i);
   assert.match(migration, /grant execute on function public\.complete_my_profile\(\) to authenticated/i);
   assert.match(migration, /prevent_employee_delete_trigger/i);
   assert.match(migration, /prevent_finalized_payroll_delete_trigger/i);
   assert.match(migration, /old\.status <> 'draft'/i);
+  assert.match(employeeWorkflow, /delete_employee_if_unused/i);
+  assert.match(deleteGuard, /Employees cannot be deleted directly/i);
 });
