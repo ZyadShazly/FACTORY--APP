@@ -1,7 +1,7 @@
 -- Employee WhatsApp identity and asset-custody delivery hardening.
 -- Additive and data-preserving: legacy employee rows are not rewritten.
 
-create or replace function public.normalize_employee_phone(input_phone text)
+create or replace function public.normalize_employee_phone(value text)
 returns text
 language plpgsql
 immutable
@@ -11,7 +11,7 @@ as $$
 declare
   normalized text;
 begin
-  normalized := regexp_replace(btrim(input_phone), '[^0-9+]', '', 'g');
+  normalized := regexp_replace(btrim(value), '[^0-9+]', '', 'g');
   if normalized like '00%' then
     normalized := '+' || substr(normalized, 3);
   end if;
