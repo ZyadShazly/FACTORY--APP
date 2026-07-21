@@ -59,3 +59,15 @@ jobs:
       - name: Enforce build result
         if: steps.build.outcome == 'failure'
         run: exit 1
+      - name: Capture generated source diff
+        if: always()
+        run: |
+          git status --short
+          git diff --binary > generated-source.diff
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: generated-source-diff
+          path: generated-source.diff
+      - name: Enforce clean tracked tree
+        run: node scripts/assert-clean-working-tree.mjs
