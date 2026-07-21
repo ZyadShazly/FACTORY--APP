@@ -68,24 +68,40 @@ function patchAssets() {
 function patchPayroll() {
   const path = "src/v22/payroll.jsx";
   let source = read(path);
-  source = replaceRequired(
-    source,
-    "async function remove(id) { if(!window.confirm(\"حذف سجل الموظف؟\")) return; setError(\"\"); setSuccess(\"\"); const mutationResult=await supabase.from(\"employees\").delete().eq(\"id\",id); const result=await syncMutation({scope:\"employees:delete\",mutationResult,refetch:()=>refresh(\"employees\")}); if(result.error)return setError(result.error.message); setSuccess(\"تم حذف سجل الموظف بنجاح\"); }",
-    "async function remove(id) { if(!window.confirm(\"إيقاف الموظف؟ سيظل تاريخه والعهد والرواتب محفوظة.\")) return; setError(\"\"); setSuccess(\"\"); const mutationResult=await supabase.from(\"employees\").update({status:\"suspended\"}).eq(\"id\",id); const result=await syncMutation({scope:\"employees:suspend\",mutationResult,refetch:()=>refresh(\"employees\")}); if(result.error)return setError(result.error.message); setSuccess(\"تم إيقاف الموظف مع الحفاظ على كل السجلات المرتبطة.\"); }",
-    "employee soft delete"
-  );
-  source = replaceRequired(
-    source,
-    "async function remove(row){if(!window.confirm(\"حذف مسير الراتب؟\"))return;setError(\"\");setSuccess(\"\");const mutationResult=await supabase.from(\"payroll\").delete().eq(\"id\",row.id);",
-    "async function remove(row){if(row.status!==\"draft\")return setError(\"لا يمكن حذف راتب معتمد أو مدفوع. استخدم مسار العكس أو التصحيح.\");if(!window.confirm(\"حذف مسودة الراتب؟\"))return;setError(\"\");setSuccess(\"\");const mutationResult=await supabase.from(\"payroll\").delete().eq(\"id\",row.id);",
-    "final payroll delete guard"
-  );
-  source = replaceRequired(
-    source,
-    "{isAdministrativeRole(profile.role)&&<button className=\"v22-icon-button danger\" onClick={()=>remove(p)}><Trash2 size={15}/></button>}",
-    "{isAdministrativeRole(profile.role)&&p.status===\"draft\"&&<button className=\"v22-icon-button danger\" onClick={()=>remove(p)}><Trash2 size={15}/></button>}",
-    "draft payroll delete button"
-  );
+
+  if (!source.includes('employee_dependency_summary')) {
+    source = replaceRequired(
+      source,
+      "async function remove(id) { if(!window.confirm(\"حذف سجل الموظف؟\")) return; setError(\"\"); setSuccess(\"\"); const mutationResult=await supabase.from(\"employees\").delete().eq(\"id\",id); const result=await syncMutation({scope:\"employees:delete\",mutationResult,refetch:()=>refresh(\"employees\")}); if(result.error)return setError(result.error.message); setSuccess(\"تم حذف سجل الموظف بنجاح\"); }",
+      "async function remove(id) { if(!window.confirm(\"إيقاف الموظف؟ سيظل تاريخه والعهد والرواتب محفوظة.\")) return; setError(\"\"); setSuccess(\"\"); const mutationResult=await supabase.from(\"employees\").update({status:\"suspended\"}).eq(\"id\",id); const result=await syncMutation({scope:\"employees:suspend\",mutationResult,refetch:()=>refresh(\"employees\")}); if(result.error)return setError(result.error.message); setSuccess(\"تم إيقاف الموظف مع الحفاظ على كل السجلات المرتبطة.\"); }",
+      "employee soft delete"
+    );
+  }
+
+  if (!source.includes('row.status !== "draft"')) {
+    const modernRemove = 'async function remove(row) { if (!window.confirm("حذف مسير الراتب؟")) return;';
+    const guardedRemove = 'async function remove(row) { if (row.status !== "draft") return setError("لا يمكن حذف راتب معتمد أو مدفوع. استخدم مسار العكس أو التصحيح."); if (!window.confirm("حذف مسودة الراتب؟")) return;';
+    if (source.includes(modernRemove)) source = source.replace(modernRemove, guardedRemove);
+    else source = replaceRequired(
+      source,
+      "async function remove(row){if(!window.confirm(\"حذف مسير الراتب؟\"))return;setError(\"\");setSuccess(\"\");const mutationResult=await supabase.from(\"payroll\").delete().eq(\"id\",row.id);",
+      "async function remove(row){if(row.status!==\"draft\")return setError(\"لا يمكن حذف راتب معتمد أو مدفوع. استخدم مسار العكس أو التصحيح.\");if(!window.confirm(\"حذف مسودة الراتب؟\"))return;setError(\"\");setSuccess(\"\");const mutationResult=await supabase.from(\"payroll\").delete().eq(\"id\",row.id);",
+      "final payroll delete guard"
+    );
+  }
+
+  if (!source.includes('isAdministrativeRole(profile.role) && p.status === "draft"')) {
+    const modernButton = 'isAdministrativeRole(profile.role) && <button className="v22-icon-button danger" onClick={() => remove(p)}>';
+    const guardedButton = 'isAdministrativeRole(profile.role) && p.status === "draft" && <button className="v22-icon-button danger" onClick={() => remove(p)}>';
+    if (source.includes(modernButton)) source = source.replace(modernButton, guardedButton);
+    else source = replaceRequired(
+      source,
+      "{isAdministrativeRole(profile.role)&&<button className=\"v22-icon-button danger\" onClick={()=>remove(p)}><Trash2 size={15}/></button>}",
+      "{isAdministrativeRole(profile.role)&&p.status===\"draft\"&&<button className=\"v22-icon-button danger\" onClick={()=>remove(p)}><Trash2 size={15}/></button>}",
+      "draft payroll delete button"
+    );
+  }
+
   write(path, source);
 }
 
