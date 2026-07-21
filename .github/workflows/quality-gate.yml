@@ -2,7 +2,7 @@ name: quality-gate
 
 on:
   push:
-    branches: [main, agent/system-ux-hardening]
+    branches: [main, agent/system-ux-hardening, chore/materialize-generated-source]
   pull_request:
     branches: [main]
 
@@ -59,6 +59,16 @@ jobs:
       - name: Enforce build result
         if: steps.build.outcome == 'failure'
         run: exit 1
+      - name: Materialize current generated source once
+        if: github.event_name == 'push' && github.ref_name == 'chore/materialize-generated-source'
+        run: |
+          if ! git diff --quiet -- src; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add src
+            git commit -m "refactor: materialize generated application source"
+            git push
+          fi
       - name: Capture generated source diff
         if: always()
         run: |
