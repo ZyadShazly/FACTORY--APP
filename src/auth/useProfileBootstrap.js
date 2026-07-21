@@ -39,7 +39,7 @@ export function useProfileBootstrap({ supabase, demo = false, demoProfile = null
       setError("");
     }
     try {
-      const fetchResult = await withTimeout(
+      let fetchResult = await withTimeout(
         supabase.from("profiles").select("*").eq("id", userId).maybeSingle(),
         undefined,
         "استغرق تحميل بيانات الحساب وقتًا أطول من المتوقع"
@@ -48,11 +48,20 @@ export function useProfileBootstrap({ supabase, demo = false, demoProfile = null
       if (fetchResult.error) throw fetchResult.error;
 
       if (!fetchResult.data) {
-        console.error("[Bootstrap] authenticated user has no profile", { userId });
-        setProfile(null);
-        setStatus("missing-profile");
-        setError("تم تسجيل الدخول، لكن ملف الحساب الإداري غير موجود.");
-        return fetchResult;
+        const recoveryResult = await withTimeout(
+          supabase.rpc("complete_my_profile"),
+          undefined,
+          "استغرق استكمال ملف الحساب وقتًا أطول من المتوقع"
+        );
+        if (!recoveryResult.error && recoveryResult.data) {
+          fetchResult = { data: recoveryResult.data, error: null };
+        } else {
+          console.error("[Bootstrap] authenticated user has no profile", { userId, recoveryError: recoveryResult.error });
+          setProfile(null);
+          setStatus("missing-profile");
+          setError("تم تسجيل الدخول، لكن تعذر استكمال ملف الحساب. تواصل مع مدير النظام.");
+          return recoveryResult;
+        }
       }
 
       if (!isActiveProfile(fetchResult.data)) {

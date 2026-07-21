@@ -11,7 +11,8 @@ import {
 } from "recharts";
 import { ACTION_PERMISSIONS, actionPermissions, Toast } from "./v22/shared";
 import { ProjectsTab, ProjectFilesHub } from "./v22/projects";
-import { EmployeesTab, PayrollTab } from "./v22/payroll";
+import { EmployeesTab } from "./v22/payroll";
+import { PayrollReviewTab as PayrollTab } from "./v22/PayrollReviewTab";
 import { DailyLaborTab } from "./v22/dailyLabor";
 import { AuditLogTab, PERMISSION_LABELS } from "./v22/audit";
 import { demoData, demoProfile } from "./v22/demoData";
@@ -27,6 +28,11 @@ import { AppShell } from "./layout/AppShell";
 import { SettingsPage } from "./settings/SettingsPage";
 import { WorkCalendarTab } from "./v23/workCalendar";
 import { AssetExternalConfirmation, AssetsPage } from "./assets/AssetsPage";
+import { ReportingWorkspace } from "./reporting/ReportingWorkspace";
+import { InventoryWorkspace } from "./operational/InventoryWorkspace";
+import { MaterialsCatalogWorkspace } from "./operational/MaterialsCatalogWorkspace";
+import { ProductionWorkspace } from "./operational/ProductionWorkspace";
+import { ProcurementWorkspace } from "./operational/ProcurementWorkspace";
 
 const V22_DEMO = (import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEMO === "true") && new URLSearchParams(window.location.search).get("demo") === "v22";
 const DEMO_ROLE = ["owner", "manager", "accountant", "production"].includes(new URLSearchParams(window.location.search).get("role")) ? new URLSearchParams(window.location.search).get("role") : "owner";
@@ -138,8 +144,10 @@ async function fetchTableRows(key, table) {
   let fetchResult;
   try {
   if (key === "projects") fetchResult = await withTimeout(supabase.rpc("get_projects_visible"), undefined, `انتهت مهلة تحميل ${PAGE_LABELS[key] || table}`);
+  else if (key === "productionOrders") fetchResult = await withTimeout(supabase.rpc("get_production_orders_visible"), undefined, `انتهت مهلة تحميل ${PAGE_LABELS[key] || table}`);
   else if (key === "assets") fetchResult = await withTimeout(supabase.rpc("get_assets_visible"), undefined, `انتهت مهلة تحميل ${PAGE_LABELS[key] || table}`);
   else if (key === "payroll") fetchResult = await withTimeout(supabase.rpc("get_payroll_visible"), undefined, `انتهت مهلة تحميل ${PAGE_LABELS[key] || table}`);
+  else if (key === "assetAlerts") fetchResult = await withTimeout(supabase.rpc("get_asset_alerts_visible"), undefined, "انتهت مهلة تحميل تنبيهات الأصول");
   else if (key === "auditLog") {
     fetchResult = await withTimeout(supabase
       .from(table)
@@ -290,6 +298,16 @@ function SearchBox({ value, onChange, placeholder }) {
 }
 
 /* ----------------------------- شاشة الدخول والتسجيل ----------------------------- */
+function authErrorMessage(error) {
+  const message = String(error?.message || error || "").toLowerCase();
+  if (message.includes("invalid login credentials")) return "بيانات الدخول غير صحيحة. راجع الإيميل وكلمة السر.";
+  if (message.includes("email not confirmed")) return "لازم تأكد الإيميل الأول، وبعدها سجّل دخول.";
+  if (message.includes("user already registered")) return "الحساب موجود بالفعل. استخدم تسجيل الدخول.";
+  if (message.includes("password") && message.includes("least")) return "كلمة السر أقصر من الحد المطلوب.";
+  if (message.includes("failed to fetch") || message.includes("network") || message.includes("timeout")) return "تعذر الاتصال بالخادم. راجع الإنترنت وحاول مرة أخرى.";
+  return error?.message || "تعذر إتمام العملية. حاول مرة أخرى.";
+}
+
 function AuthGate({ notice = "" }) {
   const [mode, setMode] = useState("login");
   const [fullName, setFullName] = useState("");
@@ -307,22 +325,24 @@ function AuthGate({ notice = "" }) {
     try {
       if (mode === "login") {
         const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
-        if (error) setErr(error.message);
+        if (error) setErr(authErrorMessage(error));
       } else {
-        if (!fullName.trim()) { setBusy(false); return setErr("اكتب اسمك"); }
-        const { data: signData, error } = await supabase.auth.signUp({ email: email.trim(), password });
-        if (error) { setBusy(false); return setErr(error.message); }
-        const userId = signData?.user?.id;
-        if (userId) {
-          const profileMutationResult = await supabase.from("profiles").insert({ id: userId, full_name: fullName.trim(), email: email.trim(), role });
-          console.info("[profiles:signup] mutationResult", profileMutationResult);
-          const profErr = profileMutationResult.error;
-          if (profErr) setErr("تم إنشاء الحساب لكن حصل خطأ في حفظ الصفة: " + profErr.message);
-        }
-        if (!signData?.session) {
-          setInfo("تم إنشاء الحساب. لو النظام محتاج تأكيد إيميل، افتح الإيميل بتاعك وأكّده ثم سجّل دخول.");
+        if (!fullName.trim()) return setErr("اكتب اسمك");
+        const { data: signData, error } = await supabase.auth.signUp({
+          email: email.trim(),
+          password,
+          options: { data: { full_name: fullName.trim(), role } },
+        });
+        if (error) return setErr(authErrorMessage(error));
+        if (signData?.session) {
+          const profileResult = await supabase.rpc("complete_my_profile");
+          if (profileResult.error) setErr(authErrorMessage(profileResult.error));
+        } else {
+          setInfo("تم إنشاء الحساب. افتح الإيميل وأكّد الحساب ثم سجّل دخول.");
         }
       }
+    } catch (error) {
+      setErr(authErrorMessage(error));
     } finally {
       setBusy(false);
     }
@@ -654,12 +674,12 @@ export default function App() {
         {activeTab === "dashboard" && <Dashboard data={data} navigate={setTab} permissions={permissions} />}
         {activeTab === "projects" && <ProjectsTab data={data} profile={profile} permissions={permissions} refresh={refetchTable} />}
         {activeTab === "projectFiles" && <ProjectFilesHub data={data} permissions={permissions} refresh={refetchTable} />}
-        {activeTab === "inventory" && <InventoryTab data={data} />}
-        {activeTab === "purchases" && <PurchasesTab data={data} insertRow={insertRow} deleteRow={deleteRow} canDelete={permissions.can_delete} />}
+        {activeTab === "inventory" && <InventoryTab canViewFinancials={permissions.view_financials} />}
+        {activeTab === "purchases" && <ProcurementWorkspace data={data} />}
         {activeTab === "expenses" && <ExpensesTab data={data} insertRow={insertRow} deleteRow={deleteRow} canDelete={permissions.can_delete} />}
         {activeTab === "materials" && <MaterialsTab data={data} canDelete={permissions.can_delete} insertRow={insertRow} deleteRow={deleteRow} updateRow={updateRow} />}
         {activeTab === "products" && <ProductsTab data={data} canCreate={permissions.can_create_products} canEdit={permissions.can_edit_products} canDelete={permissions.can_delete} hideProfitInfo={!permissions.view_financials} insertRow={insertRow} deleteRow={deleteRow} updateRow={updateRow} />}
-        {activeTab === "production" && <ProductionTab data={data} insertRow={insertRow} updateRow={updateRow} deleteRow={deleteRow} canManage={isAdministrativeRole(role)} canViewFinancials={permissions.view_financials} />}
+        {activeTab === "production" && <ProductionTab data={data} profileRole={role} canViewFinancials={permissions.view_financials} />}
         {activeTab === "assets" && permissions.assets_view && <AssetsPage data={data} profile={profile} permissions={permissions} refresh={refetchTable} />}
         {activeTab === "sales" && <SalesTab data={data} insertRow={insertRow} updateRow={updateRow} deleteRow={deleteRow} canManage={isAdministrativeRole(role)} />}
         {activeTab === "rentals" && <RentalsTab data={data} insertRow={insertRow} updateRow={updateRow} deleteRow={deleteRow} canManage={isAdministrativeRole(role)} />}
@@ -777,165 +797,10 @@ function Dashboard({ data, navigate, permissions }) {
 
 
 /* -------------------------------- Inventory --------------------------------- */
-function InventoryTab({ data }) {
-  const [search, setSearch] = useState("");
-  const rawMaterials = data.materials.map((material) => {
-    const stock = materialStock(material.id, data);
-    return { ...material, stock, value: stock * num(material.unit_cost) };
-  });
-  const finishedProducts = data.products.map((product) => {
-    const stock = finishedStock(product.id, data);
-    const unitCost = avgProductionUnitCost(product.id, data) || productUnitCost(product, data);
-    return { ...product, stock, unitCost, value: stock * unitCost };
-  });
-  const filteredMaterials = rawMaterials.filter((row) => row.name.toLowerCase().includes(search.toLowerCase()));
-  const filteredProducts = finishedProducts.filter((row) => row.name.toLowerCase().includes(search.toLowerCase()));
-  const rawValue = rawMaterials.reduce((sum, row) => sum + row.value, 0);
-  const finishedValue = finishedProducts.reduce((sum, row) => sum + row.value, 0);
-  const lowRaw = rawMaterials.filter((row) => row.stock > 0 && row.stock <= 10).length;
-  const outRaw = rawMaterials.filter((row) => row.stock <= 0).length;
-
-  function stockMeta(stock) {
-    if (stock <= 0) return { label: "نافد", color: C.red };
-    if (stock <= 10) return { label: "منخفض", color: C.brass };
-    return { label: "متوفر", color: C.green };
-  }
-
-  return (
-    <div>
-      <SectionTitle eyebrow="المخزون الحالي" title="المخزون" icon={<Boxes size={14} />} />
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 14, marginBottom: 18 }}>
-        <Card><div style={{ color: C.muted, fontSize: 13 }}>قيمة مخزون الخامات</div><div style={{ color: C.brass, fontSize: 22, fontWeight: 800, marginTop: 8 }}>{fmt(rawValue)} ج.م</div></Card>
-        <Card><div style={{ color: C.muted, fontSize: 13 }}>قيمة الإنتاج التام</div><div style={{ color: C.green, fontSize: 22, fontWeight: 800, marginTop: 8 }}>{fmt(finishedValue)} ج.م</div></Card>
-        <Card><div style={{ color: C.muted, fontSize: 13 }}>خامات منخفضة</div><div style={{ color: C.brass, fontSize: 22, fontWeight: 800, marginTop: 8 }}>{lowRaw}</div></Card>
-        <Card><div style={{ color: C.muted, fontSize: 13 }}>خامات نافدة</div><div style={{ color: C.red, fontSize: 22, fontWeight: 800, marginTop: 8 }}>{outRaw}</div></Card>
-      </div>
-      <SearchBox value={search} onChange={setSearch} placeholder="ابحث في المخزون..." />
-      <Card style={{ marginBottom: 18 }}>
-        <div style={{ fontWeight: 800, marginBottom: 12 }}>مخزون المواد الخام</div>
-        {filteredMaterials.length === 0 ? <Empty text="لا توجد مواد خام مطابقة" /> : (
-          <Table headers={["المادة", "الوحدة", "الرصيد", "سعر الوحدة", "القيمة", "الحالة"]}>
-            {filteredMaterials.map((row) => { const meta = stockMeta(row.stock); return <tr key={row.id}><Td>{row.name}</Td><Td>{row.unit}</Td><Td style={{ color: meta.color, fontWeight: 700 }}>{fmt(row.stock)}</Td><Td>{fmt(row.unit_cost)} ج.م</Td><Td>{fmt(row.value)} ج.م</Td><Td style={{ color: meta.color, fontWeight: 700 }}>{meta.label}</Td></tr>; })}
-          </Table>
-        )}
-      </Card>
-      <Card>
-        <div style={{ fontWeight: 800, marginBottom: 12 }}>مخزون المنتجات التامة</div>
-        {filteredProducts.length === 0 ? <Empty text="لا توجد منتجات مطابقة" /> : (
-          <Table headers={["المنتج", "الكود", "الرصيد", "متوسط التكلفة", "القيمة", "الحالة"]}>
-            {filteredProducts.map((row) => { const meta = stockMeta(row.stock); return <tr key={row.id}><Td>{row.name}</Td><Td>{row.sku || "—"}</Td><Td style={{ color: meta.color, fontWeight: 700 }}>{fmt(row.stock)}</Td><Td>{fmt(row.unitCost)} ج.م</Td><Td>{fmt(row.value)} ج.م</Td><Td style={{ color: meta.color, fontWeight: 700 }}>{meta.label}</Td></tr>; })}
-          </Table>
-        )}
-      </Card>
-    </div>
-  );
-}
+const InventoryTab=InventoryWorkspace;
 
 /* --------------------------------- Materials -------------------------------- */
-function MaterialsTab({ data, canDelete, insertRow, deleteRow, updateRow }) {
-  const blank = { name: "", unit: MATERIAL_UNITS[0], customUnit: "", unitCost: "", initialStock: "" };
-  const [form, setForm] = useState(blank);
-  const [editingId, setEditingId] = useState(null);
-  const [pForm, setPForm] = useState({ materialId: "", qty: "", unitCost: "", supplierId: "", date: todayStr() });
-  const [err, setErr] = useState("");
-  const [search, setSearch] = useState("");
-
-  function startEdit(m) {
-    setEditingId(m.id);
-    setForm({
-      name: m.name,
-      unit: MATERIAL_UNITS.includes(m.unit) ? m.unit : "أخرى",
-      customUnit: MATERIAL_UNITS.includes(m.unit) ? "" : m.unit,
-      unitCost: String(m.unit_cost),
-      initialStock: String(m.initial_stock),
-    });
-  }
-  function cancelEdit() { setEditingId(null); setForm(blank); setErr(""); }
-
-  async function submitMaterial() {
-    if (!form.name.trim()) return setErr("اكتب اسم المادة");
-    const finalUnit = form.unit === "أخرى" ? (form.customUnit.trim() || "وحدة") : form.unit;
-    const payload = { name: form.name.trim(), unit: finalUnit, unit_cost: num(form.unitCost), initial_stock: num(form.initialStock) };
-    const e = editingId ? await updateRow("materials", editingId, payload) : await insertRow("materials", payload);
-    if (e) return setErr(e);
-    setForm(blank); setEditingId(null); setErr("");
-  }
-  async function addPurchase() {
-    if (!pForm.materialId) return setErr("اختر المادة");
-    if (num(pForm.qty) <= 0) return setErr("أدخل كمية أكبر من صفر");
-    const e = await insertRow("materialPurchases", { material_id: pForm.materialId, supplier_id: pForm.supplierId || null, qty: num(pForm.qty), unit_cost: num(pForm.unitCost), purchase_date: pForm.date });
-    if (e) return setErr(e);
-    setPForm({ materialId: "", qty: "", unitCost: "", supplierId: "", date: todayStr() }); setErr("");
-  }
-  async function removeMaterial(material) {
-    if (!window.confirm(`متأكد من حذف المادة "${material.name}"؟`)) return;
-    const error = await deleteRow("materials", material.id);
-    if (error) setErr(error);
-  }
-
-  const filtered = data.materials.filter((m) => m.name.toLowerCase().includes(search.toLowerCase()));
-
-  return (
-    <div>
-      <SectionTitle eyebrow="المخزون" title="المواد الخام" icon={<Package size={14} />} />
-      <Card style={{ marginBottom: 18 }}>
-        <div style={{ fontWeight: 700, marginBottom: 12 }}>{editingId ? "تعديل مادة خام" : "إضافة مادة خام جديدة"}</div>
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <Field label="اسم المادة"><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="مثال: خشب زان" /></Field>
-          <Field label="وحدة القياس">
-            <Select value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })}>
-              {MATERIAL_UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
-            </Select>
-          </Field>
-          {form.unit === "أخرى" && (
-            <Field label="اكتب الوحدة"><Input value={form.customUnit} onChange={(e) => setForm({ ...form, customUnit: e.target.value })} /></Field>
-          )}
-          <Field label="سعر الوحدة (ج.م)"><Input type="number" value={form.unitCost} onChange={(e) => setForm({ ...form, unitCost: e.target.value })} /></Field>
-          <Field label="الرصيد الافتتاحي"><Input type="number" value={form.initialStock} onChange={(e) => setForm({ ...form, initialStock: e.target.value })} /></Field>
-        </div>
-        <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
-          <Btn onClick={submitMaterial}>{editingId ? <><Pencil size={15} /> حفظ التعديل</> : <><Plus size={15} /> إضافة</>}</Btn>
-          {editingId && <Btn variant="ghost" onClick={cancelEdit}><X size={15} /> إلغاء</Btn>}
-        </div>
-      </Card>
-
-      <Card style={{ marginBottom: 18 }}>
-        <div style={{ fontWeight: 700, marginBottom: 12 }}>تسجيل عملية شراء (تزيد المخزون وتُقيَّد على المورد)</div>
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <Field label="المادة"><Select value={pForm.materialId} onChange={(e) => setPForm({ ...pForm, materialId: e.target.value })}><option value="">اختر المادة</option>{data.materials.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}</Select></Field>
-          <Field label="الكمية"><Input type="number" value={pForm.qty} onChange={(e) => setPForm({ ...pForm, qty: e.target.value })} /></Field>
-          <Field label="سعر الوحدة عند الشراء"><Input type="number" value={pForm.unitCost} onChange={(e) => setPForm({ ...pForm, unitCost: e.target.value })} /></Field>
-          <Field label="المورد"><Select value={pForm.supplierId} onChange={(e) => setPForm({ ...pForm, supplierId: e.target.value })}><option value="">بدون مورد محدد</option>{data.suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</Select></Field>
-          <Field label="التاريخ"><Input type="date" value={pForm.date} onChange={(e) => setPForm({ ...pForm, date: e.target.value })} /></Field>
-        </div>
-        <div style={{ marginTop: 12 }}><Btn onClick={addPurchase}><Plus size={15} /> تسجيل الشراء</Btn></div>
-        {err && <Banner>{err}</Banner>}
-      </Card>
-
-      <Card>
-        <SearchBox value={search} onChange={setSearch} placeholder="ابحث باسم المادة..." />
-        {filtered.length === 0 ? <Empty text="لا توجد نتائج" /> : (
-          <Table headers={["المادة", "الوحدة", "سعر الوحدة", "الرصيد الحالي", "قيمة المخزون", ""]}>
-            {filtered.map((m) => {
-              const stock = materialStock(m.id, data);
-              return (
-                <tr key={m.id}>
-                  <Td>{m.name}</Td><Td>{m.unit}</Td><Td>{fmt(m.unit_cost)} ج.م</Td>
-                  <Td style={{ color: stock < 0 ? C.red : C.text }}>{stock}</Td>
-                  <Td>{fmt(stock * m.unit_cost)} ج.م</Td>
-                  <Td style={{ display: "flex", gap: 10 }}>
-                    <button onClick={() => startEdit(m)} style={{ background: "none", border: "none", cursor: "pointer", color: C.brass }}><Pencil size={15} /></button>
-                    {canDelete && <button aria-label={`حذف ${m.name}`} onClick={() => removeMaterial(m)} style={{ background: "none", border: "none", cursor: "pointer", color: C.red }}><Trash2 size={15} /></button>}
-                  </Td>
-                </tr>
-              );
-            })}
-          </Table>
-        )}
-      </Card>
-    </div>
-  );
-}
+const MaterialsTab=MaterialsCatalogWorkspace;
 
 /* --------------------------------- Products --------------------------------- */
 function ProductsTab({ data, canCreate, canEdit, canDelete, hideProfitInfo, insertRow, deleteRow, updateRow }) {
@@ -1054,97 +919,7 @@ function ProductsTab({ data, canCreate, canEdit, canDelete, hideProfitInfo, inse
 }
 
 /* -------------------------------- Production -------------------------------- */
-function ProductionTab({ data, insertRow, updateRow, deleteRow, canManage, canViewFinancials }) {
-  const [form, setForm] = useState({ productId: "", qty: "", wastePercentage: "0", laborCost: "", overheadCost: "", date: todayStr() });
-  const [err, setErr] = useState(""); const [ok, setOk] = useState("");
-  const selectedProduct = data.products.find((p) => p.id === form.productId);
-
-  async function submit() {
-    setErr(""); setOk("");
-    if (!form.productId) return setErr("اختر المنتج");
-    const qty = num(form.qty);
-    if (qty <= 0) return setErr("أدخل كمية أكبر من صفر");
-    const product = data.products.find((p) => p.id === form.productId);
-    const missing = [];
-    for (const row of product.bom || []) {
-      const need = row.qty * qty * (1 + num(form.wastePercentage) / 100);
-      const have = materialStock(row.material_id, data);
-      if (have < need) { const m = data.materials.find((x) => x.id === row.material_id); missing.push(`${m?.name}: متاح ${have} والمطلوب ${need}`); }
-    }
-    if (missing.length) return setErr("لا يوجد مخزون كافٍ من: " + missing.join(" · "));
-    const wastePercentage = Math.max(0, num(form.wastePercentage));
-    const materialsCost = bomUnitCost(product, data) * qty * (1 + wastePercentage / 100);
-    const laborCost = num(form.laborCost) || product.labor_cost * qty;
-    const overheadCost = num(form.overheadCost) || product.overhead_cost * qty;
-    const totalCost = materialsCost + laborCost + overheadCost;
-    const e = await insertRow("productionOrders", { product_id: form.productId, qty, waste_percentage: wastePercentage, materials_cost: materialsCost, labor_cost: laborCost, overhead_cost: overheadCost, total_cost: totalCost, unit_cost: totalCost / qty, order_date: form.date });
-    if (e) return setErr(e);
-    setOk("تم تسجيل أمر الإنتاج بنجاح، وتم خصم الخامات وإضافة الإنتاج التام");
-    setForm({ productId: "", qty: "", wastePercentage: "0", laborCost: "", overheadCost: "", date: todayStr() });
-  }
-
-  async function quickEditProduction(o) {
-    const qty = Number(window.prompt("الكمية الجديدة", o.qty));
-    if (!Number.isFinite(qty) || qty <= 0) return;
-    const waste = Number(window.prompt("نسبة الهالك الجديدة %", o.waste_percentage || 0));
-    if (!Number.isFinite(waste) || waste < 0) return;
-    const labor = Number(window.prompt("تكلفة العمالة", o.labor_cost || 0));
-    const overhead = Number(window.prompt("التكاليف غير المباشرة", o.overhead_cost || 0));
-    const product = data.products.find((p) => p.id === o.product_id);
-    const oldWaste = num(o.waste_percentage);
-    const missing = [];
-    for (const row of product.bom || []) {
-      const need = row.qty * qty * (1 + waste / 100);
-      const oldConsumed = row.qty * o.qty * (1 + oldWaste / 100);
-      const availableExcludingThisOrder = materialStock(row.material_id, data) + oldConsumed;
-      if (availableExcludingThisOrder < need) {
-        const m = data.materials.find((x) => x.id === row.material_id);
-        missing.push(`${m?.name}: متاح ${availableExcludingThisOrder} والمطلوب ${need}`);
-      }
-    }
-    if (missing.length) return window.alert("لا يوجد مخزون كافٍ من: " + missing.join(" · "));
-    const materialsCost = bomUnitCost(product, data) * qty * (1 + waste / 100);
-    const totalCost = materialsCost + labor + overhead;
-    const e = await updateRow("productionOrders", o.id, { qty, waste_percentage: waste, materials_cost: materialsCost, labor_cost: labor, overhead_cost: overhead, total_cost: totalCost, unit_cost: totalCost / qty });
-    if (e) setErr(e);
-  }
-  async function removeProduction(o) {
-    if (!window.confirm("متأكد من حذف أمر الإنتاج؟")) return;
-    const e = await deleteRow("productionOrders", o.id);
-    if (e) setErr(e);
-  }
-
-  return (
-    <div>
-      <SectionTitle eyebrow="التصنيع" title="أوامر الإنتاج" icon={<Factory size={14} />} />
-      <Card style={{ marginBottom: 18 }}>
-        <div style={{ fontWeight: 700, marginBottom: 12 }}>أمر إنتاج جديد</div>
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <Field label="المنتج"><Select value={form.productId} onChange={(e) => setForm({ ...form, productId: e.target.value })}><option value="">اختر المنتج</option>{data.products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select></Field>
-          <Field label="الكمية المطلوب إنتاجها"><Input type="number" min="0" step="any" value={form.qty} onChange={(e) => setForm({ ...form, qty: e.target.value })} /></Field>
-          <Field label="نسبة الهالك %"><Input type="number" min="0" step="0.1" value={form.wastePercentage} onChange={(e) => setForm({ ...form, wastePercentage: e.target.value })} /></Field>
-          {canViewFinancials && <Field label="تكلفة العمالة الإجمالية (اختياري)"><Input type="number" value={form.laborCost} onChange={(e) => setForm({ ...form, laborCost: e.target.value })} placeholder={selectedProduct ? `افتراضي: ${fmt(selectedProduct.labor_cost * (num(form.qty) || 1))}` : ""} /></Field>}
-          {canViewFinancials && <Field label="تكاليف غير مباشرة إجمالية (اختياري)"><Input type="number" value={form.overheadCost} onChange={(e) => setForm({ ...form, overheadCost: e.target.value })} placeholder={selectedProduct ? `افتراضي: ${fmt(selectedProduct.overhead_cost * (num(form.qty) || 1))}` : ""} /></Field>}
-          <Field label="التاريخ"><Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></Field>
-        </div>
-        <div style={{ marginTop: 12 }}><Btn onClick={submit}><Plus size={15} /> تسجيل أمر الإنتاج</Btn></div>
-        {err && <Banner type="error">{err}</Banner>}
-        {ok && <Banner type="success">{ok}</Banner>}
-      </Card>
-      <Card>
-        {data.productionOrders.length === 0 ? <Empty text="لا توجد أوامر إنتاج مسجلة بعد" /> : (
-          <Table headers={canViewFinancials ? ["التاريخ", "المنتج", "الكمية", "الهالك", "تكلفة الخامات", "عمالة", "غير مباشرة", "إجمالي التكلفة", "تكلفة الوحدة", ""] : ["التاريخ", "المنتج", "الكمية", "الهالك", ""]}>
-            {[...data.productionOrders].reverse().map((o) => { const p = data.products.find((x) => x.id === o.product_id); return (
-              <tr key={o.id}><Td>{o.order_date}</Td><Td>{p?.name || "—"}</Td><Td>{o.qty}</Td><Td>{num(o.waste_percentage).toFixed(1)}%</Td>{canViewFinancials && <><Td>{fmt(o.materials_cost)}</Td><Td>{fmt(o.labor_cost)}</Td><Td>{fmt(o.overhead_cost)}</Td>
-                <Td style={{ fontWeight: 700 }}>{fmt(o.total_cost)} ج.م</Td><Td style={{ color: C.brass }}>{fmt(o.unit_cost)} ج.م</Td></>}
-                <Td>{canManage && <div style={{display:"flex",gap:8}}><button onClick={() => quickEditProduction(o)} style={{background:"none",border:"none",cursor:"pointer",color:C.brass}}><Pencil size={15}/></button><button onClick={() => removeProduction(o)} style={{background:"none",border:"none",cursor:"pointer",color:C.red}}><Trash2 size={15}/></button></div>}</Td></tr>
-            ); })}
-          </Table>
-        )}
-      </Card>
-    </div>
-  );
-}
+const ProductionTab=ProductionWorkspace;
 
 /* ----------------------------------- Sales ---------------------------------- */
 function SalesTab({ data, insertRow, updateRow, deleteRow, canManage }) {
@@ -1560,57 +1335,8 @@ function ExpensesTab({ data, insertRow, deleteRow, canDelete }) {
 }
 
 /* ---------------------------------- Reports --------------------------------- */
-function ReportsTab({ data }) {
-  const rows = data.products.map((p) => {
-    const revenue = data.sales.filter((s) => s.product_id === p.id).reduce((s, o) => s + o.total, 0);
-    const qtySold = soldQty(p.id, data);
-    const unitCost = avgProductionUnitCost(p.id, data);
-    const cogs = qtySold * unitCost;
-    const profit = revenue - cogs;
-    const margin = revenue > 0 ? (profit / revenue) * 100 : null;
-    return { name: p.name, revenue, cogs, profit, margin, qtySold };
-  });
-  const baseTotals = rows.reduce((a, r) => ({ revenue: a.revenue + r.revenue, cogs: a.cogs + r.cogs, profit: a.profit + r.profit }), { revenue: 0, cogs: 0, profit: 0 });
-  const expensesTotal = data.expenses.reduce((sum, e) => sum + num(e.amount), 0);
-  const totals = { ...baseTotals, expenses: expensesTotal, profit: baseTotals.profit - expensesTotal };
-  const chartData = rows.map((r) => ({ name: r.name.length > 10 ? r.name.slice(0, 10) + "…" : r.name, الربح: Math.round(r.profit) }));
-
-  return (
-    <div>
-      <SectionTitle eyebrow="الأداء" title="تقارير الربحية" icon={<BarChart3 size={14} />} />
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14, marginBottom: 18 }}>
-        <Card><div style={{ fontSize: 12.5, color: C.muted, marginBottom: 6 }}>إجمالي الإيرادات</div><div style={{ fontFamily: "Cairo, sans-serif", fontWeight: 800, fontSize: 20, color: C.brass }}>{fmt(totals.revenue)} ج.م</div></Card>
-        <Card><div style={{ fontSize: 12.5, color: C.muted, marginBottom: 6 }}>إجمالي تكلفة المبيعات</div><div style={{ fontFamily: "Cairo, sans-serif", fontWeight: 800, fontSize: 20, color: C.wood }}>{fmt(totals.cogs)} ج.م</div></Card>
-        <Card><div style={{ fontSize: 12.5, color: C.muted, marginBottom: 6 }}>إجمالي المصروفات</div><div style={{ fontFamily: "Cairo, sans-serif", fontWeight: 800, fontSize: 20, color: C.red }}>{fmt(totals.expenses)} ج.م</div></Card>
-        <Card><div style={{ fontSize: 12.5, color: C.muted, marginBottom: 6 }}>صافي الربح بعد المصروفات</div><div style={{ fontFamily: "Cairo, sans-serif", fontWeight: 800, fontSize: 20, color: totals.profit >= 0 ? C.green : C.red }}>{fmt(totals.profit)} ج.م</div></Card>
-      </div>
-      <Card style={{ marginBottom: 18 }}>
-        <div style={{ fontSize: 13.5, color: C.muted, marginBottom: 12, fontWeight: 700 }}>الربح لكل منتج</div>
-        {chartData.length === 0 ? <Empty text="لا توجد بيانات كافية بعد" /> : (
-          <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={chartData}>
-              <CartesianGrid stroke={C.border} strokeDasharray="3 3" />
-              <XAxis dataKey="name" stroke={C.muted} fontSize={12} />
-              <YAxis stroke={C.muted} fontSize={12} />
-              <Tooltip contentStyle={{ background: C.panelAlt, border: `1px solid ${C.border}`, borderRadius: 8, color: C.text }} />
-              <Bar dataKey="الربح" radius={[4, 4, 0, 0]} fill={C.green} />
-            </BarChart>
-          </ResponsiveContainer>
-        )}
-      </Card>
-      <Card>
-        {rows.length === 0 ? <Empty text="أضف منتجات ومبيعات لعرض التقرير" /> : (
-          <Table headers={["المنتج", "الكمية المباعة", "الإيراد", "تكلفة المبيعات", "الربح", "هامش الربح"]}>
-            {rows.map((r, i) => (
-              <tr key={i}><Td>{r.name}</Td><Td>{r.qtySold}</Td><Td>{fmt(r.revenue)} ج.م</Td><Td>{fmt(r.cogs)} ج.م</Td>
-                <Td style={{ fontWeight: 700, color: r.profit >= 0 ? C.green : C.red }}>{fmt(r.profit)} ج.م</Td>
-                <Td>{r.margin == null ? "—" : `${r.margin.toFixed(1)}%`}</Td></tr>
-            ))}
-          </Table>
-        )}
-      </Card>
-    </div>
-  );
+function ReportsTab() {
+  return <ReportingWorkspace />;
 }
 
 /* ----------------------------------- Team ------------------------------------ */
