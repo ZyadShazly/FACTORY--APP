@@ -33,7 +33,8 @@ test("missing profiles self-recover after confirmed login", () => {
 test("asset assignment supports partial return continuation and stable sharing phone", () => {
   const assets = source("src/assets/AssetsPage.jsx");
   assert.match(assets, /\["issued","partially_returned"\]\.includes\(a\.status\)/);
-  assert.match(assets, /selectedEmployee\?\.phone\|\|ass\?\.receiver_phone_snapshot/);
+  assert.match(assets, /result\.receiver_phone\|\|phone/);
+  assert.match(assets, /whatsappUrl\(share\.phone,share\.message\)/);
 });
 
 test("employees are suspended instead of deleted and finalized payroll stays immutable", () => {
