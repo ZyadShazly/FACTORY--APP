@@ -1,8 +1,9 @@
 import React,{useEffect,useMemo,useState}from"react";
 import{supabase}from"../supabaseClient";
 import{Button,Notice,Panel,friendlyError,money}from"./ui";
+import{WarehouseManagementPanel}from"./WarehouseManagementPanel";
 
-const emptyWorkspace={items:[],balances:[],warehouses:[],locations:[],movements:[],count_sessions:[],count_lines:[],capabilities:{}};
+const emptyWorkspace={items:[],balances:[],warehouses:[],warehouse_admin:[],locations:[],movements:[],count_sessions:[],count_lines:[],capabilities:{}};
 const inputStyle={width:"100%",padding:10,border:"1px solid var(--color-border)",borderRadius:9,background:"var(--color-surface)",color:"inherit"};
 const gridStyle={display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:10,alignItems:"end"};
 
@@ -90,6 +91,7 @@ export function InventoryWorkspace({canViewFinancials=true}){
       </div>
 
       {workspace.capabilities?.manage&&<>
+        <WarehouseManagementPanel workspace={workspace} onChanged={load} canViewFinancials={canViewFinancials}/>
         <Panel title="تحويل بين المخازن">
           <div style={gridStyle}>
             <SelectField label="الصنف" value={transfer.item} onChange={e=>setTransfer({...transfer,item:e.target.value,source:""})}><option value="">اختر</option>{workspace.items.map(i=><option key={i.id} value={i.id}>{i.name}</option>)}</SelectField>
