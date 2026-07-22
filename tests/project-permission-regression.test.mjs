@@ -5,7 +5,9 @@ import { readFile } from "node:fs/promises";
 const mainPermissionMigration = await readFile(new URL("../supabase/migrations/202607180003_assets_tools_foundation.sql", import.meta.url), "utf8");
 const projectMigration = await readFile(new URL("../supabase/migrations/202607190001_project_workspace_upgrade.sql", import.meta.url), "utf8");
 const sharedFrontend = await readFile(new URL("../src/v22/shared.jsx", import.meta.url), "utf8");
+const actionPermissionFrontend = await readFile(new URL("../src/app/actionPermissions.js", import.meta.url), "utf8");
 const appFrontend = await readFile(new URL("../src/AppMonolith.jsx", import.meta.url), "utf8");
+const permissionFrontend = sharedFrontend + actionPermissionFrontend;
 
 const projectPermissions = [
   "projects_view", "projects_create", "projects_edit", "projects_delete",
@@ -73,7 +75,7 @@ test("complete permission matrix preserves main behavior for every non-project p
 
 test("legacy frontend action permissions remain part of the regression matrix", () => {
   for (const permission of legacyFrontendPermissions) {
-    assert.match(sharedFrontend + appFrontend, new RegExp(permission));
+    assert.match(permissionFrontend + appFrontend, new RegExp(permission));
     assert.equal(projectHasPermission({ role: "accountant", active: true, stored: { [permission]: true } }, permission), true);
     assert.equal(projectHasPermission({ role: "production", active: true, stored: { [permission]: true } }, permission), false);
   }
@@ -100,12 +102,12 @@ test("accountant defaults and custom permissions remain exactly as merged main",
 
 test("asset aliases requested for verification are not silently treated as existing operational keys", () => {
   for (const permission of ["assets_create", "assets_edit", "assets_settle", "assets_settings"]) {
-    assert.doesNotMatch(sharedFrontend, new RegExp(`"${permission}"`));
+    assert.doesNotMatch(actionPermissionFrontend, new RegExp(`"${permission}"`));
     assert.equal(mainHasPermission({ role: "production", stored: { [permission]: true } }, permission), false);
     assert.equal(mainHasPermission({ role: "accountant", stored: { [permission]: true } }, permission), true);
   }
   for (const permission of ["assets_view", "assets_manage", "assets_issue", "assets_return", "assets_adjust", "assets_approve_loss", "assets_reports"]) {
-    assert.match(sharedFrontend, new RegExp(`"${permission}"`));
+    assert.match(actionPermissionFrontend, new RegExp(`"${permission}"`));
   }
 });
 
