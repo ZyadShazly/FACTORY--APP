@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
 
 const migrationUrl = new URL("../supabase/migrations/202607180005_fix_asset_alerts_access.sql", import.meta.url);
-const appUrl = new URL("../src/App.jsx", import.meta.url);
+const appUrl = new URL("../src/AppMonolith.jsx", import.meta.url);
 const manifestUrl = new URL("../public/manifest.webmanifest", import.meta.url);
 const indexUrl = new URL("../index.html", import.meta.url);
 
