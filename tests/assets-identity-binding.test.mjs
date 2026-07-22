@@ -5,7 +5,7 @@ import { linkedProfileForEmployee } from "../src/assets/domain.js";
 
 const migration = await readFile(new URL("../supabase/migrations/202607180007_bind_asset_employee_profile_identity.sql", import.meta.url), "utf8");
 const page = await readFile(new URL("../src/assets/AssetsPage.jsx", import.meta.url), "utf8");
-const app = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
+const app = await readFile(new URL("../src/AppMonolith.jsx", import.meta.url), "utf8");
 
 test("Employee A cannot resolve Profile B as its linked account", () => {
   const profiles = [{ id:"profile-b",employee_id:"employee-b",status:"active" }];
