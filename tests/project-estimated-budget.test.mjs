@@ -80,7 +80,7 @@ test("new activation requires an approved positive budget while legacy and Owner
 
 test("permission defaults separate Owner, Manager, Accountant, and Production",()=>{
   for(const permission of ["project_budget_view","project_budget_create","project_budget_edit","project_budget_submit","project_budget_approve","project_budget_reject","project_budget_view_financials","project_budget_manage_templates","project_budget_override_activation"]) assert.match(actionPermissionRules,new RegExp(`"${permission}"`));
-  assert.match(actionPermissionRules,/\["project_budget_approve","project_budget_reject"\]/);
+  assert.match(actionPermissionRules,/\["project_budget_approve",\s*"project_budget_reject"\]/);
   assert.match(actionPermissionRules,/profile\?\.permissions\?\.\[key\] === true/);
   assert.match(actionPermissionRules,/resolved\.project_budget_override_activation = false/);
   assert.match(migration,/when 'manager' then permission_name=any/);
