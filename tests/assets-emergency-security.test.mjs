@@ -7,7 +7,7 @@ const migrationUrl=new URL("../supabase/migrations/202607180006_asset_confirmati
 const appUrl=new URL("../src/assets/AssetsPage.jsx",import.meta.url);
 const controlsUrl=new URL("../src/assets/EmergencyControls.jsx",import.meta.url);
 const realtimeUrl=new URL("../src/realtime.js",import.meta.url);
-const rootAppUrl=new URL("../src/App.jsx",import.meta.url);
+const rootAppUrl=new URL("../src/AppMonolith.jsx",import.meta.url);
 const docsUrl=new URL("../docs/ASSETS_TOOLS_FOUNDATION.md",import.meta.url);
 const functionBody=(sql,name)=>sql.match(new RegExp(`create or replace function public\\.${name}\\([^]*?end \\$\\$;`,"i"))?.[0]||"";
 
