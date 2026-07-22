@@ -5,7 +5,7 @@ import { readFile } from "node:fs/promises";
 const mainPermissionMigration = await readFile(new URL("../supabase/migrations/202607180003_assets_tools_foundation.sql", import.meta.url), "utf8");
 const projectMigration = await readFile(new URL("../supabase/migrations/202607190001_project_workspace_upgrade.sql", import.meta.url), "utf8");
 const sharedFrontend = await readFile(new URL("../src/v22/shared.jsx", import.meta.url), "utf8");
-const appFrontend = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
+const appFrontend = await readFile(new URL("../src/AppMonolith.jsx", import.meta.url), "utf8");
 
 const projectPermissions = [
   "projects_view", "projects_create", "projects_edit", "projects_delete",

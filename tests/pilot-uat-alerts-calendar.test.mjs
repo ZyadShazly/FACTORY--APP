@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const migrationUrl = new URL("../supabase/migrations/202607210005_pilot_uat_alerts_calendar.sql", import.meta.url);
-const appUrl = new URL("../src/App.jsx", import.meta.url);
+const appUrl = new URL("../src/AppMonolith.jsx", import.meta.url);
 const calendarUrl = new URL("../src/v23/workCalendar.jsx", import.meta.url);
 
 test("asset alerts are loaded through a permission-aware RPC", async () => {

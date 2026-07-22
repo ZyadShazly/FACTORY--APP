@@ -15,7 +15,7 @@ function replaceRequired(content, search, replacement, label) {
 }
 
 function patchApp() {
-  const path = "src/App.jsx";
+  const path = "src/AppMonolith.jsx";
   let source = read(path);
 
   source = replaceRequired(

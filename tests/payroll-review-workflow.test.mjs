@@ -4,7 +4,7 @@ import fs from "node:fs";
 
 const ui=fs.readFileSync("src/v22/PayrollReviewTab.jsx","utf8");
 const migration=fs.readFileSync("supabase/migrations/20260721102000_payroll_review_workflow.sql","utf8");
-const app=fs.readFileSync("src/App.jsx","utf8");
+const app=fs.readFileSync("src/AppMonolith.jsx","utf8");
 
 test("payroll list requires opening details before approval",()=>{
   assert.match(ui,/فتح التفاصيل/);
