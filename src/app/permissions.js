@@ -1,4 +1,4 @@
-import { actionPermissions } from "../v22/shared.jsx";
+import { actionPermissions } from "./actionPermissions.js";
 import { isAdministrativeRole, PRODUCTION_ALLOWED_PAGES } from "../identity.js";
 import { APP_TAB_IDS, DEFAULT_TABS_BY_ROLE } from "./navigationRegistry.js";
 
