@@ -3,6 +3,7 @@ import { BarChart3, Download, Printer, RefreshCw } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { supabase } from "../supabaseClient";
 import { exportExternalLaborWorkbook, exportInventoryWorkbook, exportPayrollWorkbook, printCurrentReport } from "./professionalExports";
+import "./reportingPrint.css";
 
 const css = {
   panel: { background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-lg)", boxShadow: "var(--shadow-sm)", padding: 18 },
