@@ -15,7 +15,7 @@ test("operational patch is idempotent", () => {
 });
 
 test("authentication failures are localized and network errors are caught", () => {
-  const app = source("src/App.jsx");
+  const app = source("src/AppMonolith.jsx");
   assert.match(app, /function authErrorMessage\(error\)/);
   assert.match(app, /تعذر الاتصال بالخادم/);
   assert.match(app, /catch \(error\) \{\s*setErr\(authErrorMessage\(error\)\)/);
