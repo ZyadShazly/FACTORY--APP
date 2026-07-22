@@ -1,0 +1,12 @@
+@media print {
+  body * { visibility: hidden !important; }
+  .report-print-content, .report-print-content * { visibility: visible !important; }
+  .report-print-content { position: absolute; inset: 0; width: 100%; padding: 12mm; background: #fff; color: #111; direction: rtl; }
+  .report-print-heading { display: block !important; text-align: center; margin-bottom: 18px; }
+  .report-print-heading h1, .report-print-heading h2, .report-print-heading p { margin: 4px 0; }
+  .report-controls, .page-header { display: none !important; }
+  .report-print-content > div { break-inside: avoid; box-shadow: none !important; border-color: #bbb !important; }
+  .report-print-content table { font-size: 9pt; }
+  .report-print-content th, .report-print-content td { padding: 5px !important; }
+  @page { size: A4 landscape; margin: 8mm; }
+}
