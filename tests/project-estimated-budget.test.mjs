@@ -7,7 +7,7 @@ const migration = await readFile(new URL("../supabase/migrations/202607190003_pr
 const workspace = await readFile(new URL("../src/v22/projectWorkspace.jsx", import.meta.url),"utf8");
 const budgetUi = await readFile(new URL("../src/v22/projectBudget.jsx", import.meta.url),"utf8");
 const css = await readFile(new URL("../src/v22/projectBudget.css", import.meta.url),"utf8");
-const shared = await readFile(new URL("../src/v22/shared.jsx", import.meta.url),"utf8");
+const actionPermissionRules = await readFile(new URL("../src/app/actionPermissions.js", import.meta.url),"utf8");
 const docs = await readFile(new URL("../docs/PROJECT_ESTIMATED_BUDGET.md", import.meta.url),"utf8");
 
 test("line calculations round base, waste, and total consistently",()=>{
@@ -79,10 +79,10 @@ test("new activation requires an approved positive budget while legacy and Owner
 });
 
 test("permission defaults separate Owner, Manager, Accountant, and Production",()=>{
-  for(const permission of ["project_budget_view","project_budget_create","project_budget_edit","project_budget_submit","project_budget_approve","project_budget_reject","project_budget_view_financials","project_budget_manage_templates","project_budget_override_activation"]) assert.match(shared,new RegExp(`"${permission}"`));
-  assert.match(shared,/\["project_budget_approve","project_budget_reject"\]/);
-  assert.match(shared,/profile\?\.permissions\?\.\[key\] === true/);
-  assert.match(shared,/resolved\.project_budget_override_activation = false/);
+  for(const permission of ["project_budget_view","project_budget_create","project_budget_edit","project_budget_submit","project_budget_approve","project_budget_reject","project_budget_view_financials","project_budget_manage_templates","project_budget_override_activation"]) assert.match(actionPermissionRules,new RegExp(`"${permission}"`));
+  assert.match(actionPermissionRules,/\["project_budget_approve",\s*"project_budget_reject"\]/);
+  assert.match(actionPermissionRules,/profile\?\.permissions\?\.\[key\] === true/);
+  assert.match(actionPermissionRules,/resolved\.project_budget_override_activation = false/);
   assert.match(migration,/when 'manager' then permission_name=any/);
   assert.match(migration,/permission_name=any\(array\['project_budget_approve','project_budget_reject'\]\)/);
   assert.doesNotMatch(migration,/permission_name=any\(array\['project_budget_override_activation'/);
