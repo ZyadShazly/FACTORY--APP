@@ -39,7 +39,7 @@ test("accountant defaults remain backward compatible and settings stays owner-ma
   assert.equal(resolved.can_edit_products, false);
 });
 
-test("explicit action permissions add their matching modules without duplicates", () => {
+test("explicit action permissions add matching modules without duplicates", () => {
   const resolved = permissionsForProfile({
     role: "accountant",
     status: "active",
@@ -52,8 +52,10 @@ test("explicit action permissions add their matching modules without duplicates"
   });
 
   assert.deepEqual(
-    resolved.pages.filter((page) => ["projects", "assets", "workCalendar", "auditLog"].includes(page)),
-    ["projects", "assets", "workCalendar", "auditLog"],
+    resolved.pages.filter((page) => ["projects", "assets", "workCalendar"].includes(page)),
+    ["projects", "assets", "workCalendar"],
   );
+  assert.ok(!resolved.pages.includes("auditLog"));
+  assert.equal(resolved.audit_log_view, false);
   assert.equal(new Set(resolved.pages).size, resolved.pages.length);
 });
