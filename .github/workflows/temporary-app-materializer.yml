@@ -24,9 +24,12 @@ jobs:
         with:
           node-version: 22
       - name: Materialize commit object
+        id: materialize
+        continue-on-error: true
         shell: bash
         run: |
           set -euo pipefail
+          exec > >(tee materializer.log) 2>&1
           if [ ! -f scripts/materialize-app-bootstrap-integration.mjs ]; then
             echo "Materializer already removed; nothing to do."
             exit 0
@@ -37,8 +40,12 @@ jobs:
           head_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${TARGET_BRANCH}" --jq .object.sha)"
           base_tree="$(gh api "repos/${GITHUB_REPOSITORY}/git/commits/${head_sha}" --jq .tree.sha)"
 
-          app_blob="$(jq -Rs '{content: ., encoding: "utf-8"}' < src/AppMonolith.jsx | gh api --method POST "repos/${GITHUB_REPOSITORY}/git/blobs" --input - --jq .sha)"
-          test_blob="$(jq -Rs '{content: ., encoding: "utf-8"}' < tests/app-bootstrap-integration.test.mjs | gh api --method POST "repos/${GITHUB_REPOSITORY}/git/blobs" --input - --jq .sha)"
+          app_blob="$(gh api --method POST "repos/${GITHUB_REPOSITORY}/git/blobs" \
+            -f content="$(base64 -w0 src/AppMonolith.jsx)" \
+            -f encoding=base64 --jq .sha)"
+          test_blob="$(gh api --method POST "repos/${GITHUB_REPOSITORY}/git/blobs" \
+            -f content="$(base64 -w0 tests/app-bootstrap-integration.test.mjs)" \
+            -f encoding=base64 --jq .sha)"
 
           new_tree="$(jq -n \
             --arg base_tree "${base_tree}" \
@@ -57,8 +64,14 @@ jobs:
 
           printf '%s\n' "${commit_sha}" > materialized-commit-sha.txt
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          name: materialized-app-commit
-          path: materialized-commit-sha.txt
-          if-no-files-found: error
+          name: materialized-app-output
+          path: |
+            materialized-commit-sha.txt
+            materializer.log
+          if-no-files-found: warn
           retention-days: 1
+      - name: Enforce materializer result
+        if: steps.materialize.outcome == 'failure'
+        run: exit 1
