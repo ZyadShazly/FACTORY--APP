@@ -12,16 +12,18 @@ jobs:
   materialize:
     if: github.repository == 'ZyadShazly/FACTORY--APP' && github.head_ref == 'refactor/app-bootstrap-wiring'
     runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TARGET_BRANCH: refactor/app-bootstrap-wiring
     steps:
       - uses: actions/checkout@v4
         with:
           ref: refactor/app-bootstrap-wiring
           fetch-depth: 0
-          token: ${{ github.token }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Materialize source once
+      - name: Materialize commit object
         shell: bash
         run: |
           set -euo pipefail
@@ -31,10 +33,32 @@ jobs:
           fi
 
           node scripts/materialize-app-bootstrap-integration.mjs
-          rm scripts/materialize-app-bootstrap-integration.mjs
 
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/AppMonolith.jsx tests/app-bootstrap-integration.test.mjs scripts/materialize-app-bootstrap-integration.mjs
-          git commit -m "refactor: wire app bootstrap modules"
-          git push origin HEAD:refactor/app-bootstrap-wiring
+          head_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${TARGET_BRANCH}" --jq .object.sha)"
+          base_tree="$(gh api "repos/${GITHUB_REPOSITORY}/git/commits/${head_sha}" --jq .tree.sha)"
+
+          app_blob="$(jq -Rs '{content: ., encoding: "utf-8"}' < src/AppMonolith.jsx | gh api --method POST "repos/${GITHUB_REPOSITORY}/git/blobs" --input - --jq .sha)"
+          test_blob="$(jq -Rs '{content: ., encoding: "utf-8"}' < tests/app-bootstrap-integration.test.mjs | gh api --method POST "repos/${GITHUB_REPOSITORY}/git/blobs" --input - --jq .sha)"
+
+          new_tree="$(jq -n \
+            --arg base_tree "${base_tree}" \
+            --arg app_blob "${app_blob}" \
+            --arg test_blob "${test_blob}" \
+            '{base_tree: $base_tree, tree: [
+              {path: "src/AppMonolith.jsx", mode: "100644", type: "blob", sha: $app_blob},
+              {path: "tests/app-bootstrap-integration.test.mjs", mode: "100644", type: "blob", sha: $test_blob}
+            ]}' | gh api --method POST "repos/${GITHUB_REPOSITORY}/git/trees" --input - --jq .sha)"
+
+          commit_sha="$(jq -n \
+            --arg message 'refactor: wire app bootstrap modules' \
+            --arg tree "${new_tree}" \
+            --arg parent "${head_sha}" \
+            '{message: $message, tree: $tree, parents: [$parent]}' | gh api --method POST "repos/${GITHUB_REPOSITORY}/git/commits" --input - --jq .sha)"
+
+          printf '%s\n' "${commit_sha}" > materialized-commit-sha.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: materialized-app-commit
+          path: materialized-commit-sha.txt
+          if-no-files-found: error
+          retention-days: 1
