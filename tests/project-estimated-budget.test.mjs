@@ -131,7 +131,7 @@ test("covering indexes are unique and cover ordering, approvals, templates, and 
   assert.match(migration,/project_budget_template_items_section_fk_idx on public\.project_budget_template_items\(template_section_id,template_id\)/);
 });
 
-test("budget UI is active, modular, financial-aware, responsive, and keeps Actual Cost coming later",()=>{
+test("budget UI is active, modular, financial-aware, responsive, and protects approval order",()=>{
   assert.match(workspace,/tab === "budget" && <ProjectBudgetTab/);
   assert.doesNotMatch(workspace,/tab === "budget" && <ComingSoon/);
   for(const component of ["BudgetSummary","BudgetSections","BudgetItemTable","BudgetItemDialog","BudgetApprovalPanel","BudgetVersionHistory","BudgetVersionCompare","BudgetTemplatePicker","ActivationReadinessPanel"]) assert.match(budgetUi,new RegExp(`function ${component}`));
@@ -140,5 +140,5 @@ test("budget UI is active, modular, financial-aware, responsive, and keeps Actua
   assert.match(css,/@media\(max-width:760px\)/);
   assert.match(css,/@media\(max-width:430px\)/);
   assert.match(css,/overflow-x:auto/);
-  assert.match(budgetUi,/لم تُنفذ وحدة العهدة/);
+  assert.match(budgetUi,/أضف بند ميزانية واحدًا على الأقل قبل الإرسال/);
 });
