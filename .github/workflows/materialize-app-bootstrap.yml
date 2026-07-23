@@ -1,0 +1,34 @@
+name: materialize-app-bootstrap
+
+on:
+  push:
+    branches: [refactor/app-bootstrap-integration]
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    if: ${{ !contains(github.event.head_commit.message, 'chore: materialize app bootstrap integration') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refactor/app-bootstrap-integration
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Apply one-time source transformation
+        run: node scripts/materialize-app-bootstrap-integration.mjs
+      - name: Remove temporary materializer
+        run: |
+          rm scripts/materialize-app-bootstrap-integration.mjs
+          rm .github/workflows/materialize-app-bootstrap.yml
+      - name: Commit materialized source
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/AppMonolith.jsx tests/app-bootstrap-integration.test.mjs scripts/materialize-app-bootstrap-integration.mjs .github/workflows/materialize-app-bootstrap.yml
+          git commit -m "chore: materialize app bootstrap integration"
+          git push origin HEAD:refactor/app-bootstrap-integration
