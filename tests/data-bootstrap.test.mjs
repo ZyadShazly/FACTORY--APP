@@ -53,8 +53,10 @@ test("empty data contract keeps every major module collection", () => {
     "employees", "payroll", "dailyLabor", "auditLog", "workSchedules",
   ]) {
     assert.ok(Array.isArray(EMPTY_DATA[key]), key);
+    assert.equal(EMPTY_DATA[key].length, 0, `${key} must start empty`);
   }
   assert.equal(Object.isFrozen(EMPTY_DATA), true);
+  assert.equal(Object.keys(EMPTY_DATA).length > 20, true);
 });
 
 test("protected business datasets route through their visible RPCs", async () => {
