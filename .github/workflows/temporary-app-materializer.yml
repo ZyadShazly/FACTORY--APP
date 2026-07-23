@@ -23,7 +23,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Materialize source once
+      - name: Materialize commit object
         shell: bash
         run: |
           if [ ! -f scripts/materialize-app-bootstrap-integration.mjs ]; then
@@ -33,20 +33,32 @@ jobs:
 
           node scripts/materialize-app-bootstrap-integration.mjs
 
-          app_sha="$(gh api "repos/${GITHUB_REPOSITORY}/contents/src/AppMonolith.jsx?ref=${TARGET_BRANCH}" --jq .sha)"
-          gh api --method PUT "repos/${GITHUB_REPOSITORY}/contents/src/AppMonolith.jsx" \
-            -f message='refactor: wire app bootstrap modules' \
-            -f branch="${TARGET_BRANCH}" \
-            -f sha="${app_sha}" \
-            -f content="$(base64 -w0 src/AppMonolith.jsx)"
+          head_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${TARGET_BRANCH}" --jq .object.sha)"
+          base_tree="$(gh api "repos/${GITHUB_REPOSITORY}/git/commits/${head_sha}" --jq .tree.sha)"
 
-          test_sha="$(gh api "repos/${GITHUB_REPOSITORY}/contents/tests/app-bootstrap-integration.test.mjs?ref=${TARGET_BRANCH}" --jq .sha 2>/dev/null || true)"
-          args=(--method PUT "repos/${GITHUB_REPOSITORY}/contents/tests/app-bootstrap-integration.test.mjs" -f message='test: protect app bootstrap integration' -f branch="${TARGET_BRANCH}" -f content="$(base64 -w0 tests/app-bootstrap-integration.test.mjs)")
-          if [ -n "${test_sha}" ]; then args+=(-f sha="${test_sha}"); fi
-          gh api "${args[@]}"
+          app_blob="$(jq -Rs '{content: ., encoding: "utf-8"}' < src/AppMonolith.jsx | gh api --method POST "repos/${GITHUB_REPOSITORY}/git/blobs" --input - --jq .sha)"
+          test_blob="$(jq -Rs '{content: ., encoding: "utf-8"}' < tests/app-bootstrap-integration.test.mjs | gh api --method POST "repos/${GITHUB_REPOSITORY}/git/blobs" --input - --jq .sha)"
 
-          script_sha="$(gh api "repos/${GITHUB_REPOSITORY}/contents/scripts/materialize-app-bootstrap-integration.mjs?ref=${TARGET_BRANCH}" --jq .sha)"
-          gh api --method DELETE "repos/${GITHUB_REPOSITORY}/contents/scripts/materialize-app-bootstrap-integration.mjs" \
-            -f message='chore: remove one-shot materializer' \
-            -f branch="${TARGET_BRANCH}" \
-            -f sha="${script_sha}"
+          new_tree="$(jq -n \
+            --arg base "${base_tree}" \
+            --arg app "${app_blob}" \
+            --arg test "${test_blob}" \
+            '{base_tree: $base, tree: [
+              {path: "src/AppMonolith.jsx", mode: "100644", type: "blob", sha: $app},
+              {path: "tests/app-bootstrap-integration.test.mjs", mode: "100644", type: "blob", sha: $test},
+              {path: "scripts/materialize-app-bootstrap-integration.mjs", mode: "100644", type: "blob", sha: null}
+            ]}' | gh api --method POST "repos/${GITHUB_REPOSITORY}/git/trees" --input - --jq .sha)"
+
+          commit_sha="$(jq -n \
+            --arg message 'refactor: wire app bootstrap modules' \
+            --arg tree "${new_tree}" \
+            --arg parent "${head_sha}" \
+            '{message: $message, tree: $tree, parents: [$parent]}' | gh api --method POST "repos/${GITHUB_REPOSITORY}/git/commits" --input - --jq .sha)"
+
+          printf '%s\n' "${commit_sha}" > materialized-commit-sha.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: materialized-app-commit
+          path: materialized-commit-sha.txt
+          if-no-files-found: error
+          retention-days: 1
