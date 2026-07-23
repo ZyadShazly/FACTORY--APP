@@ -12,6 +12,9 @@ jobs:
   materialize:
     if: github.repository == 'ZyadShazly/FACTORY--APP' && github.head_ref == 'refactor/app-bootstrap-wiring'
     runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TARGET_BRANCH: refactor/app-bootstrap-wiring
     steps:
       - uses: actions/checkout@v4
         with:
@@ -27,10 +30,23 @@ jobs:
             echo "Materializer already removed; nothing to do."
             exit 0
           fi
+
           node scripts/materialize-app-bootstrap-integration.mjs
-          rm scripts/materialize-app-bootstrap-integration.mjs
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/AppMonolith.jsx tests/app-bootstrap-integration.test.mjs scripts/materialize-app-bootstrap-integration.mjs
-          git commit -m "refactor: wire app bootstrap modules"
-          git push origin HEAD:refactor/app-bootstrap-wiring
+
+          app_sha="$(gh api "repos/${GITHUB_REPOSITORY}/contents/src/AppMonolith.jsx?ref=${TARGET_BRANCH}" --jq .sha)"
+          gh api --method PUT "repos/${GITHUB_REPOSITORY}/contents/src/AppMonolith.jsx" \
+            -f message='refactor: wire app bootstrap modules' \
+            -f branch="${TARGET_BRANCH}" \
+            -f sha="${app_sha}" \
+            -f content="$(base64 -w0 src/AppMonolith.jsx)"
+
+          test_sha="$(gh api "repos/${GITHUB_REPOSITORY}/contents/tests/app-bootstrap-integration.test.mjs?ref=${TARGET_BRANCH}" --jq .sha 2>/dev/null || true)"
+          args=(--method PUT "repos/${GITHUB_REPOSITORY}/contents/tests/app-bootstrap-integration.test.mjs" -f message='test: protect app bootstrap integration' -f branch="${TARGET_BRANCH}" -f content="$(base64 -w0 tests/app-bootstrap-integration.test.mjs)")
+          if [ -n "${test_sha}" ]; then args+=(-f sha="${test_sha}"); fi
+          gh api "${args[@]}"
+
+          script_sha="$(gh api "repos/${GITHUB_REPOSITORY}/contents/scripts/materialize-app-bootstrap-integration.mjs?ref=${TARGET_BRANCH}" --jq .sha)"
+          gh api --method DELETE "repos/${GITHUB_REPOSITORY}/contents/scripts/materialize-app-bootstrap-integration.mjs" \
+            -f message='chore: remove one-shot materializer' \
+            -f branch="${TARGET_BRANCH}" \
+            -f sha="${script_sha}"
