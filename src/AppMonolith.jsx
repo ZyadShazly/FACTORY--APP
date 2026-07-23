@@ -16,12 +16,13 @@ import { PayrollReviewTab as PayrollTab } from "./v22/PayrollReviewTab";
 import { DailyLaborTab } from "./v22/dailyLabor";
 import { AuditLogTab, PERMISSION_LABELS } from "./v22/audit";
 import { demoData, demoProfile } from "./v22/demoData";
-import { PROJECT_FILES_TABLE } from "./v22/fileTypes";
 import { syncMutation } from "./v22/mutations";
-import { combinedRealtimeStatus, dataTableKeysForRole, REALTIME_TABLE_TO_KEY, resolveAllowedTab, TABLES } from "./realtime";
+import { dataTableKeysForRole, resolveAllowedTab, TABLES } from "./realtime";
 import { buildNavigationGroups, loadNavigationState, NAV_GROUPS, NAV_GROUP_STORAGE_KEY } from "./navigation";
 import { canAdministerTarget, canAssignRole, identityProtectionReason, isAdministrativeRole, PRODUCTION_ALLOWED_PAGES, SELF_SIGNUP_ROLES, SYSTEM_ROLES } from "./identity";
 import { withTimeout } from "./bootstrap";
+import { createTableFetcher, EMPTY_DATA } from "./app/dataBootstrap";
+import { buildRealtimeChannelPlan, nextRealtimeState } from "./app/realtimeBootstrap";
 import { useProfileBootstrap } from "./auth/useProfileBootstrap";
 import { BootstrapFailure, BootstrapLoading } from "./auth/BootstrapScreens";
 import { AppShell } from "./layout/AppShell";
@@ -108,13 +109,6 @@ function permissionsForProfile(profile) {
 }
 const MATERIAL_UNITS = ["قطعة", "متر", "متر مربع", "متر مكعب", "كيلوجرام", "جرام", "لتر", "مللي لتر", "لفة", "طقم", "علبة", "كرتونة", "أخرى"];
 
-const EMPTY_DATA = {
-  materials: [], materialPurchases: [], products: [], productionOrders: [],
-  sales: [], rentals: [], suppliers: [], supplierPayments: [], customers: [], customerReceipts: [], expenses: [],
-  profiles: [], projects: [], projectFiles: [], projectActivities: [], projectMilestones: [], projectMembers: [], projectRealtimeSignal: [], employees: [], payroll: [], dailyLabor: [], projectCosts: [], auditLog: [],
-  departments: [], workSchedules: [], workScheduleDays: [], holidayCalendar: [], holidayScopes: [],
-  assetCategories: [], assetLocations: [], assets: [], assetAssignments: [], assetAssignmentItems: [], assetReturnEvents: [], assetReturnItems: [], assetSettlements: [], assetMovements: [], assetAttachments: [], assetAlerts: [],
-};
 const PAGE_DESCRIPTIONS = {
   dashboard: "ملخص تنفيذي لأهم مؤشرات العمل والتنبيهات والأنشطة الحديثة.",
   projects: "متابعة المشاريع ونسب الإنجاز والعملاء والملفات المرتبطة.",
@@ -140,39 +134,13 @@ const PAGE_DESCRIPTIONS = {
   settings: "إعدادات الإدارة وأدوات الاسترداد الآمن للحسابات.",
 };
 
-async function fetchTableRows(key, table) {
-  let fetchResult;
-  try {
-  if (key === "projects") fetchResult = await withTimeout(supabase.rpc("get_projects_visible"), undefined, `انتهت مهلة تحميل ${PAGE_LABELS[key] || table}`);
-  else if (key === "productionOrders") fetchResult = await withTimeout(supabase.rpc("get_production_orders_visible"), undefined, `انتهت مهلة تحميل ${PAGE_LABELS[key] || table}`);
-  else if (key === "assets") fetchResult = await withTimeout(supabase.rpc("get_assets_visible"), undefined, `انتهت مهلة تحميل ${PAGE_LABELS[key] || table}`);
-  else if (key === "payroll") fetchResult = await withTimeout(supabase.rpc("get_payroll_visible"), undefined, `انتهت مهلة تحميل ${PAGE_LABELS[key] || table}`);
-  else if (key === "assetAlerts") fetchResult = await withTimeout(supabase.rpc("get_asset_alerts_visible"), undefined, "انتهت مهلة تحميل تنبيهات الأصول");
-  else if (key === "auditLog") {
-    fetchResult = await withTimeout(supabase
-      .from(table)
-      .select("*, actor:profiles!audit_log_actor_id_fkey(full_name,email)")
-      .order("created_at", { ascending: true }), undefined, `انتهت مهلة تحميل ${PAGE_LABELS[key] || table}`);
-    if (fetchResult.error) {
-      console.warn("[AuditLog] actor profile relation unavailable; using legacy rows", fetchResult.error);
-      fetchResult = await withTimeout(supabase.from(table).select("*").order("created_at", { ascending: true }));
-    }
-  }
-  else {
-    fetchResult = await withTimeout(supabase.from(table).select("*").order("created_at", { ascending: true }), undefined, `انتهت مهلة تحميل ${PAGE_LABELS[key] || table}`);
-    // Backward-compatible fallback until the project_files created_at migration is applied.
-    if (key === "projectFiles" && fetchResult.error?.code === "42703") {
-      console.warn("[ProjectFiles] created_at is missing; falling back to uploaded_at", fetchResult.error);
-      fetchResult = await withTimeout(supabase.from(PROJECT_FILES_TABLE).select("*").order("uploaded_at", { ascending: true }));
-    }
-  }
-  } catch (error) {
-    fetchResult = { data: null, error };
-  }
-  if (key === "projectFiles") console.info("[ProjectFiles] fetchResult", { table: PROJECT_FILES_TABLE, fetchResult });
-  if (fetchResult.error) console.error(`[NEXTEP] Failed to fetch ${table}`, fetchResult.error);
-  return fetchResult;
-}
+const fetchTableRows = createTableFetcher({
+  supabase,
+  withTimeout,
+  projectFilesTable: TABLES.projectFiles,
+  pageLabels: PAGE_LABELS,
+  logger: console,
+});
 
 /* ------------------------------ دوال الحسابات ------------------------------ */
 function materialConsumedQty(materialId, data) {
@@ -471,7 +439,7 @@ export default function App() {
 
     const updateConnectionStatus = (channelName, status) => {
       channelStatuses[channelName] = status;
-      const combined = combinedRealtimeStatus(channelStatuses);
+      const combined = nextRealtimeState(channelStatuses);
       setRealtimeStatus(combined);
       console.info(`[Realtime:${channelName}] ${status}`, { combined });
       if (combined === "CONNECTED") {
@@ -527,8 +495,15 @@ export default function App() {
       setRealtimeStatus("CONNECTING");
 
       const dataChannel = supabase.channel(`factory-data-${session.user.id}`);
-      Object.entries(REALTIME_TABLE_TO_KEY).filter(([, key]) => activeTableKeys.includes(key) || (key === "assetRealtimeSignal" && activeTableKeys.includes("assets")) || (key === "projectRealtimeSignal" && activeTableKeys.includes("projects"))).forEach(([table, key]) => {
-        dataChannel.on("postgres_changes", { event: "*", schema: "public", table }, (payload) => {
+      buildRealtimeChannelPlan({
+        role: profile.role,
+        dataKeys: [
+          ...activeTableKeys,
+          ...(activeTableKeys.includes("assets") ? ["assetRealtimeSignal"] : []),
+          ...(activeTableKeys.includes("projects") ? ["projectRealtimeSignal"] : []),
+        ],
+      }).forEach(({ table, key, event, schema }) => {
+        dataChannel.on("postgres_changes", { event, schema, table }, (payload) => {
           if (disposed || generation !== connectGeneration) return;
           console.info("[Realtime:data] postgres_changes", { table, key, event: payload.eventType });
           if (key === "assetRealtimeSignal") {
