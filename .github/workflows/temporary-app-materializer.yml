@@ -40,12 +40,13 @@ jobs:
           head_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${TARGET_BRANCH}" --jq .object.sha)"
           base_tree="$(gh api "repos/${GITHUB_REPOSITORY}/git/commits/${head_sha}" --jq .tree.sha)"
 
-          app_blob="$(gh api --method POST "repos/${GITHUB_REPOSITORY}/git/blobs" \
-            -f content="$(base64 -w0 src/AppMonolith.jsx)" \
-            -f encoding=base64 --jq .sha)"
-          test_blob="$(gh api --method POST "repos/${GITHUB_REPOSITORY}/git/blobs" \
-            -f content="$(base64 -w0 tests/app-bootstrap-integration.test.mjs)" \
-            -f encoding=base64 --jq .sha)"
+          base64 -w0 src/AppMonolith.jsx > app-source.b64
+          jq -n --rawfile content app-source.b64 '{content: $content, encoding: "base64"}' > app-blob.json
+          app_blob="$(gh api --method POST "repos/${GITHUB_REPOSITORY}/git/blobs" --input app-blob.json --jq .sha)"
+
+          base64 -w0 tests/app-bootstrap-integration.test.mjs > test-source.b64
+          jq -n --rawfile content test-source.b64 '{content: $content, encoding: "base64"}' > test-blob.json
+          test_blob="$(gh api --method POST "repos/${GITHUB_REPOSITORY}/git/blobs" --input test-blob.json --jq .sha)"
 
           new_tree="$(jq -n \
             --arg base_tree "${base_tree}" \
@@ -53,7 +54,8 @@ jobs:
             --arg test_blob "${test_blob}" \
             '{base_tree: $base_tree, tree: [
               {path: "src/AppMonolith.jsx", mode: "100644", type: "blob", sha: $app_blob},
-              {path: "tests/app-bootstrap-integration.test.mjs", mode: "100644", type: "blob", sha: $test_blob}
+              {path: "tests/app-bootstrap-integration.test.mjs", mode: "100644", type: "blob", sha: $test_blob},
+              {path: "scripts/materialize-app-bootstrap-integration.mjs", mode: "100644", type: "blob", sha: null}
             ]}' | gh api --method POST "repos/${GITHUB_REPOSITORY}/git/trees" --input - --jq .sha)"
 
           commit_sha="$(jq -n \
@@ -61,6 +63,9 @@ jobs:
             --arg tree "${new_tree}" \
             --arg parent "${head_sha}" \
             '{message: $message, tree: $tree, parents: [$parent]}' | gh api --method POST "repos/${GITHUB_REPOSITORY}/git/commits" --input - --jq .sha)"
+
+          jq -n --arg sha "${commit_sha}" '{sha: $sha, force: false}' \
+            | gh api --method PATCH "repos/${GITHUB_REPOSITORY}/git/refs/heads/${TARGET_BRANCH}" --input - >/dev/null
 
           printf '%s\n' "${commit_sha}" > materialized-commit-sha.txt
       - uses: actions/upload-artifact@v4
