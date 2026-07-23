@@ -1,0 +1,70 @@
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 12mm;
+  }
+
+  html,
+  body,
+  #root {
+    width: 100%;
+    min-height: 0 !important;
+    height: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+
+  body * {
+    visibility: hidden !important;
+  }
+
+  .procurement-print-document,
+  .procurement-print-document * {
+    visibility: visible !important;
+  }
+
+  .procurement-print-document {
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: #fff !important;
+    color: #000 !important;
+    direction: rtl;
+  }
+
+  .procurement-print-document button {
+    display: none !important;
+  }
+
+  .procurement-print-document table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    break-inside: auto;
+  }
+
+  .procurement-print-document thead {
+    display: table-header-group;
+  }
+
+  .procurement-print-document tr,
+  .procurement-print-document h3,
+  .procurement-print-document h4 {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .procurement-print-document th,
+  .procurement-print-document td {
+    color: #000 !important;
+    border-color: #777 !important;
+  }
+}
