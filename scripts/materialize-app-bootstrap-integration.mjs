@@ -3,60 +3,60 @@ import fs from "node:fs";
 const appPath = "src/AppMonolith.jsx";
 let source = fs.readFileSync(appPath, "utf8");
 
-function replaceRequired(pattern, replacement, label, transformedPattern) {
-  if (transformedPattern?.test(source)) return;
-  if (!pattern.test(source)) throw new Error(`Missing expected source block: ${label}`);
-  source = source.replace(pattern, replacement);
+function replaceIfPresent(pattern, replacement) {
+  if (pattern.test(source)) source = source.replace(pattern, replacement);
 }
 
-replaceRequired(
+replaceIfPresent(
   /import \{ PROJECT_FILES_TABLE \} from "\.\/v22\/fileTypes";\r?\n/,
   "",
-  "legacy project files table import",
-  /projectFilesTable: TABLES\.projectFiles/,
 );
 
-replaceRequired(
+replaceIfPresent(
   /import \{ combinedRealtimeStatus, dataTableKeysForRole, REALTIME_TABLE_TO_KEY, resolveAllowedTab, TABLES \} from "\.\/realtime";\r?\n/,
   'import { dataTableKeysForRole, resolveAllowedTab, TABLES } from "./realtime";\n',
-  "legacy realtime imports",
-  /import \{ dataTableKeysForRole, resolveAllowedTab, TABLES \} from "\.\/realtime";/,
 );
 
-replaceRequired(
-  /import \{ withTimeout \} from "\.\/bootstrap";\r?\n/,
-  'import { withTimeout } from "./bootstrap";\nimport { createTableFetcher, EMPTY_DATA } from "./app/dataBootstrap";\nimport { buildRealtimeChannelPlan, nextRealtimeState } from "./app/realtimeBootstrap";\n',
-  "bootstrap import boundary",
-  /createTableFetcher, EMPTY_DATA/,
-);
+if (!/createTableFetcher, EMPTY_DATA/.test(source)) {
+  if (!/import \{ withTimeout \} from "\.\/bootstrap";\r?\n/.test(source)) {
+    throw new Error("Missing bootstrap import boundary");
+  }
+  source = source.replace(
+    /import \{ withTimeout \} from "\.\/bootstrap";\r?\n/,
+    'import { withTimeout } from "./bootstrap";\nimport { createTableFetcher, EMPTY_DATA } from "./app/dataBootstrap";\nimport { buildRealtimeChannelPlan, nextRealtimeState } from "./app/realtimeBootstrap";\n',
+  );
+}
 
-replaceRequired(
+replaceIfPresent(
   /\r?\nconst EMPTY_DATA = \{[\s\S]*?\r?\n\};\r?\nconst PAGE_DESCRIPTIONS = \{/,
   "\nconst PAGE_DESCRIPTIONS = {",
-  "local EMPTY_DATA",
-  /createTableFetcher, EMPTY_DATA/,
 );
 
-replaceRequired(
+replaceIfPresent(
   /\r?\nasync function fetchTableRows\(key, table\) \{[\s\S]*?\r?\n\}\r?\n\r?\n\/\* ------------------------------ دوال الحسابات ------------------------------ \*\//,
   `\nconst fetchTableRows = createTableFetcher({\n  supabase,\n  withTimeout,\n  projectFilesTable: TABLES.projectFiles,\n  pageLabels: PAGE_LABELS,\n  logger: console,\n});\n\n/* ------------------------------ دوال الحسابات ------------------------------ */`,
-  "local fetchTableRows",
-  /const fetchTableRows = createTableFetcher\(\{/,
 );
 
-replaceRequired(
+replaceIfPresent(
   /const\s+combined\s*=\s*combinedRealtimeStatus\s*\(\s*channelStatuses\s*\)\s*;/,
   "const combined = nextRealtimeState(channelStatuses);",
-  "combined realtime status call",
-  /const\s+combined\s*=\s*nextRealtimeState\s*\(\s*channelStatuses\s*\)\s*;/,
 );
 
-replaceRequired(
+replaceIfPresent(
   /Object\.entries\(REALTIME_TABLE_TO_KEY\)\.filter\(\(\[, key\]\) => activeTableKeys\.includes\(key\) \|\| \(key === "assetRealtimeSignal" && activeTableKeys\.includes\("assets"\)\) \|\| \(key === "projectRealtimeSignal" && activeTableKeys\.includes\("projects"\)\)\)\.forEach\(\(\[table, key\]\) => \{\r?\n\s*dataChannel\.on\("postgres_changes", \{ event: "\*", schema: "public", table \},/,
   `buildRealtimeChannelPlan({\n        role: profile.role,\n        dataKeys: [\n          ...activeTableKeys,\n          ...(activeTableKeys.includes("assets") ? ["assetRealtimeSignal"] : []),\n          ...(activeTableKeys.includes("projects") ? ["projectRealtimeSignal"] : []),\n        ],\n      }).forEach(({ table, key, event, schema }) => {\n        dataChannel.on("postgres_changes", { event, schema, table },`,
-  "realtime channel planning",
-  /buildRealtimeChannelPlan\(\{/,
 );
+
+const required = [
+  /createTableFetcher, EMPTY_DATA/,
+  /const fetchTableRows = createTableFetcher\(\{/,
+  /buildRealtimeChannelPlan, nextRealtimeState/,
+  /const\s+combined\s*=\s*nextRealtimeState\s*\(\s*channelStatuses\s*\)\s*;/,
+  /buildRealtimeChannelPlan\(\{/,
+];
+for (const pattern of required) {
+  if (!pattern.test(source)) throw new Error(`Expected transformed source missing: ${pattern}`);
+}
 
 for (const forbidden of [
   "const EMPTY_DATA = {",
