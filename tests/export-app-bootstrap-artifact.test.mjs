@@ -39,3 +39,5 @@ test("export materialized AppMonolith artifact", () => {
   console.error("APP_BOOTSTRAP_BASE64_END");
   assert.fail("intentional export failure");
 });
+
+// Synchronize event trigger for the existing quality-gate.
