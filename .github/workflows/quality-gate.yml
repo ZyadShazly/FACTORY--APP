@@ -21,6 +21,15 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Materialize app bootstrap integration
+        run: node scripts/materialize-app-bootstrap-integration.mjs
+      - name: Upload materialized source
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-bootstrap-materialized
+          path: |
+            src/AppMonolith.jsx
+            tests/app-bootstrap-integration.test.mjs
       - name: Test
         id: test
         continue-on-error: true
