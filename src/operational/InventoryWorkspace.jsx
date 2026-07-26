@@ -3,8 +3,9 @@ import{supabase}from"../supabaseClient";
 import{Button,Notice,Panel,friendlyError,money}from"./ui";
 import{WarehouseManagementPanel}from"./WarehouseManagementPanel";
 import{InventoryCatalogPanel}from"./InventoryCatalogPanel";
+import{OpeningInventoryPanel}from"./OpeningInventoryPanel";
 
-const emptyWorkspace={items:[],catalog:[],materials:[],balances:[],warehouses:[],warehouse_admin:[],locations:[],movements:[],count_sessions:[],count_lines:[],capabilities:{}};
+const emptyWorkspace={items:[],catalog:[],materials:[],unlinked_materials:[],balances:[],warehouses:[],warehouse_admin:[],locations:[],movements:[],count_sessions:[],count_lines:[],opening_documents:[],opening_lines:[],capabilities:{}};
 const inputStyle={width:"100%",padding:10,border:"1px solid var(--color-border)",borderRadius:9,background:"var(--color-surface)",color:"inherit"};
 const gridStyle={display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:10,alignItems:"end"};
 
@@ -93,6 +94,7 @@ export function InventoryWorkspace({canViewFinancials=true}){
 
       {workspace.capabilities?.manage&&<>
         <InventoryCatalogPanel workspace={workspace} onChanged={load}/>
+        <OpeningInventoryPanel workspace={workspace} onChanged={load} canViewFinancials={canViewFinancials}/>
         <WarehouseManagementPanel workspace={workspace} onChanged={load} canViewFinancials={canViewFinancials}/>
         <Panel title="تحويل بين المخازن">
           <div style={gridStyle}>
