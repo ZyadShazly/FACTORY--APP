@@ -1,17 +1,46 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { spawnSync } from "node:child_process";
 
-function source(path) {
-  return fs.readFileSync(path, "utf8");
+function source(filePath) {
+  return fs.readFileSync(filePath, "utf8");
+}
+
+function copyFixture(root, relativePath) {
+  const target = path.join(root, relativePath);
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  fs.copyFileSync(relativePath, target);
 }
 
 test("operational patch is idempotent", () => {
-  const first = spawnSync(process.execPath, ["scripts/apply-operational-bug-closure.mjs"], { encoding: "utf8" });
-  assert.equal(first.status, 0, first.stderr || first.stdout);
-  const second = spawnSync(process.execPath, ["scripts/apply-operational-bug-closure.mjs"], { encoding: "utf8" });
-  assert.equal(second.status, 0, second.stderr || second.stdout);
+  const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "factory-operational-patch-"));
+  const fixtureFiles = [
+    "scripts/apply-operational-bug-closure.mjs",
+    "src/AppMonolith.jsx",
+    "src/auth/useProfileBootstrap.js",
+    "src/assets/AssetsPage.jsx",
+    "src/v22/payroll.jsx",
+  ];
+
+  try {
+    for (const filePath of fixtureFiles) copyFixture(fixtureRoot, filePath);
+
+    const runPatch = () => spawnSync(
+      process.execPath,
+      ["scripts/apply-operational-bug-closure.mjs"],
+      { cwd: fixtureRoot, encoding: "utf8" }
+    );
+
+    const first = runPatch();
+    assert.equal(first.status, 0, first.stderr || first.stdout);
+    const second = runPatch();
+    assert.equal(second.status, 0, second.stderr || second.stdout);
+  } finally {
+    fs.rmSync(fixtureRoot, { recursive: true, force: true });
+  }
 });
 
 test("authentication failures are localized and network errors are caught", () => {
