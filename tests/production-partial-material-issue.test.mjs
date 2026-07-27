@@ -27,7 +27,9 @@ test("database accepts positive partial issue up to remaining quantity",()=>{
 test("every production issue batch has immutable traceability",()=>{
   assert.match(migration,/create table if not exists public\.production_material_issues/);
   assert.match(migration,/inventory_movement_id uuid not null unique/);
-  assert.match(migration,/production_material_issue_history is immutable/i);
+  assert.match(migration,/create or replace function private\.protect_production_material_issue\(\)/i);
+  assert.match(migration,/create trigger production_material_issue_immutable/i);
+  assert.match(migration,/Production material issue history is immutable/i);
   assert.match(migration,/production_material_partial_issue/);
 });
 
