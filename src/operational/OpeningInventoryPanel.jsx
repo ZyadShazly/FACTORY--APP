@@ -93,8 +93,8 @@ export function OpeningInventoryPanel({workspace,onChanged,canViewFinancials=tru
       <Button disabled={busy||!lines.length} onClick={postDocument}>مراجعة واعتماد / ترحيل</Button>
     </>}
 
-    <div style={{marginTop:18}}>
-      <strong>السجل المرحّل</strong>
+    <details className="inventory-collapsible">
+      <summary>السجل المرحّل ({posted.length})</summary>
       <div style={{display:"grid",gap:8,marginTop:8}}>{posted.map(d=>{
         const documentLines=(workspace.opening_lines||[]).filter(l=>l.document_id===d.id);
         const quantity=documentLines.reduce((sum,row)=>sum+Number(row.quantity||0),0);
@@ -104,6 +104,6 @@ export function OpeningInventoryPanel({workspace,onChanged,canViewFinancials=tru
           <span>{money(quantity)}{canViewFinancials&&<> — {money(value)}</>}</span>
         </div>
       })}{!posted.length&&<span>لا توجد مستندات أرصدة افتتاحية مرحّلة.</span>}</div>
-    </div>
+    </details>
   </Panel>;
 }

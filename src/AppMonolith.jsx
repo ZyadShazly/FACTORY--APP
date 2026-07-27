@@ -649,7 +649,7 @@ export default function App() {
         {activeTab === "dashboard" && <Dashboard data={data} navigate={setTab} permissions={permissions} />}
         {activeTab === "projects" && <ProjectsTab data={data} profile={profile} permissions={permissions} refresh={refetchTable} />}
         {activeTab === "projectFiles" && <ProjectFilesHub data={data} permissions={permissions} refresh={refetchTable} />}
-        {activeTab === "inventory" && <InventoryTab canViewFinancials={permissions.view_financials} />}
+        {activeTab === "inventory" && <InventoryTab canViewFinancials={permissions.view_financials} onNavigate={setTab} allowedPages={permissions.pages || []} />}
         {activeTab === "purchases" && <ProcurementWorkspace data={data} />}
         {activeTab === "expenses" && <ExpensesTab data={data} insertRow={insertRow} deleteRow={deleteRow} canDelete={permissions.can_delete} />}
         {activeTab === "materials" && <MaterialsTab data={data} canDelete={permissions.can_delete} insertRow={insertRow} deleteRow={deleteRow} updateRow={updateRow} />}

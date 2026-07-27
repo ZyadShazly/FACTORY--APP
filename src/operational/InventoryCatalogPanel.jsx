@@ -1,11 +1,10 @@
-import React,{useMemo,useState}from"react";
+import React,{useEffect,useMemo,useState}from"react";
 import{supabase}from"../supabaseClient";
-import{Button,Field,Notice,Panel,friendlyError,inputStyle}from"./ui";
+import{Button,Field,Notice,Panel,friendlyError,inputStyle,money}from"./ui";
 
 const emptyForm={sku:"",name:"",unit:"وحدة",materialId:"",active:true};
-const rowStyle={display:"grid",gridTemplateColumns:"minmax(180px,1.2fr) minmax(180px,1fr) auto",gap:10,alignItems:"center",padding:10,border:"1px solid var(--color-border)",borderRadius:10};
 
-export function InventoryCatalogPanel({workspace,onChanged}){
+export function InventoryCatalogPanel({workspace,onChanged,canManage=false,createRequest=0}){
   const[busy,setBusy]=useState("");
   const[error,setError]=useState("");
   const[ok,setOk]=useState("");
@@ -13,14 +12,26 @@ export function InventoryCatalogPanel({workspace,onChanged}){
   const[links,setLinks]=useState({});
   const[showCreate,setShowCreate]=useState(false);
   const[form,setForm]=useState(emptyForm);
-  const catalog=useMemo(()=>(workspace.catalog||[]).filter(i=>`${i.name} ${i.sku||""} ${i.material_name||""}`.toLowerCase().includes(search.toLowerCase())),[workspace.catalog,search]);
-  const materials=(workspace.materials||[]).filter(m=>m.active!==false);
+  const sourceCatalog=(workspace.catalog||[]).length?workspace.catalog:(workspace.items||[]);
+  const catalog=useMemo(()=>sourceCatalog.filter(item=>`${item.name} ${item.sku||""} ${item.material_name||""}`.toLowerCase().includes(search.toLowerCase())),[sourceCatalog,search]);
+  const materials=(workspace.materials||[]).filter(material=>material.active!==false);
   const unlinked=workspace.unlinked_materials||[];
+  const balanceSummary=useMemo(()=>{
+    const summary=new Map();
+    for(const row of workspace.balances||[]){
+      const current=summary.get(row.inventory_item_id)||{quantity:0,warehouses:new Set()};
+      current.quantity+=Number(row.quantity_on_hand||0);
+      if(row.warehouse_name)current.warehouses.add(row.warehouse_name);
+      summary.set(row.inventory_item_id,current);
+    }
+    return summary;
+  },[workspace.balances]);
 
   function startCreate(material=null){
     setForm(material?{sku:"",name:material.name,unit:material.unit||"وحدة",materialId:material.id,active:true}:emptyForm);
     setShowCreate(true);setError("");setOk("");
   }
+  useEffect(()=>{if(createRequest>0)startCreate()},[createRequest]);
 
   async function run(key,name,args,success){
     setBusy(key);setError("");setOk("");
@@ -56,46 +67,54 @@ export function InventoryCatalogPanel({workspace,onChanged}){
     },"تم حذف الصنف غير المستخدم مع حفظ بياناته السابقة في سجل التدقيق.");
   }
 
-  return <>
-    <Panel title="كتالوج أصناف المخزون" actions={<Button onClick={()=>startCreate()}>إنشاء صنف مخزون</Button>}>
-      <p style={{color:"var(--color-text-muted)"}}>أنشئ الأصناف واربط المواد قبل الاستلام. التعطيل أو فك الربط لا يحذف أي حركة تاريخية.</p>
-      {error&&<Notice type="error">{error}</Notice>}{ok&&<Notice>{ok}</Notice>}
-      {!catalog.length&&unlinked.length>0&&<Notice>
-        يوجد مواد خام غير مربوطة. أنشئ صنف مخزون لبدء تسجيل الأرصدة والاستلام.
-      </Notice>}
-      {unlinked.length>0&&<div style={{display:"grid",gap:8,marginBottom:14}}>
-        {unlinked.map(material=><div key={material.id} style={{...rowStyle,gridTemplateColumns:"1fr auto"}}>
-          <span><strong>{material.name}</strong><small style={{display:"block",color:"var(--color-text-muted)"}}>غير مربوط — {material.unit||"وحدة"}</small></span>
-          <Button onClick={()=>startCreate(material)}>إنشاء صنف مخزون من المادة</Button>
-        </div>)}
-      </div>}
+  return <Panel title="أصناف المخزون" actions={canManage&&<Button onClick={()=>startCreate()}>+ صنف جديد</Button>}>
+    <div className="inventory-section-heading">
+      <div><h3>دليل الأصناف والأرصدة الحالية</h3><p>أنشئ الأصناف واربط المواد قبل الاستلام. التعطيل أو فك الربط لا يحذف أي حركة تاريخية.</p></div>
+    </div>
+    {error&&<Notice type="error">{error}</Notice>}{ok&&<Notice>{ok}</Notice>}
+    {canManage&&unlinked.length>0&&<Notice>يوجد مواد خام غير مربوطة. أنشئ صنف مخزون لبدء تسجيل الأرصدة والاستلام.</Notice>}
 
-      {showCreate&&<div style={{padding:12,border:"1px solid var(--color-border)",borderRadius:10,marginBottom:14}}>
-        <strong>إنشاء صنف مخزون</strong>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(170px,1fr))",gap:10,alignItems:"end",marginTop:10}}>
-          <Field label="SKU / الكود الداخلي"><input style={inputStyle} value={form.sku} onChange={e=>setForm({...form,sku:e.target.value})}/></Field>
-          <Field label="اسم الصنف"><input style={inputStyle} value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/></Field>
-          <Field label="الوحدة"><input style={inputStyle} value={form.unit} onChange={e=>setForm({...form,unit:e.target.value})}/></Field>
-          <Field label="المادة الخام (اختياري)"><select style={inputStyle} value={form.materialId} onChange={e=>setForm({...form,materialId:e.target.value})}><option value="">غير مربوط</option>{unlinked.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}</select></Field>
-          <Field label="الحالة"><select style={inputStyle} value={String(form.active)} onChange={e=>setForm({...form,active:e.target.value==="true"})}><option value="true">نشط</option><option value="false">غير نشط</option></select></Field>
-          <div style={{display:"flex",gap:8}}><Button disabled={busy==="create"} onClick={createItem}>حفظ الصنف</Button><Button tone="ghost" onClick={()=>setShowCreate(false)}>إلغاء</Button></div>
-        </div>
-      </div>}
+    {canManage&&unlinked.length>0&&<details className="inventory-materials">
+      <summary>مواد خام غير مربوطة ({unlinked.length}) — إنشاء صنف من مادة</summary>
+      <div className="inventory-material-list">{unlinked.map(material=><div key={material.id} className="inventory-material-row">
+        <span><strong>{material.name}</strong><small style={{display:"block",color:"var(--color-text-muted)"}}>{material.unit||"وحدة"}</small></span>
+        <Button onClick={()=>startCreate(material)}>إنشاء من المادة</Button>
+      </div>)}</div>
+    </details>}
 
-      <input style={{...inputStyle,width:"100%",marginBottom:12}} value={search} onChange={e=>setSearch(e.target.value)} placeholder="ابحث باسم الصنف أو الكود أو المادة..."/>
-      <div style={{display:"grid",gap:8}}>{catalog.map(item=>{
+    {canManage&&showCreate&&<div className="inventory-create-form">
+      <strong>إنشاء صنف مخزون</strong>
+      <div className="inventory-form-grid">
+        <Field label="SKU / الكود الداخلي"><input style={inputStyle} value={form.sku} onChange={event=>setForm({...form,sku:event.target.value})}/></Field>
+        <Field label="اسم الصنف"><input style={inputStyle} value={form.name} onChange={event=>setForm({...form,name:event.target.value})}/></Field>
+        <Field label="الوحدة"><input style={inputStyle} value={form.unit} onChange={event=>setForm({...form,unit:event.target.value})}/></Field>
+        <Field label="المادة الخام (اختياري)"><select style={inputStyle} value={form.materialId} onChange={event=>setForm({...form,materialId:event.target.value})}><option value="">غير مربوط</option>{unlinked.map(material=><option key={material.id} value={material.id}>{material.name}</option>)}</select></Field>
+        <Field label="الحالة"><select style={inputStyle} value={String(form.active)} onChange={event=>setForm({...form,active:event.target.value==="true"})}><option value="true">نشط</option><option value="false">غير نشط</option></select></Field>
+        <div className="inventory-row-actions"><Button disabled={busy==="create"} onClick={createItem}>حفظ الصنف</Button><Button tone="ghost" onClick={()=>setShowCreate(false)}>إلغاء</Button></div>
+      </div>
+    </div>}
+
+    <input style={{...inputStyle,width:"100%",marginBottom:12}} value={search} onChange={event=>setSearch(event.target.value)} placeholder="ابحث باسم الصنف أو الكود أو المادة..."/>
+    <div className="inventory-table-wrap"><table className="inventory-table"><thead><tr>{["الاسم","الكود","الكمية","المخزن","الحالة","المادة المرتبطة",...(canManage?["الإجراءات"]:[])].map(header=><th key={header}>{header}</th>)}</tr></thead><tbody>
+      {catalog.map(item=>{
         const selected=links[item.id]??item.material_id??"";
-        return <div key={item.id} style={rowStyle}>
-          <div><strong>{item.name}</strong><small style={{display:"block",color:"var(--color-text-muted)"}}>{item.sku} — {item.active?"نشط":"غير نشط"} — {item.material_name||"غير مربوط"}</small></div>
-          <select style={inputStyle} value={selected} onChange={e=>setLinks({...links,[item.id]:e.target.value})}><option value="">غير مربوط</option>{materials.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}</select>
-          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-            <Button disabled={busy===item.id} onClick={()=>save(item,selected,item.active)}>حفظ الربط</Button>
+        const summary=balanceSummary.get(item.id)||{quantity:0,warehouses:new Set()};
+        return <tr key={item.id}>
+          <td><span className="inventory-item-name"><strong>{item.name}</strong><small>{item.unit||"وحدة"}</small></span></td>
+          <td>{item.sku||"—"}</td>
+          <td>{money(summary.quantity)}</td>
+          <td>{[...summary.warehouses].join("، ")||"لا يوجد رصيد"}</td>
+          <td><span className={`inventory-status${item.active===false?" is-inactive":""}`}>{item.active===false?"غير نشط":"نشط"}</span></td>
+          <td>{canManage?<select style={inputStyle} value={selected} onChange={event=>setLinks({...links,[item.id]:event.target.value})}><option value="">غير مربوط</option>{materials.map(material=><option key={material.id} value={material.id}>{material.name}</option>)}</select>:item.material_name||"غير مربوط"}</td>
+          {canManage&&<td><div className="inventory-row-actions">
+            <Button disabled={busy===item.id||selected===(item.material_id||"")} onClick={()=>save(item,selected,item.active)}>حفظ الربط</Button>
             <Button tone="ghost" disabled={busy===item.id||!item.material_id} onClick={()=>save(item,"",item.active)}>فك الربط</Button>
-            <Button tone="ghost" disabled={busy===item.id} onClick={()=>save(item,item.material_id,!item.active)}>{item.active?"تعطيل":"تنشيط"}</Button>
-            <Button tone="danger" disabled={busy===item.id} onClick={()=>deleteItem(item)}>حذف</Button>
-          </div>
-        </div>
-      })}{!catalog.length&&<span>لا توجد أصناف مطابقة. استخدم «إنشاء صنف مخزون» للبدء.</span>}</div>
-    </Panel>
-  </>;
+            <Button tone="ghost" disabled={busy===item.id} onClick={()=>save(item,item.material_id,!item.active)}>{item.active===false?"تنشيط":"تعطيل"}</Button>
+            <details className="inventory-row-more"><summary>المزيد</summary><div><Button tone="danger" disabled={busy===item.id} onClick={()=>deleteItem(item)}>حذف غير مستخدم</Button></div></details>
+          </div></td>}
+        </tr>
+      })}
+      {!catalog.length&&<tr><td colSpan={canManage?7:6} className="inventory-empty">لا توجد أصناف مطابقة.</td></tr>}
+    </tbody></table></div>
+  </Panel>;
 }

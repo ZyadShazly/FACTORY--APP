@@ -16,6 +16,8 @@ export function WarehouseManagementPanel({workspace,onChanged,canViewFinancials=
   const[error,setError]=useState("");
   const[ok,setOk]=useState("");
   const warehouses=workspace.warehouse_admin||workspace.warehouses||[];
+  const activeWarehouses=warehouses.filter(warehouse=>warehouse.active!==false);
+  const archivedWarehouses=warehouses.filter(warehouse=>warehouse.active===false);
 
   async function rpc(name,args){setBusy(true);setError("");setOk("");const{data,error}=await supabase.rpc(name,args);setBusy(false);if(error){setError(friendlyError(error));return null}return data}
   async function saveWarehouse(){if(!form.code.trim()||!form.name.trim())return setError("اكتب كود المخزن واسمه");const data=await rpc("save_inventory_warehouse",{target_id:form.id,warehouse_code:form.code,warehouse_name:form.name});if(!data)return;setOk(form.id?"تم تحديث بيانات المخزن مع الحفاظ على تاريخه.":"تم إنشاء المخزن.");setForm({id:null,code:"",name:""});await onChanged()}
@@ -31,7 +33,11 @@ export function WarehouseManagementPanel({workspace,onChanged,canViewFinancials=
       <Button disabled={busy} onClick={saveWarehouse}>{form.id?"حفظ تعديل المخزن":"إضافة مخزن"}</Button>
       {form.id&&<Button tone="ghost" onClick={()=>setForm({id:null,code:"",name:""})}>إلغاء التعديل</Button>}
     </div>
-    <div style={{overflowX:"auto",marginTop:14}}><table style={{width:"100%",borderCollapse:"collapse"}}><thead><tr>{["الكود","المخزن","الحالة","الإجراءات"].map(h=><th key={h} style={{textAlign:"right",padding:9,borderBottom:"1px solid var(--color-border)"}}>{h}</th>)}</tr></thead><tbody>{warehouses.map(w=><tr key={w.id}><td style={{padding:9}}>{w.code}</td><td>{w.name}</td><td>{w.active?"نشط":"مؤرشف"}</td><td><div style={{display:"flex",gap:6,flexWrap:"wrap"}}><Button tone="ghost" onClick={()=>openDetail(w.id)}>فتح التفاصيل</Button>{w.active&&<Button tone="ghost" onClick={()=>setForm({id:w.id,code:w.code,name:w.name})}>تعديل</Button>}</div></td></tr>)}</tbody></table></div>
+    <div style={{overflowX:"auto",marginTop:14}}><table style={{width:"100%",borderCollapse:"collapse"}}><thead><tr>{["الكود","المخزن","الحالة","الإجراءات"].map(h=><th key={h} style={{textAlign:"right",padding:9,borderBottom:"1px solid var(--color-border)"}}>{h}</th>)}</tr></thead><tbody>{activeWarehouses.map(w=><tr key={w.id}><td style={{padding:9}}>{w.code}</td><td>{w.name}</td><td>نشط</td><td><div style={{display:"flex",gap:6,flexWrap:"wrap"}}><Button tone="ghost" onClick={()=>openDetail(w.id)}>فتح التفاصيل</Button><Button tone="ghost" onClick={()=>setForm({id:w.id,code:w.code,name:w.name})}>تعديل</Button></div></td></tr>)}{!activeWarehouses.length&&<tr><td colSpan="4" style={{padding:14,textAlign:"center"}}>لا توجد مخازن نشطة.</td></tr>}</tbody></table></div>
+    <details className="inventory-collapsible">
+      <summary>المخازن المؤرشفة ({archivedWarehouses.length})</summary>
+      <div style={{display:"grid",gap:8}}>{archivedWarehouses.map(warehouse=><div key={warehouse.id} style={{display:"flex",justifyContent:"space-between",gap:10,padding:10,border:"1px solid var(--color-border)",borderRadius:9}}><span>{warehouse.code} — {warehouse.name}</span><Button tone="ghost" onClick={()=>openDetail(warehouse.id)}>عرض التاريخ</Button></div>)}{!archivedWarehouses.length&&<span>لا توجد مخازن مؤرشفة.</span>}</div>
+    </details>
     <hr style={{border:0,borderTop:"1px solid var(--color-border)",margin:"18px 0"}}/>
     <h4>إضافة أو تعديل موقع تخزين</h4>
     <div style={grid}>
