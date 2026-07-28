@@ -51,7 +51,7 @@ No client-side direct write was added to Inventory, Opening Inventory, Procureme
 | Protected RPC regression | Passed |
 | Full test suite | Passed — 317 total, 315 passed, 0 failed, 2 intentional environment-gated skips |
 | Desktop/mobile/RTL | Pending live branch preview |
-| Quality Gate / Vercel | Pending Draft PR |
+| Quality Gate / Vercel | Passed on Draft PR #87 |
 
 The existing large AppMonolith chunk warning is unchanged and outside this narrow phase.
 
