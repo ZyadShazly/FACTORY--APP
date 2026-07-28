@@ -52,8 +52,11 @@ Phase 1 adds reusable presentation primitives without changing module data contr
 | Focused component contracts | Passed — 7/7 |
 | Full `npm test` | Passed — 298 passed, 0 failed, 2 skipped |
 | `npm run build` | Passed — 2,398 modules transformed |
-| `git diff --check` | Pending final commit check |
-| Desktop/mobile/RTL application regression QA | Pending |
+| `git diff --check` | Passed |
+| Desktop application regression QA | Passed — 1,440 × 900; no horizontal overflow |
+| Mobile application regression QA | Passed — 375 × 812; no horizontal overflow |
+| RTL QA | Passed — Arabic language and RTL direction retained |
+| Browser console | Passed — no warnings or errors on a clean local server |
 | Remote quality gate | Pending Draft PR |
 | Vercel | Pending Draft PR |
 
