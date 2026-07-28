@@ -22,6 +22,8 @@ test('workspace has one sticky primary action and no more than four KPIs', () =>
 });
 
 test('desktop and mobile layouts avoid unbounded grids', () => {
+  assert.match(css, /\.procurement-workspace\s*\{[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\)/);
+  assert.match(css, /\.procurement-workspace > \*\s*\{[\s\S]*min-width:\s*0/);
   assert.match(css, /\.procurement-tabs\s*\{[\s\S]*overflow-x:\s*auto/);
   assert.match(css, /@media \(max-width: 760px\)/);
   assert.match(css, /@media \(max-width: 480px\)/);

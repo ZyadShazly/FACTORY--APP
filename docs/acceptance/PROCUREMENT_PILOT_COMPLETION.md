@@ -57,10 +57,10 @@ Status: **Created only; not applied to production or any connected Supabase proj
 
 | Bug | Fix evidence | Automated coverage | UAT status |
 | --- | --- | --- | --- |
-| E — Procurement request clutter | Focused tabs, primary display names, active-first sections, collapsed request/order history, preview-only approval/send | `procurement-request-lifecycle-ui.test.mjs`, `procurement-status-board-layout.test.mjs`, `procurement-review-send-workflow.test.mjs` | Contract passed; visual QA pending preview |
-| F — Printing | Four shared professional templates, A4 RTL isolation, logo, VAT, totals, signatures, blank-page prevention | `procurement-document-review.test.mjs`, `procurement-printing.test.mjs` | Contract passed; print-dialog UAT pending preview |
+| E — Procurement request clutter | Focused tabs, primary display names, active-first sections, collapsed request/order history, preview-only approval/send | `procurement-request-lifecycle-ui.test.mjs`, `procurement-status-board-layout.test.mjs`, `procurement-review-send-workflow.test.mjs` | Desktop/mobile RTL visual QA passed |
+| F — Printing | Four shared professional templates, A4 RTL isolation, logo, VAT, totals, signatures, blank-page prevention | `procurement-document-review.test.mjs`, `procurement-printing.test.mjs` | Preview visual QA passed; print-media contract passed |
 | J — Currency in procurement | Configured currency code and formatter replace hardcoded `SAR` | `procurement-document-review.test.mjs` | Passed for procurement scope |
-| P — Global UX confusion in procurement | One tab/job, one primary action, four KPIs, archive collapsed, details on demand | `procurement-status-board-layout.test.mjs` | Contract passed; visual QA pending preview |
+| P — Global UX confusion in procurement | One tab/job, one primary action, four KPIs, archive collapsed, details on demand | `procurement-status-board-layout.test.mjs` | Desktop/mobile RTL visual QA passed |
 | Q — Friendly procurement errors | Explicit Arabic mapping for new and existing procurement workflow failures | `procurement-review-send-workflow.test.mjs` plus full regression | Passed for mapped procurement states |
 
 ## Validation
@@ -74,8 +74,10 @@ Status: **Created only; not applied to production or any connected Supabase proj
 | Build artifact cleanliness | Passed |
 | AppMonolith scope | No AppMonolith change |
 | Migration application | Not run |
-| Desktop / mobile / RTL | Automated responsive/RTL contracts passed; live preview QA pending |
+| Desktop / mobile / RTL | Passed against the current component with an in-memory, read-only QA fixture: 1,440×900 and 375×812; no global overflow, four KPIs, collapsed archive, full-width mobile drawer, and no browser errors |
 | Remote quality gate | Passed on Draft PR #86 |
 | Vercel | Passed on Draft PR #86 |
 
 The existing large AppMonolith chunk warning remains unchanged and outside this phase’s procurement scope.
+
+The visual fixture existed only in browser memory and an uncommitted temporary source file that was removed immediately after QA. It created no Supabase rows, users, or repository artifacts.
