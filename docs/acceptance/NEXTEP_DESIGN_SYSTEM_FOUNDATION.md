@@ -57,7 +57,7 @@ Phase 1 adds reusable presentation primitives without changing module data contr
 | Mobile application regression QA | Passed — 375 × 812; no horizontal overflow |
 | RTL QA | Passed — Arabic language and RTL direction retained |
 | Browser console | Passed — no warnings or errors on a clean local server |
-| Remote quality gate | Pending Draft PR |
-| Vercel | Pending Draft PR |
+| Remote quality gate | Passed on Draft PR #85 |
+| Vercel | Passed on Draft PR #85 |
 
 Status and contextual-help foreground/background pairs are covered by an automated WCAG AA contrast test at the normal-text threshold.
