@@ -5,7 +5,7 @@ Date: 2026-07-28
 Branch: `agent/production-pilot-completion`
 
 Base: Phase 3 Draft PR branch (`agent/inventory-pilot-hardening`)
-Draft PR: pending publication
+Draft PR: [#88](https://github.com/ZyadShazly/FACTORY--APP/pull/88)
 
 ## Outcome
 
@@ -62,8 +62,11 @@ The historical employee workflow migration now guards its dependency query with 
 - `npm test` launcher was unavailable in the bundled runtime because `npm` is not installed; the exact package script body was executed successfully with the bundled Node runtime.
 - Production build: passed, 2,399 modules transformed.
 - `git diff --check`: passed.
-- Desktop/mobile/RTL visual QA: pending deployment or local browser continuation.
-- Remote Quality Gate and Vercel: pending Draft PR publication.
+- Desktop/RTL visual QA: passed at 1,440×900 with no global overflow, four KPI cards, active-first cards, collapsed history, one primary action, and an on-demand execution drawer.
+- Mobile/RTL visual QA: passed in a real 375×812 iframe viewport; the inner document measured `clientWidth=scrollWidth=360`, used a two-column KPI layout, and rendered its details dialog at the full 360px content width.
+- Browser console: no warnings or errors.
+- Remote Quality Gate: passed, run 314.
+- Vercel deployment status: passed.
 
 ## Regression and safety
 
@@ -72,4 +75,5 @@ The historical employee workflow migration now guards its dependency query with 
 - No direct table mutation was added to Production UI.
 - Procurement, Inventory, Project, payroll, assets, expenses, and other legacy modules were not changed.
 - Existing partial issue, inventory ledger, protected RPC, role-boundary, and reporting contracts remain green in the full suite.
+- Visual QA used an in-memory read-only fixture and a temporary 375×812 host page. Both were removed immediately after QA; no Supabase rows, users, `.env` files, or repository artifacts were created.
 - No PR was merged and auto-merge was not enabled.
