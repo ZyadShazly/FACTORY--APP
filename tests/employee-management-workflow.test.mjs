@@ -7,11 +7,11 @@ const migration = fs.readFileSync(new URL("../supabase/migrations/20260721100000
 const guard = fs.readFileSync(new URL("../supabase/migrations/20260721101000_employee_delete_guard_reconcile.sql", import.meta.url), "utf8");
 const operationalPatch = fs.readFileSync(new URL("../scripts/apply-operational-bug-closure.mjs", import.meta.url), "utf8");
 
-test("employee list exposes view, edit, suspend and reactivate actions", () => {
+test("employee list exposes view, edit, archive and restore actions", () => {
   assert.match(payroll, /<Eye size=\{14\}\/?> فتح/);
   assert.match(payroll, /<Pencil size=\{14\}\/?> تعديل/);
-  assert.match(payroll, /<PauseCircle size=\{14\}\/?> إيقاف/);
-  assert.match(payroll, /<PlayCircle size=\{14\}\/?> تفعيل/);
+  assert.match(payroll, /<PauseCircle size=\{14\}\/?> أرشفة/);
+  assert.match(payroll, /<PlayCircle size=\{14\}\/?> استعادة/);
 });
 
 test("employee status changes are separate from login account status", () => {
