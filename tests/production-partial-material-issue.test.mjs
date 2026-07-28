@@ -7,11 +7,11 @@ const migration=fs.readFileSync("supabase/migrations/20260727053000_production_p
 
 test("production UI supports partial and repeated issue entry",()=>{
   assert.match(ui,/صرف الآن/);
-  assert.match(ui,/تسجيل الصرف/);
+  assert.match(ui,/تسجيل (?:الصرف|الدفعة)/);
   assert.match(ui,/المطلوب/);
   assert.match(ui,/المصروف/);
   assert.match(ui,/المتبقي/);
-  assert.match(ui,/\["released","in_progress"\]\.includes\(o\.status\)/);
+  assert.match(ui,/\["released","in_progress"\]\.includes\((?:o|selected)\.status\)/);
   assert.doesNotMatch(ui,/صرف كامل/);
   assert.doesNotMatch(ui,/Number\(r\.issued_quantity\)===0/);
 });

@@ -114,7 +114,23 @@ begin
   select count(*) into holiday_count from public.holiday_scopes where employee_id = target_employee_id;
   select count(*) into project_member_count from public.project_members where employee_id = target_employee_id;
   select count(*) into milestone_count from public.project_milestones where responsible_employee_id = target_employee_id;
-  select count(*) into production_count from public.production_order_operations where assigned_employee_id = target_employee_id;
+  -- Fresh repositories may replay this historical migration before the later
+  -- production-execution reconciliation. Keep the already-applied behavior when
+  -- the assignment column exists, and let the additive follow-up own recovery.
+  if exists (
+    select 1
+    from information_schema.columns
+    where table_schema='public'
+      and table_name='production_order_operations'
+      and column_name='assigned_employee_id'
+  ) then
+    execute
+      'select count(*) from public.production_order_operations where assigned_employee_id=$1'
+      into production_count
+      using target_employee_id;
+  else
+    production_count := 0;
+  end if;
 
   dependency_total := payroll_count + profile_count + assignment_count + schedule_count + holiday_count
     + project_member_count + milestone_count + production_count;
