@@ -1,3 +1,4 @@
+export {NumericInput} from "./NumericInput.jsx";
 export {
   ArchiveSection,
   DependencySummary,
