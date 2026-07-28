@@ -19,6 +19,7 @@ The existing test correctly used an isolated temporary fixture, so it did not mu
 - Make the clean-tree gate include untracked files.
 - Test that an unexpected test artifact fails the clean-tree gate.
 - Upgrade GitHub Actions from Node 20-based action majors to the current Node 24-based v7 actions.
+- Run the pull-request quality gate for every target branch so independently scoped stacked Draft PRs remain validated.
 
 ## Validation
 

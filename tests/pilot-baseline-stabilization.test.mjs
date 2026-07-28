@@ -13,6 +13,7 @@ test("quality gate uses current Node 24-based GitHub actions", () => {
   assert.match(qualityGate, /actions\/setup-node@v7/);
   assert.match(qualityGate, /actions\/upload-artifact@v7/);
   assert.doesNotMatch(qualityGate, /actions\/(?:checkout|setup-node|upload-artifact)@v4/);
+  assert.match(qualityGate, /pull_request:\s*\{\}/);
 });
 
 test("clean-tree gate includes untracked files", () => {
