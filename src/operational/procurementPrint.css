@@ -11,6 +11,11 @@
   max-width: 100%;
 }
 
+.procurement-error-action {
+  display: block;
+  margin-top: 10px;
+}
+
 .procurement-workspace .nui-kpi-grid {
   margin-block: 0;
 }

@@ -650,9 +650,9 @@ export default function App() {
         {activeTab === "projects" && <ProjectsTab data={data} profile={profile} permissions={permissions} refresh={refetchTable} />}
         {activeTab === "projectFiles" && <ProjectFilesHub data={data} permissions={permissions} refresh={refetchTable} />}
         {activeTab === "inventory" && <InventoryTab canViewFinancials={permissions.view_financials} onNavigate={setTab} allowedPages={permissions.pages || []} />}
-        {activeTab === "purchases" && <ProcurementWorkspace data={data} />}
+        {activeTab === "purchases" && <ProcurementWorkspace data={data} onNavigate={setTab} />}
         {activeTab === "expenses" && <ExpensesTab data={data} insertRow={insertRow} deleteRow={deleteRow} canDelete={permissions.can_delete} />}
-        {activeTab === "materials" && <MaterialsTab data={data} canDelete={permissions.can_delete} insertRow={insertRow} deleteRow={deleteRow} updateRow={updateRow} />}
+        {activeTab === "materials" && <MaterialsTab data={data} canDelete={permissions.can_delete} insertRow={insertRow} deleteRow={deleteRow} updateRow={updateRow} onNavigate={setTab} />}
         {activeTab === "products" && <ProductsTab data={data} canCreate={permissions.can_create_products} canEdit={permissions.can_edit_products} canDelete={permissions.can_delete} hideProfitInfo={!permissions.view_financials} insertRow={insertRow} deleteRow={deleteRow} updateRow={updateRow} />}
         {activeTab === "production" && <ProductionTab data={data} profileRole={role} canViewFinancials={permissions.view_financials} />}
         {activeTab === "assets" && permissions.assets_view && <AssetsPage data={data} profile={profile} permissions={permissions} refresh={refetchTable} />}
