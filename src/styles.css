@@ -5,6 +5,7 @@
 @import './v22/dailyLabor.css';
 @import './v22/audit.css';
 @import './design-system.css';
+@import './ui/foundation.css';
 
 * { box-sizing: border-box; }
 html, body, #root { margin: 0; padding: 0; min-height: 100vh; background: var(--color-app-bg); }
