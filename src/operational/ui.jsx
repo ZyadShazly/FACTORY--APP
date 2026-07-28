@@ -1,4 +1,5 @@
 import React from "react";
+import {NumericInput} from "../ui/index.js";
 export {
   ArchiveSection,
   DependencySummary,
@@ -8,6 +9,7 @@ export {
   KpiCard,
   KpiGrid,
   MAX_KPI_CARDS,
+  NumericInput,
   PageHeader,
   PrimaryActionBar,
   ResponsiveCardGrid,
@@ -93,4 +95,4 @@ export function friendlyError(error){const t=String(error?.message||error||"تع
 export function Panel({title,children,actions}){return <section style={{background:"var(--color-surface)",border:"1px solid var(--color-border)",borderRadius:14,padding:16,marginBottom:16}}><div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"center",marginBottom:12}}><strong>{title}</strong>{actions}</div>{children}</section>}
 export function Button({children,onClick,disabled,tone="primary"}){return <button type="button" onClick={onClick} disabled={disabled} style={{border:0,borderRadius:9,padding:"9px 13px",cursor:disabled?"not-allowed":"pointer",fontWeight:700,background:tone==="danger"?"var(--color-danger)":tone==="ghost"?"var(--color-surface-muted)":"var(--color-wood)",color:tone==="ghost"?"var(--color-text)":"#fff",opacity:disabled?.55:1}}>{children}</button>}
 export function Notice({type="info",children}){return <div style={{padding:12,borderRadius:10,marginBottom:12,background:type==="error"?"color-mix(in srgb,var(--color-danger) 12%,transparent)":"var(--color-surface-muted)",color:type==="error"?"var(--color-danger)":"var(--color-text)"}}>{children}</div>}
-export function Field({label,children}){return <label style={{display:"grid",gap:6,fontSize:13,minWidth:170}}><span>{label}</span>{children}</label>}
+export function Field({label,children}){const content=React.isValidElement(children)&&children.type==="input"&&children.props.type==="number"?<NumericInput {...children.props}/>:children;return <label style={{display:"grid",gap:6,fontSize:13,minWidth:170}}><span>{label}</span>{content}</label>}
