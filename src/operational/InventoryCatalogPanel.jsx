@@ -9,11 +9,15 @@ export function InventoryCatalogPanel({workspace,onChanged,onOpenMaterials,canMa
   const[error,setError]=useState("");
   const[ok,setOk]=useState("");
   const[search,setSearch]=useState("");
+  const[stockKind,setStockKind]=useState("raw");
   const[links,setLinks]=useState({});
   const[showCreate,setShowCreate]=useState(false);
   const[form,setForm]=useState(emptyForm);
   const sourceCatalog=(workspace.catalog||[]).length?workspace.catalog:(workspace.items||[]);
-  const catalog=useMemo(()=>sourceCatalog.filter(item=>`${item.name} ${item.sku||""} ${item.material_name||""}`.toLowerCase().includes(search.toLowerCase())),[sourceCatalog,search]);
+  const rawItems=useMemo(()=>sourceCatalog.filter(item=>Boolean(item.material_id||item.material_name)),[sourceCatalog]);
+  const finishedItems=useMemo(()=>sourceCatalog.filter(item=>!item.material_id&&!item.material_name),[sourceCatalog]);
+  const selectedSource=stockKind==="raw"?rawItems:finishedItems;
+  const catalog=useMemo(()=>selectedSource.filter(item=>`${item.name} ${item.sku||""} ${item.material_name||""}`.toLowerCase().includes(search.toLowerCase())),[selectedSource,search]);
   const materials=(workspace.materials||[]).filter(material=>material.active!==false);
   const unlinked=workspace.unlinked_materials||[];
   const linkedMaterialIds=useMemo(()=>new Set(sourceCatalog.map(item=>item.material_id).filter(Boolean)),[sourceCatalog]);
@@ -27,6 +31,8 @@ export function InventoryCatalogPanel({workspace,onChanged,onOpenMaterials,canMa
     }
     return summary;
   },[workspace.balances]);
+  const rawBalance=useMemo(()=>rawItems.reduce((sum,item)=>sum+(balanceSummary.get(item.id)?.quantity||0),0),[rawItems,balanceSummary]);
+  const finishedBalance=useMemo(()=>finishedItems.reduce((sum,item)=>sum+(balanceSummary.get(item.id)?.quantity||0),0),[finishedItems,balanceSummary]);
 
   function startCreate(material=null){
     setForm(material?{sku:"",name:material.name,unit:material.unit||"وحدة",materialId:material.id,active:true}:emptyForm);
@@ -50,7 +56,7 @@ export function InventoryCatalogPanel({workspace,onChanged,onOpenMaterials,canMa
       item_sku:form.sku.trim(),item_name:form.name.trim(),item_unit:form.unit.trim(),
       target_material:form.materialId||null,item_active:form.active
     },"تم إنشاء صنف المخزون وتسجيل العملية في سجل التدقيق.");
-    if(done){setForm(emptyForm);setShowCreate(false)}
+    if(done){setForm(emptyForm);setShowCreate(false);setStockKind(form.materialId?"raw":"finished")}
   }
 
   async function save(item,materialId,active){
@@ -70,14 +76,23 @@ export function InventoryCatalogPanel({workspace,onChanged,onOpenMaterials,canMa
 
   return <Panel title="أصناف المخزون" actions={canManage&&<Button onClick={()=>startCreate()}>+ صنف جديد</Button>}>
     <div className="inventory-section-heading">
-      <div><h3>دليل الأصناف والأرصدة الحالية</h3><p>أنشئ الأصناف واربط المواد قبل الاستلام. التعطيل أو فك الربط لا يحذف أي حركة تاريخية.</p></div>
+      <div><h3>أرصدة المواد الخام والمنتجات التامة</h3><p>اختر نوع المخزون أولًا حتى تظهر لك الأرصدة المهمة فقط، مع بقاء الربط والحركات التاريخية كما هي.</p></div>
       {onOpenMaterials&&<Button tone="ghost" onClick={onOpenMaterials}>فتح المواد الخام</Button>}
+    </div>
+    <div className="inventory-balance-switch" role="tablist" aria-label="نوع رصيد المخزون">
+      <button type="button" role="tab" aria-selected={stockKind==="raw"} className={stockKind==="raw"?"is-active":""} onClick={()=>setStockKind("raw")}>
+        <span>المواد الخام</span><strong>{money(rawBalance)}</strong><small>{rawItems.length} صنف</small>
+      </button>
+      <button type="button" role="tab" aria-selected={stockKind==="finished"} className={stockKind==="finished"?"is-active":""} onClick={()=>setStockKind("finished")}>
+        <span>المنتجات التامة</span><strong>{money(finishedBalance)}</strong><small>{finishedItems.length} صنف</small>
+      </button>
     </div>
     <details className="inventory-concepts">
       <summary>ما الفرق بين المادة الخام وصنف المخزون والرصيد والحركة؟</summary>
       <dl>
         <div><dt>المادة الخام</dt><dd>تعريف ما تشتريه أو تستخدمه في الإنتاج.</dd></div>
         <div><dt>صنف المخزون</dt><dd>الكود الذي يربط المادة بدفتر المخزون.</dd></div>
+        <div><dt>المنتج التام</dt><dd>صنف مخزون غير مربوط بمادة خام ويظهر في رصيد المنتجات التامة.</dd></div>
         <div><dt>رصيد المخزن</dt><dd>الكمية والقيمة الحالية لصنف داخل مخزن محدد.</dd></div>
         <div><dt>الرصيد الافتتاحي</dt><dd>مستند مستقل لإدخال مخزون المصنع الموجود قبل بدء النظام.</dd></div>
         <div><dt>حركة المخزون</dt><dd>سجل غير قابل للمحو لكل استلام أو صرف أو تحويل أو تسوية.</dd></div>
@@ -100,13 +115,13 @@ export function InventoryCatalogPanel({workspace,onChanged,onOpenMaterials,canMa
         <Field label="SKU / الكود الداخلي"><input style={inputStyle} value={form.sku} onChange={event=>setForm({...form,sku:event.target.value})}/></Field>
         <Field label="اسم الصنف"><input style={inputStyle} value={form.name} onChange={event=>setForm({...form,name:event.target.value})}/></Field>
         <Field label="الوحدة"><input style={inputStyle} value={form.unit} onChange={event=>setForm({...form,unit:event.target.value})}/></Field>
-        <Field label="المادة الخام (اختياري)"><select style={inputStyle} value={form.materialId} onChange={event=>setForm({...form,materialId:event.target.value})}><option value="">غير مربوط</option>{unlinked.map(material=><option key={material.id} value={material.id}>{material.name}</option>)}</select></Field>
+        <Field label="المادة الخام (اتركها فارغة للمنتج التام)"><select style={inputStyle} value={form.materialId} onChange={event=>setForm({...form,materialId:event.target.value})}><option value="">منتج تام / غير مربوط بمادة خام</option>{unlinked.map(material=><option key={material.id} value={material.id}>{material.name}</option>)}</select></Field>
         <Field label="الحالة"><select style={inputStyle} value={String(form.active)} onChange={event=>setForm({...form,active:event.target.value==="true"})}><option value="true">نشط</option><option value="false">غير نشط</option></select></Field>
         <div className="inventory-row-actions"><Button disabled={busy==="create"} onClick={createItem}>حفظ الصنف</Button><Button tone="ghost" onClick={()=>setShowCreate(false)}>إلغاء</Button></div>
       </div>
     </div>}
 
-    <input style={{...inputStyle,width:"100%",marginBottom:12}} value={search} onChange={event=>setSearch(event.target.value)} placeholder="ابحث باسم الصنف أو الكود أو المادة..."/>
+    <input style={{...inputStyle,width:"100%",marginBottom:12}} value={search} onChange={event=>setSearch(event.target.value)} placeholder={stockKind==="raw"?"ابحث في المواد الخام بالاسم أو الكود...":"ابحث في المنتجات التامة بالاسم أو الكود..."}/>
     <div className="inventory-table-wrap"><table className="inventory-table"><thead><tr>{["الاسم","الكود","الكمية","المخزن","الحالة","المادة المرتبطة",...(canManage?["الإجراءات"]:[])].map(header=><th key={header}>{header}</th>)}</tr></thead><tbody>
       {catalog.map(item=>{
         const selected=links[item.id]??item.material_id??"";
@@ -118,16 +133,16 @@ export function InventoryCatalogPanel({workspace,onChanged,onOpenMaterials,canMa
           <td>{money(summary.quantity)}</td>
           <td>{[...summary.warehouses].join("، ")||"لا يوجد رصيد"}</td>
           <td><span className={`inventory-status${item.active===false?" is-inactive":""}`}>{item.active===false?"غير نشط":"نشط"}</span></td>
-          <td>{canManage?<select style={inputStyle} value={selected} onChange={event=>setLinks({...links,[item.id]:event.target.value})}><option value="">غير مربوط</option>{availableMaterials.map(material=><option key={material.id} value={material.id}>{material.name}</option>)}</select>:item.material_name||"غير مربوط"}</td>
+          <td>{canManage?<select style={inputStyle} value={selected} onChange={event=>setLinks({...links,[item.id]:event.target.value})}><option value="">منتج تام / غير مربوط</option>{availableMaterials.map(material=><option key={material.id} value={material.id}>{material.name}</option>)}</select>:item.material_name||(stockKind==="finished"?"منتج تام":"غير مربوط")}</td>
           {canManage&&<td><div className="inventory-row-actions">
             <Button disabled={busy===item.id||selected===(item.material_id||"")} onClick={()=>save(item,selected,item.active)}>حفظ الربط</Button>
-            <Button tone="ghost" disabled={busy===item.id||!item.material_id} onClick={()=>save(item,"",item.active)}>فك الربط</Button>
+            <Button tone="ghost" disabled={busy===item.id||!item.material_id} onClick={()=>save(item,"",item.active)}>تحويل لمنتج تام</Button>
             <Button tone="ghost" disabled={busy===item.id} onClick={()=>save(item,item.material_id,!item.active)}>{item.active===false?"تنشيط":"تعطيل"}</Button>
             <details className="inventory-row-more"><summary>المزيد</summary><div><Button tone="danger" disabled={busy===item.id} onClick={()=>deleteItem(item)}>حذف غير مستخدم</Button></div></details>
           </div></td>}
         </tr>
       })}
-      {!catalog.length&&<tr><td colSpan={canManage?7:6} className="inventory-empty">لا توجد أصناف مطابقة.</td></tr>}
+      {!catalog.length&&<tr><td colSpan={canManage?7:6} className="inventory-empty">لا توجد {stockKind==="raw"?"مواد خام":"منتجات تامة"} مطابقة.</td></tr>}
     </tbody></table></div>
   </Panel>;
 }
