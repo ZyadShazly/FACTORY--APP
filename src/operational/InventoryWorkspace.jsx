@@ -68,6 +68,7 @@ export function InventoryWorkspace({canViewFinancials=true,onNavigate,allowedPag
   const canManage=Boolean(workspace.capabilities?.manage);
   const canOpenPurchases=allowedPages.includes("purchases");
   const canOpenProduction=allowedPages.includes("production");
+  const canOpenMaterials=allowedPages.includes("materials");
 
   function openTab(nextTab,nextOperation=null){
     setTab(nextTab);
@@ -140,7 +141,7 @@ export function InventoryWorkspace({canViewFinancials=true,onNavigate,allowedPag
         {TABS.map(item=><button key={item.id} type="button" aria-selected={tab===item.id} onClick={()=>openTab(item.id)}>{item.label}</button>)}
       </nav>
 
-      {tab==="items"&&<InventoryCatalogPanel workspace={workspace} onChanged={load} canManage={canManage} createRequest={createRequest}/>}
+      {tab==="items"&&<InventoryCatalogPanel workspace={workspace} onChanged={load} onOpenMaterials={canOpenMaterials&&onNavigate?()=>onNavigate("materials"):null} canManage={canManage} createRequest={createRequest}/>}
 
       {tab==="opening"&&(canManage
         ?<OpeningInventoryPanel workspace={workspace} onChanged={load} canViewFinancials={canViewFinancials}/>

@@ -4,7 +4,7 @@ import{Button,Field,Notice,Panel,friendlyError,inputStyle,money}from"./ui";
 
 const emptyForm={sku:"",name:"",unit:"وحدة",materialId:"",active:true};
 
-export function InventoryCatalogPanel({workspace,onChanged,canManage=false,createRequest=0}){
+export function InventoryCatalogPanel({workspace,onChanged,onOpenMaterials,canManage=false,createRequest=0}){
   const[busy,setBusy]=useState("");
   const[error,setError]=useState("");
   const[ok,setOk]=useState("");
@@ -16,6 +16,7 @@ export function InventoryCatalogPanel({workspace,onChanged,canManage=false,creat
   const catalog=useMemo(()=>sourceCatalog.filter(item=>`${item.name} ${item.sku||""} ${item.material_name||""}`.toLowerCase().includes(search.toLowerCase())),[sourceCatalog,search]);
   const materials=(workspace.materials||[]).filter(material=>material.active!==false);
   const unlinked=workspace.unlinked_materials||[];
+  const linkedMaterialIds=useMemo(()=>new Set(sourceCatalog.map(item=>item.material_id).filter(Boolean)),[sourceCatalog]);
   const balanceSummary=useMemo(()=>{
     const summary=new Map();
     for(const row of workspace.balances||[]){
@@ -70,7 +71,18 @@ export function InventoryCatalogPanel({workspace,onChanged,canManage=false,creat
   return <Panel title="أصناف المخزون" actions={canManage&&<Button onClick={()=>startCreate()}>+ صنف جديد</Button>}>
     <div className="inventory-section-heading">
       <div><h3>دليل الأصناف والأرصدة الحالية</h3><p>أنشئ الأصناف واربط المواد قبل الاستلام. التعطيل أو فك الربط لا يحذف أي حركة تاريخية.</p></div>
+      {onOpenMaterials&&<Button tone="ghost" onClick={onOpenMaterials}>فتح المواد الخام</Button>}
     </div>
+    <details className="inventory-concepts">
+      <summary>ما الفرق بين المادة الخام وصنف المخزون والرصيد والحركة؟</summary>
+      <dl>
+        <div><dt>المادة الخام</dt><dd>تعريف ما تشتريه أو تستخدمه في الإنتاج.</dd></div>
+        <div><dt>صنف المخزون</dt><dd>الكود الذي يربط المادة بدفتر المخزون.</dd></div>
+        <div><dt>رصيد المخزن</dt><dd>الكمية والقيمة الحالية لصنف داخل مخزن محدد.</dd></div>
+        <div><dt>الرصيد الافتتاحي</dt><dd>مستند مستقل لإدخال مخزون المصنع الموجود قبل بدء النظام.</dd></div>
+        <div><dt>حركة المخزون</dt><dd>سجل غير قابل للمحو لكل استلام أو صرف أو تحويل أو تسوية.</dd></div>
+      </dl>
+    </details>
     {error&&<Notice type="error">{error}</Notice>}{ok&&<Notice>{ok}</Notice>}
     {canManage&&unlinked.length>0&&<Notice>يوجد مواد خام غير مربوطة. أنشئ صنف مخزون لبدء تسجيل الأرصدة والاستلام.</Notice>}
 
@@ -99,13 +111,14 @@ export function InventoryCatalogPanel({workspace,onChanged,canManage=false,creat
       {catalog.map(item=>{
         const selected=links[item.id]??item.material_id??"";
         const summary=balanceSummary.get(item.id)||{quantity:0,warehouses:new Set()};
+        const availableMaterials=materials.filter(material=>material.id===item.material_id||!linkedMaterialIds.has(material.id));
         return <tr key={item.id}>
           <td><span className="inventory-item-name"><strong>{item.name}</strong><small>{item.unit||"وحدة"}</small></span></td>
           <td>{item.sku||"—"}</td>
           <td>{money(summary.quantity)}</td>
           <td>{[...summary.warehouses].join("، ")||"لا يوجد رصيد"}</td>
           <td><span className={`inventory-status${item.active===false?" is-inactive":""}`}>{item.active===false?"غير نشط":"نشط"}</span></td>
-          <td>{canManage?<select style={inputStyle} value={selected} onChange={event=>setLinks({...links,[item.id]:event.target.value})}><option value="">غير مربوط</option>{materials.map(material=><option key={material.id} value={material.id}>{material.name}</option>)}</select>:item.material_name||"غير مربوط"}</td>
+          <td>{canManage?<select style={inputStyle} value={selected} onChange={event=>setLinks({...links,[item.id]:event.target.value})}><option value="">غير مربوط</option>{availableMaterials.map(material=><option key={material.id} value={material.id}>{material.name}</option>)}</select>:item.material_name||"غير مربوط"}</td>
           {canManage&&<td><div className="inventory-row-actions">
             <Button disabled={busy===item.id||selected===(item.material_id||"")} onClick={()=>save(item,selected,item.active)}>حفظ الربط</Button>
             <Button tone="ghost" disabled={busy===item.id||!item.material_id} onClick={()=>save(item,"",item.active)}>فك الربط</Button>

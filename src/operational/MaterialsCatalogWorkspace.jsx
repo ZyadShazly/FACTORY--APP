@@ -2,7 +2,7 @@ import React,{useEffect,useMemo,useState}from"react";
 import{supabase}from"../supabaseClient";
 import{Button,Field,Notice,Panel,friendlyError,inputStyle}from"./ui";
 
-export function MaterialsCatalogWorkspace({data,insertRow}){
+export function MaterialsCatalogWorkspace({data,insertRow,onNavigate}){
   const[name,setName]=useState("");
   const[unit,setUnit]=useState("قطعة");
   const[error,setError]=useState("");
@@ -17,13 +17,14 @@ export function MaterialsCatalogWorkspace({data,insertRow}){
   useEffect(()=>{void refreshSetup()},[data.materials]);
 
   const materials=setup?.materials||data.materials||[];
-  const linkedIds=useMemo(()=>new Set((setup?.catalog||[]).map(i=>i.material_id).filter(Boolean)),[setup]);
+  const linkedByMaterial=useMemo(()=>new Map((setup?.catalog||[]).filter(i=>i.material_id).map(i=>[i.material_id,i])),[setup]);
 
   async function add(){
     setError("");setOk("");
     if(!name.trim())return setError("اكتب اسم المادة");
     const e=await insertRow("materials",{name:name.trim(),unit,unit_cost:0,initial_stock:0});
     if(e)return setError(friendlyError(e));
+    await refreshSetup();
     setName("");setOk("تم إنشاء تعريف المادة. أنشئ صنف مخزون مربوطًا بها قبل الاستلام.");
   }
 
@@ -78,11 +79,14 @@ export function MaterialsCatalogWorkspace({data,insertRow}){
       <Button onClick={add}>إضافة</Button>
     </div></Panel>
     <Panel title="المواد المعرفة"><div style={{display:"grid",gap:8}}>{materials.map(material=>{
-      const linked=linkedIds.has(material.id);
+      const linkedItem=linkedByMaterial.get(material.id);
+      const linked=Boolean(linkedItem);
       return <div key={material.id} style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"center",padding:10,border:"1px solid var(--color-border)",borderRadius:9}}>
-        <span><strong>{material.name}</strong> — {material.unit||"وحدة"}<small style={{display:"block",color:"var(--color-text-muted)"}}>{material.active===false?"مؤرشفة":linked?"مربوطة بصنف مخزون":"غير مربوطة"}</small></span>
+        <span><strong>{material.name}</strong> — {material.unit||"وحدة"}<small style={{display:"block",color:"var(--color-text-muted)"}}>{material.active===false?"مؤرشفة":linked?`مربوطة بـ ${linkedItem.name} — ${linkedItem.sku}`:"غير مربوطة"}</small></span>
         <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
           {!linked&&material.active!==false&&<Button disabled={busy===material.id} onClick={()=>createItem(material)}>إنشاء صنف مخزون من المادة</Button>}
+          {!linked&&material.active!==false&&onNavigate&&<Button tone="ghost" onClick={()=>onNavigate("inventory")}>ربط بصنف موجود</Button>}
+          {linked&&onNavigate&&<Button tone="ghost" onClick={()=>onNavigate("inventory")}>فتح صنف المخزون</Button>}
           <Button tone="ghost" disabled={busy===material.id} onClick={()=>setActive(material,material.active===false)}>{material.active===false?"تنشيط":"أرشفة"}</Button>
           <Button tone="danger" disabled={busy===material.id} onClick={()=>remove(material)}>حذف</Button>
         </div>

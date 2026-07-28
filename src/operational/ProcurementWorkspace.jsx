@@ -96,9 +96,10 @@ function ProcurementDocument({
   </article>;
 }
 
-export function ProcurementWorkspace({data}){
+export function ProcurementWorkspace({data,onNavigate}){
   const[ws,setWs]=useState(emptyWorkspace),[inventory,setInventory]=useState({warehouses:[]});
   const[error,setError]=useState(""),[ok,setOk]=useState(""),[loading,setLoading]=useState(true);
+  const[linkingRequired,setLinkingRequired]=useState(false);
   const[tab,setTab]=useState("requests"),[search,setSearch]=useState(""),[creating,setCreating]=useState(false);
   const[selected,setSelected]=useState(null),[rejecting,setRejecting]=useState(null),[rejectReason,setRejectReason]=useState("");
   const[request,setRequest]=useState({display_name:"",project_id:"",material_id:"",description:"",quantity:"",unit:"قطعة",estimated_unit_cost:"",justification:""});
@@ -119,9 +120,13 @@ export function ProcurementWorkspace({data}){
   }
   useEffect(()=>{void load()},[]);
   async function call(name,args,msg,{keepSelection=false}={}){
-    setError("");setOk("");
+    setError("");setOk("");setLinkingRequired(false);
     const{data:result,error:callError}=await supabase.rpc(name,args);
-    if(callError){setError(friendlyError(callError));return false}
+    if(callError){
+      const raw=String(callError.message||callError);
+      setLinkingRequired(raw.includes("Receipt material is not linked to an active inventory item")||raw.includes("يجب ربط المادة"));
+      setError(friendlyError(callError));return false
+    }
     setOk(msg);if(!keepSelection)setSelected(null);setRejecting(null);setRejectReason("");await load();return result||true;
   }
   async function saveRequest(){
@@ -178,7 +183,7 @@ export function ProcurementWorkspace({data}){
     <PrimaryActionBar primaryAction={<Button onClick={()=>{setTab("requests");setCreating(true)}}>+ طلب شراء جديد</Button>}>
       <nav className="procurement-tabs" aria-label="مراحل دورة المشتريات">{TABS.map(([id,label])=><button type="button" key={id} className={tab===id?"is-active":""} onClick={()=>setTab(id)}>{label}</button>)}</nav>
     </PrimaryActionBar>
-    {error&&<Notice type="error">{error}</Notice>}{ok&&<Notice>{ok}</Notice>}
+    {error&&<Notice type="error"><span>{error}</span>{linkingRequired&&onNavigate&&<span className="procurement-error-action"><Button tone="ghost" onClick={()=>onNavigate("inventory")}>فتح ربط المواد في المخزون</Button></span>}</Notice>}{ok&&<Notice>{ok}</Notice>}
     {loading?<Notice>جاري تحميل دورة المشتريات...</Notice>:<>
       <SearchFilterBar value={search} onChange={event=>setSearch(event.target.value)} placeholder="ابحث بالاسم أو الرقم الداخلي أو الحالة"/>
       {tab==="requests"&&<>

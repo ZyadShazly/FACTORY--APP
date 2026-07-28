@@ -50,6 +50,8 @@ export function friendlyError(error){const t=String(error?.message||error||"تع
 ["Owner or manager role required","تتطلب العملية صلاحية المالك أو المدير."],
 ["Inventory SKU already exists","كود الصنف مستخدم بالفعل. أدخل كودًا داخليًا مختلفًا."],
 ["Material is already linked to another inventory item","هذه المادة مربوطة بالفعل بصنف مخزون آخر."],
+["Receipt material is not linked to an active inventory item","لا يمكن استلام أمر الشراء لأن إحدى مواده غير مربوطة بصنف مخزون نشط. افتح أصناف المخزون واربط المادة ثم أعد الاستلام."],
+["يجب ربط المادة","لا يمكن استلام أمر الشراء لأن إحدى مواده غير مربوطة بصنف مخزون نشط. افتح أصناف المخزون واربط المادة ثم أعد الاستلام."],
 ["Active raw material is required","اختر مادة خام نشطة."],
 ["Cannot deactivate an inventory item with stock","لا يمكن تعطيل صنف له رصيد. صفّر الرصيد بالتسوية أو التحويل أولًا."],
 ["Inventory item has operational references","لا يمكن حذف الصنف لوجود مراجع تشغيلية. استخدم التعطيل بدلًا من الحذف."],
