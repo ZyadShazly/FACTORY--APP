@@ -9,14 +9,23 @@ function source(filePath) {
   return fs.readFileSync(filePath, "utf8");
 }
 
-function copyFixture(root, relativePath) {
+function copyFixture(root, relativePath, lineEnding) {
   const target = path.join(root, relativePath);
   fs.mkdirSync(path.dirname(target), { recursive: true });
-  fs.copyFileSync(relativePath, target);
+  const content = fs.readFileSync(relativePath, "utf8").replace(/\r\n|\r|\n/g, lineEnding);
+  fs.writeFileSync(target, content);
 }
 
-test("operational patch is idempotent", () => {
-  const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "factory-operational-patch-"));
+function fixtureSnapshot(root, relativePaths) {
+  return Object.fromEntries(
+    relativePaths.map((relativePath) => [
+      relativePath,
+      fs.readFileSync(path.join(root, relativePath), "utf8"),
+    ])
+  );
+}
+
+test("operational patch is idempotent across LF and CRLF checkouts", () => {
   const fixtureFiles = [
     "scripts/apply-operational-bug-closure.mjs",
     "src/AppMonolith.jsx",
@@ -25,21 +34,28 @@ test("operational patch is idempotent", () => {
     "src/v22/payroll.jsx",
   ];
 
-  try {
-    for (const filePath of fixtureFiles) copyFixture(fixtureRoot, filePath);
+  for (const [checkout, lineEnding] of [["LF", "\n"], ["CRLF", "\r\n"]]) {
+    const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "factory-operational-patch-"));
+    try {
+      for (const filePath of fixtureFiles) copyFixture(fixtureRoot, filePath, lineEnding);
 
-    const runPatch = () => spawnSync(
-      process.execPath,
-      ["scripts/apply-operational-bug-closure.mjs"],
-      { cwd: fixtureRoot, encoding: "utf8" }
-    );
+      const runPatch = () => spawnSync(
+        process.execPath,
+        ["scripts/apply-operational-bug-closure.mjs"],
+        { cwd: fixtureRoot, encoding: "utf8" }
+      );
+      const before = fixtureSnapshot(fixtureRoot, fixtureFiles);
 
-    const first = runPatch();
-    assert.equal(first.status, 0, first.stderr || first.stdout);
-    const second = runPatch();
-    assert.equal(second.status, 0, second.stderr || second.stdout);
-  } finally {
-    fs.rmSync(fixtureRoot, { recursive: true, force: true });
+      const first = runPatch();
+      assert.equal(first.status, 0, `${checkout}: ${first.stderr || first.stdout}`);
+      assert.deepEqual(fixtureSnapshot(fixtureRoot, fixtureFiles), before, `${checkout}: first rerun changed patched sources`);
+
+      const second = runPatch();
+      assert.equal(second.status, 0, `${checkout}: ${second.stderr || second.stdout}`);
+      assert.deepEqual(fixtureSnapshot(fixtureRoot, fixtureFiles), before, `${checkout}: second rerun changed patched sources`);
+    } finally {
+      fs.rmSync(fixtureRoot, { recursive: true, force: true });
+    }
   }
 });
 

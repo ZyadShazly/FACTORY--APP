@@ -8,10 +8,18 @@ function write(path, content) {
   fs.writeFileSync(path, content);
 }
 
+function normalizeLineEndings(value, lineEnding) {
+  return value.replace(/\r\n|\r|\n/g, lineEnding);
+}
+
 function replaceRequired(content, search, replacement, label) {
-  if (content.includes(replacement)) return content;
-  if (!content.includes(search)) throw new Error(`Missing expected source for ${label}`);
-  return content.replace(search, replacement);
+  const lineEnding = content.includes("\r\n") ? "\r\n" : "\n";
+  const expectedSource = normalizeLineEndings(search, lineEnding);
+  const expectedReplacement = normalizeLineEndings(replacement, lineEnding);
+
+  if (content.includes(expectedReplacement)) return content;
+  if (!content.includes(expectedSource)) throw new Error(`Missing expected source for ${label}`);
+  return content.replace(expectedSource, expectedReplacement);
 }
 
 function patchApp() {
