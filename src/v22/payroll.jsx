@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { isAdministrativeRole } from "../identity";
 import { BadgeCheck, Banknote, Eye, PauseCircle, Pencil, PlayCircle, Plus, Trash2, UserPlus } from "lucide-react";
 import { supabase } from "../supabaseClient";
+import { ArchiveSection, DependencySummary, KpiCard, KpiGrid, SearchFilterBar } from "../ui";
 import { Button, ConfirmDialog, DataTable, EmptyState, ErrorState, Field, Input, money, number, PageTitle, Panel, PermissionGuard, Select, StatCard, TextArea, Toast } from "./shared";
 import { calculateNetSalary } from "./calculations";
 import { syncMutation } from "./mutations";
@@ -21,7 +22,26 @@ const DEPENDENCY_LABELS = {
 };
 function normalizePhone(value = "") { let phone = String(value).trim().replace(/[^0-9+]/g, ""); if (phone.startsWith("00")) phone = `+${phone.slice(2)}`; return /^\+[1-9][0-9]{7,14}$/.test(phone) ? phone : ""; }
 function employeePayload(form) { return { full_name: form.full_name, phone: normalizePhone(form.phone), job_title: form.job_title, department: form.department, department_id: form.department_id || "", base_salary: number(form.base_salary), housing_allowance: number(form.housing_allowance), transport_allowance: number(form.transport_allowance), other_allowance: number(form.other_allowance), hire_date: form.hire_date || "" }; }
-function friendlyEmployeeError(error) { const text = String(error?.message || error || ""); if (text.includes("duplicate key") || text.includes("employees_phone_normalized_unique")) return "رقم واتساب مستخدم بالفعل لموظف آخر."; if (text.includes("foreign key")) return "لا يمكن تنفيذ الإجراء لأن الموظف مرتبط ببيانات أخرى."; return text || "تعذر تنفيذ الإجراء."; }
+function friendlyEmployeeError(error) {
+  const text = String(error?.message || error || "");
+  const normalized = text.toLowerCase();
+  if (normalized.includes("duplicate key") || normalized.includes("employees_phone_normalized_unique")) return "رقم واتساب مستخدم بالفعل لموظف آخر.";
+  if (normalized.includes("foreign key") || error?.code === "23503") return "لا يمكن حذف الموظف لأن له سجلًا تاريخيًا مرتبطًا. افتح ملف الموظف لمراجعة الارتباطات ثم استخدم الأرشفة.";
+  return text || "تعذر تنفيذ الإجراء.";
+}
+function dependencyItems(summary) {
+  return Object.entries(summary?.dependencies || {})
+    .filter(([, count]) => Number(count) > 0)
+    .map(([key, count]) => {
+      const records = summary?.dependency_records?.[key] || [];
+      return {
+        id: key,
+        label: DEPENDENCY_LABELS[key] || key,
+        count,
+        description: records.map((record) => record.label || record.reference || record.id).filter(Boolean).join(" • "),
+      };
+    });
+}
 
 export function EmployeesTab({ data, profile, refresh }) {
   const [showForm, setShowForm] = useState(false);
@@ -37,7 +57,19 @@ export function EmployeesTab({ data, profile, refresh }) {
   const [success, setSuccess] = useState("");
   const [search, setSearch] = useState("");
   const canManage = isAdministrativeRole(profile.role);
-  const employees = data.employees.filter((e) => e.full_name.toLowerCase().includes(search.toLowerCase()) || (e.department || "").toLowerCase().includes(search.toLowerCase()) || (e.phone || "").includes(search));
+  const employees = useMemo(() => data.employees.filter((employee) => {
+    const query = search.trim().toLowerCase();
+    return !query
+      || employee.full_name.toLowerCase().includes(query)
+      || (employee.department || "").toLowerCase().includes(query)
+      || (employee.job_title || "").toLowerCase().includes(query)
+      || (employee.phone || "").includes(query);
+  }), [data.employees, search]);
+  const activeEmployees = employees.filter((employee) => employee.status === "active");
+  const archivedEmployees = employees.filter((employee) => employee.status !== "active");
+  const totalActive = data.employees.filter((employee) => employee.status === "active").length;
+  const totalArchived = data.employees.length - totalActive;
+  const departmentCount = new Set(data.employees.map((employee) => employee.department).filter(Boolean)).size;
 
   async function loadSummary(employee) {
     setSelected(employee); setSummary(null); setError("");
@@ -84,17 +116,30 @@ export function EmployeesTab({ data, profile, refresh }) {
     const result = await supabase.rpc("delete_employee_if_unused", { target_employee_id: deleteAction.id, reason: reason.trim() });
     if (!result.error && result.data?.ok) await refresh("employees");
     setBusy(false);
-    if (result.error || result.data?.ok === false) return setError(friendlyEmployeeError(result.error || result.data?.error));
+    if (result.error || result.data?.ok === false) {
+      if (result.data?.summary) {
+        setSelected(deleteAction);
+        setSummary(result.data.summary);
+        setDeleteAction(null);
+      }
+      return setError(friendlyEmployeeError(result.error || result.data?.error));
+    }
     setDeleteAction(null); setSelected(null); setSummary(null); setReason(""); setSuccess("تم حذف سجل الموظف التجريبي نهائيًا.");
   }
 
-  return <div><PageTitle eyebrow="الموارد البشرية" title="الموظفون" description="فتح وتعديل وإيقاف وإعادة تفعيل الموظفين مع حذف آمن للسجلات التجريبية فقط." actions={canManage && <Button onClick={() => setShowForm(true)}><UserPlus size={16}/> موظف جديد</Button>} /><ErrorState error={error}/>
-    <Panel><div className="v22-filters"><Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ابحث بالاسم أو القسم أو رقم واتساب..."/></div>{employees.length ? <DataTable headers={["الموظف", "المسمى", "القسم", "الراتب الأساسي", "البدلات", "الحالة", "الإجراءات"]}>{employees.map((employee) => <tr key={employee.id}><td><strong>{employee.full_name}</strong><br/><small>{employee.phone || "رقم واتساب غير مسجل"}</small></td><td>{employee.job_title || "—"}</td><td>{employee.department || "—"}</td><td>{money(employee.base_salary)}</td><td>{money(number(employee.housing_allowance) + number(employee.transport_allowance) + number(employee.other_allowance))}</td><td><span className={`payroll-status ${employee.status}`}>{EMPLOYEE_STATUS[employee.status]}</span></td><td><div className="v22-actions"><Button variant="ghost" onClick={() => loadSummary(employee)}><Eye size={14}/> فتح</Button>{canManage && <Button variant="ghost" onClick={() => setEditForm({ ...employee, hire_date: employee.hire_date || "", department_id: employee.department_id || "" })}><Pencil size={14}/> تعديل</Button>}{canManage && employee.status === "active" && <Button variant="ghost" onClick={() => { setStatusAction({ employee, status: "suspended" }); setReason(""); }}><PauseCircle size={14}/> إيقاف</Button>}{canManage && employee.status !== "active" && <Button variant="ghost" onClick={() => { setStatusAction({ employee, status: "active" }); setReason(""); }}><PlayCircle size={14}/> تفعيل</Button>}</div></td></tr>)}</DataTable> : <EmptyState title="لا يوجد موظفون"/>}</Panel>
+  const employeeRows = (rows) => rows.map((employee) => <tr key={employee.id}><td><strong>{employee.full_name}</strong><br/><small>{employee.phone || "رقم واتساب غير مسجل"}</small></td><td>{employee.job_title || "—"}</td><td>{employee.department || "—"}</td><td>{money(employee.base_salary)}</td><td>{money(number(employee.housing_allowance) + number(employee.transport_allowance) + number(employee.other_allowance))}</td><td><span className={`payroll-status ${employee.status}`}>{EMPLOYEE_STATUS[employee.status]}</span></td><td><div className="v22-actions"><Button variant="ghost" onClick={() => loadSummary(employee)}><Eye size={14}/> فتح</Button>{canManage && <Button variant="ghost" onClick={() => setEditForm({ ...employee, hire_date: employee.hire_date || "", department_id: employee.department_id || "" })}><Pencil size={14}/> تعديل</Button>}{canManage && employee.status === "active" && <Button variant="ghost" onClick={() => { setStatusAction({ employee, status: "suspended" }); setReason(""); }}><PauseCircle size={14}/> أرشفة</Button>}{canManage && employee.status !== "active" && <Button variant="ghost" onClick={() => { setStatusAction({ employee, status: "active" }); setReason(""); }}><PlayCircle size={14}/> استعادة</Button>}</div></td></tr>);
+  const employeeTable = (rows, emptyTitle) => rows.length ? <DataTable headers={["الموظف", "المسمى", "القسم", "الراتب الأساسي", "البدلات", "الحالة", "الإجراءات"]}>{employeeRows(rows)}</DataTable> : <EmptyState title={emptyTitle}/>;
+
+  return <div><PageTitle eyebrow="الموارد البشرية" title="الموظفون" description="إضافة وتعديل وأرشفة واستعادة الموظفين مع حماية السجل التاريخي وإظهار كل الارتباطات." actions={canManage && <Button onClick={() => setShowForm(true)}><UserPlus size={16}/> موظف جديد</Button>} /><ErrorState error={error}/>
+    <KpiGrid label="ملخص الموظفين"><KpiCard label="الموظفون النشطون" value={totalActive} tone="success"/><KpiCard label="الموظفون المؤرشفون" value={totalArchived} tone={totalArchived ? "warning" : "neutral"}/><KpiCard label="إجمالي الموظفين" value={data.employees.length}/><KpiCard label="الأقسام المسجلة" value={departmentCount}/></KpiGrid>
+    <SearchFilterBar value={search} onChange={(event) => setSearch(event.target.value)} searchLabel="البحث في الموظفين" placeholder="ابحث بالاسم أو المسمى أو القسم أو رقم واتساب..."/>
+    <Panel><h3>الموظفون النشطون</h3>{employeeTable(activeEmployees, search ? "لا يوجد موظفون نشطون مطابقون" : "لا يوجد موظفون نشطون")}</Panel>
+    <ArchiveSection title="الموظفون المؤرشفون" count={archivedEmployees.length} helpText="السجلات الموقوفة أو المستقيلة أو منتهية الخدمة محفوظة للتاريخ ويمكن استعادتها عند الحاجة.">{employeeTable(archivedEmployees, search ? "لا توجد سجلات مؤرشفة مطابقة" : "لا توجد سجلات مؤرشفة")}</ArchiveSection>
 
     {showForm && <EmployeeForm title="إضافة موظف" form={form} setForm={setForm} data={data} busy={busy} onSubmit={submit} onClose={() => setShowForm(false)} submitLabel="حفظ"/>}
     {editForm && <EmployeeForm title={`تعديل ${editForm.full_name}`} form={editForm} setForm={setEditForm} data={data} busy={busy} onSubmit={saveEdit} onClose={() => setEditForm(null)} submitLabel="حفظ التعديل"/>}
-    {selected && <div className="v22-modal-backdrop"><div className="v22-modal"><h3>ملف الموظف</h3><div className="v22-form-grid"><Info label="الاسم" value={selected.full_name}/><Info label="رقم واتساب" value={selected.phone || "غير مسجل"}/><Info label="المسمى الوظيفي" value={selected.job_title || "—"}/><Info label="القسم" value={selected.department || "—"}/><Info label="الحالة" value={EMPLOYEE_STATUS[selected.status]}/><Info label="تاريخ التعيين" value={selected.hire_date || "—"}/><Info label="الراتب الأساسي" value={money(selected.base_salary)}/><Info label="إجمالي البدلات" value={money(number(selected.housing_allowance) + number(selected.transport_allowance) + number(selected.other_allowance))}/>{selected.status_reason && <Info label="آخر سبب لتغيير الحالة" value={selected.status_reason}/>}</div><h4>الارتباطات</h4>{summary ? <>{Object.entries(summary.dependencies || {}).filter(([, count]) => Number(count) > 0).map(([key, count]) => <div className="setting-row" key={key}><span>{DEPENDENCY_LABELS[key] || key}</span><b>{count}</b></div>)}{summary.dependency_total === 0 && <EmptyState title="لا توجد معاملات مرتبطة" description="يمكن حذف هذا السجل التجريبي نهائيًا."/>}</> : <p>جارِ فحص الارتباطات...</p>}<div className="v22-actions modal-actions">{canManage && summary?.can_delete && <Button variant="danger" onClick={() => { setDeleteAction(selected); setSelected(null); setReason(""); }}><Trash2 size={14}/> حذف نهائي</Button>}<Button onClick={() => setSelected(null)}>إغلاق</Button></div></div></div>}
-    {statusAction && <ReasonModal title={statusAction.status === "active" ? "إعادة تفعيل الموظف" : "إيقاف الموظف"} description={statusAction.status === "active" ? "سيعود الموظف للظهور ضمن الموظفين المتاحين للعمليات الجديدة. حساب الدخول لا يتغير تلقائيًا." : "سيُمنع إسناد عمليات جديدة للموظف. حساب الدخول المرتبط لن يتم إيقافه تلقائيًا."} reason={reason} setReason={setReason} busy={busy} onSubmit={changeStatus} onClose={() => setStatusAction(null)} submitLabel={statusAction.status === "active" ? "إعادة التفعيل" : "تأكيد الإيقاف"}/>} 
+    {selected && <div className="v22-modal-backdrop"><div className="v22-modal"><h3>ملف الموظف</h3><div className="v22-form-grid"><Info label="الاسم" value={selected.full_name}/><Info label="رقم واتساب" value={selected.phone || "غير مسجل"}/><Info label="المسمى الوظيفي" value={selected.job_title || "—"}/><Info label="القسم" value={selected.department || "—"}/><Info label="الحالة" value={EMPLOYEE_STATUS[selected.status]}/><Info label="تاريخ التعيين" value={selected.hire_date || "—"}/><Info label="الراتب الأساسي" value={money(selected.base_salary)}/><Info label="إجمالي البدلات" value={money(number(selected.housing_allowance) + number(selected.transport_allowance) + number(selected.other_allowance))}/>{selected.status_reason && <Info label="آخر سبب لتغيير الحالة" value={selected.status_reason}/>}</div>{summary ? <DependencySummary title="الارتباطات التي تحفظ تاريخ الموظف" items={dependencyItems(summary)} emptyText="لا توجد معاملات مرتبطة؛ يمكن حذف هذا السجل التجريبي نهائيًا."/> : <p>جارِ فحص الارتباطات...</p>}<div className="v22-actions modal-actions">{canManage && summary?.can_delete && <Button variant="danger" onClick={() => { setDeleteAction(selected); setSelected(null); setReason(""); }}><Trash2 size={14}/> حذف نهائي</Button>}<Button onClick={() => setSelected(null)}>إغلاق</Button></div></div></div>}
+    {statusAction && <ReasonModal title={statusAction.status === "active" ? "استعادة الموظف" : "أرشفة الموظف"} description={statusAction.status === "active" ? "سيعود الموظف للظهور ضمن الموظفين النشطين والمتاحين للعمليات الجديدة. حساب الدخول لا يتغير تلقائيًا." : "سيُنقل الموظف إلى الأرشيف ويُمنع إسناد عمليات جديدة له، مع بقاء كل الرواتب والعهد والمشاريع محفوظة. حساب الدخول المرتبط لن يتغير تلقائيًا."} reason={reason} setReason={setReason} busy={busy} onSubmit={changeStatus} onClose={() => setStatusAction(null)} submitLabel={statusAction.status === "active" ? "تأكيد الاستعادة" : "تأكيد الأرشفة"}/>}
     {deleteAction && <ReasonModal title="حذف الموظف نهائيًا" description="الحذف متاح فقط إذا لم يكن للموظف أي حساب أو راتب أو عهدة أو عملية مرتبطة. سيتم رفض الطلب تلقائيًا عند وجود أي ارتباط." reason={reason} setReason={setReason} busy={busy} onSubmit={deleteEmployee} onClose={() => setDeleteAction(null)} submitLabel="حذف نهائي" danger/>}
     <Toast message={success} onDismiss={() => setSuccess("")}/>
   </div>;
