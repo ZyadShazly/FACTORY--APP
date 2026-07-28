@@ -13,10 +13,11 @@ test("payroll list requires opening details before approval",()=>{
 });
 
 test("payroll details explain every financial component",()=>{
-  for(const label of ["الراتب الأساسي","بدل السكن","بدل النقل","الإضافي","سبب الخصم","تفاصيل السلفة","سبب المكافأة","صافي المطلوب دفعه"]){
+  for(const label of ["الراتب الأساسي","بدل السكن","بدل النقل","العمل الإضافي","سبب الخصم","تفاصيل السلفة","سبب المكافأة","صافي الراتب"]){
     assert.match(ui,new RegExp(label));
   }
-  assert.match(ui,/لا يوجد حاليًا سجل حضور تفصيلي/);
+  assert.match(ui,/أيام الحضور/);
+  assert.match(ui,/مصدر بيانات الحضور والغياب/);
 });
 
 test("rejection and recalculation use protected database functions",()=>{
