@@ -44,16 +44,27 @@ No client-side direct write was added to Inventory, Opening Inventory, Procureme
 
 | Check | Result |
 | --- | --- |
-| Inventory-focused tests | Passed — 42/42 |
+| Inventory-focused tests | Passed — 43/43 |
 | Production build | Passed — 2,398 modules |
 | `git diff --check` | Passed |
 | Database/migration scope | Passed — no migration or schema file changed |
 | Protected RPC regression | Passed |
-| Full test suite | Passed — 317 total, 315 passed, 0 failed, 2 intentional environment-gated skips |
-| Desktop/mobile/RTL | Pending live branch preview |
+| Full test suite | Passed — 318 total, 316 passed, 0 failed, 2 intentional environment-gated skips |
+| Desktop/mobile/RTL | Passed — desktop 1,440×900 and mobile 375×812, RTL, no global horizontal overflow |
 | Quality Gate / Vercel | Passed on Draft PR #87 |
 
 The existing large AppMonolith chunk warning is unchanged and outside this narrow phase.
+
+## Visual QA
+
+- Desktop: document and body remained exactly 1,440 px wide; four KPIs, five workspace tabs, one sticky primary-action bar, and the collapsed concept guide were visible.
+- Mobile: at 375×812 the document, body, and Inventory workspace stayed within the 360 px content viewport after scrollbar allocation.
+- The segmented tabs and 860 px data table retain intentional internal horizontal scrolling; neither expands the page.
+- Opening Inventory remained a dedicated screen, posted history stayed collapsed, and no global overflow appeared.
+- Raw Materials showed `linked item name — SKU`, plus direct create, link-existing, and open-linked-item actions without overflow.
+- A clean browser tab produced no warning or error logs.
+
+Visual QA used an in-memory read-only fixture and temporary source hook. Both were removed immediately afterward; no Supabase rows, users, `.env` files, or repository artifacts were created.
 
 ## Critical UAT traceability
 

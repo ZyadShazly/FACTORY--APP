@@ -8,6 +8,7 @@ const materials=await readFile(new URL("../src/operational/MaterialsCatalogWorks
 const procurement=await readFile(new URL("../src/operational/ProcurementWorkspace.jsx",import.meta.url),"utf8");
 const ui=await readFile(new URL("../src/operational/ui.jsx",import.meta.url),"utf8");
 const shell=await readFile(new URL("../src/AppMonolith.jsx",import.meta.url),"utf8");
+const css=await readFile(new URL("../src/operational/inventoryWorkspace.css",import.meta.url),"utf8");
 
 test("inventory explains the five distinct inventory concepts on demand",()=>{
   for(const concept of["المادة الخام","صنف المخزون","رصيد المخزن","الرصيد الافتتاحي","حركة المخزون"]){
@@ -49,4 +50,10 @@ test("pilot hardening preserves protected RPC boundaries and adds no direct writ
   for(const source of[workspace,catalog,procurement])assert.doesNotMatch(source,/supabase\.from\(/);
   assert.match(catalog,/"manage_inventory_item_catalog"/);
   assert.match(procurement,/"confirm_goods_receipt_to_inventory"/);
+});
+
+test("inventory grid contains wide children without global mobile overflow",()=>{
+  assert.match(css,/\.inventory-workspace\{[^}]*grid-template-columns:minmax\(0,1fr\)/);
+  assert.match(css,/\.inventory-workspace>\*\{min-width:0;max-width:100%\}/);
+  assert.match(css,/\.inventory-table-wrap\{overflow-x:auto/);
 });
