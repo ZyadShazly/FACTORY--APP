@@ -75,7 +75,7 @@ Status: **Created only; not applied to production or any connected Supabase proj
 | AppMonolith scope | No AppMonolith change |
 | Migration application | Not run |
 | Desktop / mobile / RTL | Automated responsive/RTL contracts passed; live preview QA pending |
-| Remote quality gate | Pending Draft PR |
-| Vercel | Pending Draft PR |
+| Remote quality gate | Passed on Draft PR #86 |
+| Vercel | Passed on Draft PR #86 |
 
 The existing large AppMonolith chunk warning remains unchanged and outside this phase’s procurement scope.
