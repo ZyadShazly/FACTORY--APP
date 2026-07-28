@@ -1,4 +1,21 @@
 import React from "react";
+export {
+  ArchiveSection,
+  DependencySummary,
+  DetailsDrawer,
+  EmptyState as FoundationEmptyState,
+  HelpText,
+  KpiCard,
+  KpiGrid,
+  MAX_KPI_CARDS,
+  PageHeader,
+  PrimaryActionBar,
+  ResponsiveCardGrid,
+  ResponsiveTable,
+  SearchFilterBar,
+  StatusBadge,
+} from "../ui/index.js";
+
 export const money=(v)=>new Intl.NumberFormat("ar-EG",{minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(v||0));
 export const dateText=(v)=>v?new Date(v).toLocaleDateString("ar-EG"):"—";
 export const inputStyle={border:"1px solid var(--color-border)",borderRadius:9,padding:"9px 10px",background:"var(--color-surface)",color:"var(--color-text)"};
