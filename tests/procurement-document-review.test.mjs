@@ -4,23 +4,36 @@ import { readFile } from 'node:fs/promises';
 
 const source = await readFile(new URL('../src/operational/ProcurementWorkspace.jsx', import.meta.url), 'utf8');
 
-test('procurement documents open before approval', () => {
-  assert.match(source, /فتح التفاصيل/);
-  assert.match(source, /تفاصيل طلب الشراء/);
-  assert.match(source, /تفاصيل أمر الشراء/);
+test('all four procurement documents open in the shared preview', () => {
+  for (const type of ['request','order','receipt','invoice']) {
+    assert.match(source, new RegExp(`openDocument\\("${type}"`));
+    assert.match(source, new RegExp(`${type}:\\{title:`));
+  }
+  assert.match(source, /المعاينة هي نفس محتوى الطباعة/);
+  assert.match(source, /data-document-type=\{type\}/);
 });
 
-test('purchase review shows financial and receiving breakdown', () => {
-  for (const label of ['الخصم','الضريبة','المستلم','الإجمالي النهائي','الاستلام والفواتير']) assert.match(source, new RegExp(label));
+test('professional preview includes identity, commercial totals, VAT, and signatures', () => {
+  for (const token of ['/logo.png','المرجع الداخلي','المشروع','المورد','سعر الوحدة','ضريبة القيمة المضافة','الإجمالي النهائي','الاسم / التوقيع']) {
+    assert.match(source, new RegExp(token.replace('/', '\\/')));
+  }
+  assert.match(source, /formatMoney/);
+  assert.match(source, /getCurrencySettings/);
+  assert.doesNotMatch(source, /currency:"SAR"/);
 });
 
-test('request approval and rejection happen from details', () => {
-  assert.match(source, /اعتماد الطلب/);
-  assert.match(source, /رفض بسبب/);
+test('approval and sending are only offered from document preview', () => {
+  assert.match(source, /type==="request"&&row\.status==="submitted"/);
+  assert.match(source, /type==="order"&&row\.status==="draft"/);
+  assert.match(source, /type==="order"&&row\.status==="approved"/);
+  assert.match(source, /اعتماد بعد المعاينة/);
+  assert.match(source, /إرسال بعد المعاينة/);
+  assert.match(source, /approve_purchase_order/);
+  assert.match(source, /mark_purchase_order_sent/);
+});
+
+test('request rejection records a mandatory reason', () => {
   assert.match(source, /سبب الرفض مطلوب/);
-});
-
-test('procurement document supports print and PDF workflow', () => {
-  assert.match(source, /طباعة \/ PDF/);
-  assert.match(source, /window\.print\(\)/);
+  assert.match(source, /decide_purchase_request/);
+  assert.match(source, /reason:rejectReason\.trim\(\)/);
 });

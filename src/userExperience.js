@@ -26,6 +26,10 @@ export function restoreCurrency() {
 
 restoreCurrency();
 
+export function getCurrencySettings() {
+  return { ...currency };
+}
+
 export function formatMoney(value, overrides = {}) {
   const settings = { ...currency, ...overrides };
   const amount = Number.isFinite(Number(value)) ? Number(value) : 0;

@@ -20,6 +20,20 @@ export const money=(v)=>new Intl.NumberFormat("ar-EG",{minimumFractionDigits:2,m
 export const dateText=(v)=>v?new Date(v).toLocaleDateString("ar-EG"):"—";
 export const inputStyle={border:"1px solid var(--color-border)",borderRadius:9,padding:"9px 10px",background:"var(--color-surface)",color:"var(--color-text)"};
 export function friendlyError(error){const t=String(error?.message||error||"تعذر تنفيذ العملية");const m=[
+["Procurement access required","لا توجد صلاحية للوصول إلى دورة المشتريات."],
+["Request access denied","لا يمكنك تعديل طلب شراء يخص مستخدمًا آخر."],
+["Purchase request name required","اكتب اسمًا واضحًا لطلب الشراء."],
+["Purchase order name required","اكتب اسمًا واضحًا لأمر الشراء."],
+["Only draft purchase orders can be renamed","يمكن تعديل اسم أمر الشراء وهو مسودة فقط."],
+["Purchase order already exists for this quote","تم إنشاء أمر شراء من عرض المورد هذا مسبقًا. افتح أمر الشراء المرتبط بدلًا من إنشاء نسخة أخرى."],
+["Received quote required","اختر عرض مورد مستلمًا لم يتم تحويله من قبل."],
+["Approved request required","يجب اعتماد طلب الشراء قبل تسجيل العرض أو إنشاء أمر الشراء."],
+["Draft purchase order required","يجب أن يكون أمر الشراء مسودة قبل الاعتماد."],
+["Approved purchase order required","يجب اعتماد أمر الشراء قبل تسجيل إرساله للمورد."],
+["Purchase order has no items","لا يمكن اعتماد أمر شراء بلا بنود. راجع عرض المورد المرتبط."],
+["Receivable purchase order required","أمر الشراء غير جاهز للاستلام. اعتمده وسجّل إرساله أولًا."],
+["Invoice line purchase order mismatch","أحد بنود الفاتورة لا يتبع أمر الشراء المحدد. حدّث البيانات ثم أعد المحاولة."],
+["Procurement sending access required","لا توجد صلاحية لتسجيل إرسال أمر الشراء للمورد."],
 ["Production access required","لا توجد صلاحية للوصول إلى أوامر الإنتاج."],
 ["Production create access required","لا توجد صلاحية لإنشاء أمر إنتاج."],
 ["Production planning access required","لا توجد صلاحية لتخطيط أمر الإنتاج."],
