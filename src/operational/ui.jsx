@@ -19,7 +19,15 @@ export {
 export const money=(v)=>new Intl.NumberFormat("ar-EG",{minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(v||0));
 export const dateText=(v)=>v?new Date(v).toLocaleDateString("ar-EG"):"—";
 export const inputStyle={border:"1px solid var(--color-border)",borderRadius:9,padding:"9px 10px",background:"var(--color-surface)",color:"var(--color-text)"};
-export function friendlyError(error){const t=String(error?.message||error||"تعذر تنفيذ العملية");const m=[
+export function friendlyError(error){const t=String(error?.message||error||"تعذر تنفيذ العملية");if(t.includes("Project downstream workflow blocked|")){const[,id,code,name,lifecycle]=t.split("|");const labels={draft:"مسودة",planning:"قيد التجهيز",ready_for_activation:"معتمد وينتظر بدء التنفيذ",active:"نشط",on_hold:"متوقف مؤقتًا",completed:"مكتمل",closed:"مغلق",cancelled:"ملغي"};return`لا يمكن تنفيذ العملية على المشروع ${code||id} — ${name||"بدون اسم"} لأن حالته «${labels[lifecycle]||lifecycle}». افتح مساحة المشروع وأكمل خطوة الاعتماد أو بدء التنفيذ أولًا.`;}const m=[
+["Project approval readiness checks are incomplete","لا يمكن اعتماد المشروع قبل اكتمال بياناته واعتماد ميزانية تقديرية موجبة. افتح مسار المشروع لمعرفة البند الناقص."],
+["Project execution readiness checks are incomplete","لا يمكن بدء التنفيذ قبل اعتماد المشروع وتعيين مدير مشروع واستيفاء جاهزية التنفيذ."],
+["Project completion dependencies remain open","لا يمكن إكمال المشروع لوجود ارتباطات تشغيلية مفتوحة. راجع أول سجل ظاهر في مسار المشروع ثم أكمله أو ألغِه بالطريقة الآمنة."],
+["Project closure dependencies remain open","لا يمكن إغلاق المشروع لوجود ارتباطات تشغيلية مفتوحة. عالجها أولًا مع الحفاظ على سجلها."],
+["Project execution approval required","لا يمكن نقل المشروع إلى مرحلة تنفيذ فعلية قبل اعتماد المشروع وبدء التنفيذ من مسار المشروع."],
+["Project manager change reason required","اكتب سبب تغيير مدير المشروع؛ سيُحفظ السبب مع المدير السابق والجديد في سجل التدقيق."],
+["Active project manager profile required","اختر حساب مستخدم نشطًا لتعيينه مديرًا للمشروع."],
+["Use the protected project manager assignment workflow","غيّر مدير المشروع من مسار الاعتماد داخل مساحة المشروع حتى يُحفظ المدير السابق والجديد وسبب التغيير."],
 ["Procurement access required","لا توجد صلاحية للوصول إلى دورة المشتريات."],
 ["Request access denied","لا يمكنك تعديل طلب شراء يخص مستخدمًا آخر."],
 ["Purchase request name required","اكتب اسمًا واضحًا لطلب الشراء."],

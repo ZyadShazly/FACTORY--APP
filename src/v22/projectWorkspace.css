@@ -2,3 +2,16 @@
 @media(max-width:1100px){.team-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.milestone-list{grid-template-columns:1fr}}
 @media(max-width:760px){.workspace-hero-grid,.workspace-actions-grid,.workspace-two-columns{grid-template-columns:1fr}.workspace-kpis{grid-template-columns:repeat(2,minmax(0,1fr))!important}.workspace-tabs{margin-inline:-12px;padding-inline:12px}.workspace-section-head{align-items:stretch;flex-direction:column}.team-grid{grid-template-columns:1fr}}
 @media(max-width:430px){.workspace-facts,.progress-comparison{grid-template-columns:1fr 1fr}.workspace-statusbar{align-items:stretch}.workspace-statusbar .workspace-progress{min-width:100%;flex-basis:100%}.workspace-simple-list li{align-items:flex-start;flex-direction:column}.workspace-simple-list small{text-align:right}.team-card{flex-wrap:wrap}.team-card .v22-button{width:100%;justify-content:center}.project-workspace .v22-page-title{gap:10px}.project-workspace .v22-page-title .v22-actions{width:100%}.project-workspace .v22-page-title .v22-button{flex:1;justify-content:center}.workspace-tabs button{padding:8px 9px}}
+.project-workflow-panel{border-color:color-mix(in srgb,var(--color-wood) 42%,var(--color-border));background:linear-gradient(135deg,color-mix(in srgb,var(--color-wood) 7%,var(--color-surface)),var(--color-surface))}
+.project-workflow-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px}
+.project-workflow-head small{display:block;color:var(--color-text-muted);margin-bottom:3px}.project-workflow-head h3{margin:0}
+.project-workflow-steps{display:grid;grid-template-columns:repeat(7,minmax(92px,1fr));gap:8px;list-style:none;padding:0;margin:0 0 16px}
+.project-workflow-steps li{display:grid;justify-items:center;align-content:center;gap:6px;min-height:78px;padding:9px;border:1px solid var(--color-border);border-radius:11px;text-align:center;color:var(--color-text-muted);font-size:12px}
+.project-workflow-steps li.complete{border-color:color-mix(in srgb,var(--color-success) 45%,var(--color-border));background:color-mix(in srgb,var(--color-success) 8%,var(--color-surface));color:var(--color-text)}
+.project-workflow-steps li.complete svg{color:var(--color-success)}
+.project-workflow-blockers{display:grid;gap:8px;list-style:none;padding:0;margin:0 0 14px}
+.project-workflow-blockers li{display:flex;gap:9px;padding:10px;border-radius:10px;background:color-mix(in srgb,var(--color-warning) 12%,var(--color-surface));color:var(--color-text)}
+.project-workflow-blockers li>svg{flex:none;color:var(--color-warning)}.project-workflow-blockers span,.project-workflow-blockers small{display:block;margin-top:3px;color:var(--color-text-muted)}
+.project-manager-action{display:flex;align-items:end;gap:10px;flex-wrap:wrap;margin-top:14px}.project-manager-action label{flex:1;min-width:210px}
+@media(max-width:900px){.project-workflow-steps{display:flex;overflow-x:auto;scroll-snap-type:x proximity}.project-workflow-steps li{min-width:128px;scroll-snap-align:start}}
+@media(max-width:520px){.project-workflow-head{align-items:flex-start;flex-direction:column}.project-manager-action{align-items:stretch;flex-direction:column}.project-manager-action label{min-width:0}}
