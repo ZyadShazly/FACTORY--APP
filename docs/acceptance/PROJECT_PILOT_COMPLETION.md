@@ -6,6 +6,8 @@ Branch: `agent/project-pilot-completion`
 
 Base: Phase 4 Draft PR branch (`agent/production-pilot-completion`)
 
+Draft PR: [#89](https://github.com/ZyadShazly/FACTORY--APP/pull/89)
+
 ## Outcome
 
 Phase 5 makes the Project lifecycle explicit and enforceable:
@@ -80,7 +82,10 @@ The migration was not applied by this mission.
 - `npm test` launcher is unavailable in the bundled runtime because `npm` is not installed; the exact package script body was executed successfully with the bundled Node runtime.
 - Application build: passed, 2,399 modules transformed.
 - `git diff --check`: passed.
-- Full suite, Quality Gate, Vercel, and visual QA: pending before Draft PR publication.
+- Desktop/RTL visual QA: passed at 1,280×720 with `clientWidth=scrollWidth=1,265`, seven workflow steps, five KPI cards, the exact blocking Production record, and the dedicated manager action.
+- Mobile/RTL visual QA: passed in a real 375×812 iframe viewport. Navigation and workflow steps use intentional contained horizontal scrolling; the page content stays inside the mobile frame.
+- Remote Quality Gate run 317: passed on the implementation commit.
+- Vercel deployment: passed on the implementation commit.
 
 ## Regression and safety
 
@@ -90,4 +95,5 @@ The migration was not applied by this mission.
 - Existing explicit legacy activation exemptions and Owner override records are preserved.
 - Realtime tables/subscriptions are unchanged.
 - No unrelated RLS policy or legacy module schema was changed.
+- Visual QA used an in-memory read-only fixture and temporary host files. They were removed immediately afterward; no Supabase rows, users, environment files, or repository artifacts were created.
 - No PR was merged and auto-merge remains disabled.
