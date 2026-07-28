@@ -29,13 +29,13 @@ The existing test correctly used an isolated temporary fixture, so it did not mu
 | `npm run build` | Passed — 2,396 modules transformed |
 | Test working-tree comparison | Passed — no change |
 | Build working-tree comparison | Passed — no change |
-| `git diff --check` | Pending final commit check |
+| `git diff --check` | Passed |
 | Desktop QA | Passed — 1,440 × 900, no horizontal overflow |
 | Mobile QA | Passed — 375 × 812, no horizontal overflow |
 | RTL QA | Passed — Arabic `lang`, RTL `dir`, readable controls and content |
 | Browser console | Passed — no warnings or errors in demo smoke test |
-| Remote quality gate | Pending Draft PR |
-| Vercel | Pending Draft PR |
+| Remote quality gate | Passed — PR #84; no annotations |
+| Vercel | Passed — preview deployment and preview comments |
 
 The build continues to emit the existing large-monolith chunk advisory. Phase 0 does not change bundle boundaries because broad `AppMonolith` refactoring is explicitly out of scope.
 
