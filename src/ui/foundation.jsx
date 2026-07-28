@@ -145,11 +145,13 @@ export function DetailsDrawer({
   const titleId = useId();
   const descriptionId = useId();
   const closeButtonRef = useRef(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
   useEffect(() => {
     if (!open) return undefined;
     const previousFocus = document.activeElement;
     const closeOnEscape = (event) => {
-      if (event.key === "Escape") onClose?.();
+      if (event.key === "Escape") onCloseRef.current?.();
     };
     window.addEventListener("keydown", closeOnEscape);
     closeButtonRef.current?.focus();
@@ -157,7 +159,7 @@ export function DetailsDrawer({
       window.removeEventListener("keydown", closeOnEscape);
       previousFocus?.focus?.();
     };
-  }, [onClose, open]);
+  }, [open]);
 
   if (!open) return null;
   return (
