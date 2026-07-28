@@ -13,10 +13,10 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -25,7 +25,7 @@ jobs:
         id: test
         continue-on-error: true
         run: npm test > "$RUNNER_TEMP/test.log" 2>&1
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: steps.test.outcome == 'failure'
         with:
           name: test-failure
@@ -39,7 +39,7 @@ jobs:
         id: build
         continue-on-error: true
         run: npm run build > "$RUNNER_TEMP/build.log" 2>&1
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: steps.build.outcome == 'failure'
         with:
           name: build-failure
