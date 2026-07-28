@@ -9,6 +9,7 @@ import {
 } from "./projectDomain";
 import { ProjectBudgetTab } from "./projectBudget";
 import { ProjectActualCostTab } from "./projectActualCost";
+import { friendlyError } from "../operational/ui";
 import "./projectWorkspace.css";
 
 const TABS = [
@@ -21,10 +22,57 @@ const TABS = [
 
 const emptyMilestone = { id:"", title:"", description:"", stage_key:"design", sequence:0, weight_percentage:0, responsibleIdentity:"", planned_start_date:"", planned_end_date:"", status:"not_started", progress_percentage:0, blocking_reason:"" };
 const emptyMember = { identity:"", project_role:"viewer", start_date:"", end_date:"" };
+const WORKFLOW_ACTIONS = {
+  prepare_project:"بدء تجهيز المشروع",
+  complete_budget_and_details:"استكمال البيانات والميزانية",
+  approve_project:"اعتماد المشروع",
+  assign_project_manager:"تعيين مدير المشروع",
+  start_execution:"بدء التنفيذ",
+  resolve_open_dependencies:"معالجة الارتباطات المفتوحة",
+  complete_project:"إكمال المشروع",
+  close_project:"إغلاق المشروع",
+  resume_project:"استئناف المشروع",
+  view_history:"عرض السجل",
+};
 
 function LifecycleBadge({ value }) { return <span className={`workspace-badge lifecycle-${value}`}>{PROJECT_LIFECYCLES[value] || value}</span>; }
 function StageBadge({ value }) { return <span className={`workspace-badge stage-${value}`}>{PROJECT_EXECUTION_STAGES[value] || value}</span>; }
 function ComingSoon({ title, description }) { return <Panel className="workspace-coming-soon"><ShieldCheck size={30}/><h3>{title}</h3><p>{description}</p><span>قريبًا — لم تُنشأ بيانات تقديرية أو مالية وهمية.</span></Panel>; }
+function WorkflowReadiness({ workflow }) {
+  const source = workflow?.next_action === "complete_budget_and_details"
+    ? workflow.approval_readiness
+    : workflow?.next_action === "resolve_open_dependencies"
+      ? workflow.completion_readiness
+      : null;
+  const checks = source?.checks || [];
+  const blockers = checks.filter((check) => check.blocking ? !check.passed : number(check.count)>0);
+  if (!blockers.length) return null;
+  return <ul className="project-workflow-blockers">{blockers.map((check) => <li key={check.key}>
+    <AlertTriangle size={15}/><div><strong>{check.label}</strong>
+      {check.first_record && <span>{check.first_record.number || check.first_record.name} — {check.first_record.status}</span>}
+      {check.safe_alternative && <small>{check.safe_alternative}</small>}
+    </div>
+  </li>)}</ul>;
+}
+
+function ProjectPilotWorkflow({ workflow, data, project, busy, managerTarget, setManagerTarget, managerReason, setManagerReason, onAction, onAssign, onClose, onBudget }) {
+  if (!workflow) return <Panel className="project-workflow-panel"><h3>مسار اعتماد وتنفيذ المشروع</h3><p>جارٍ تحميل حالة المسار…</p></Panel>;
+  const action=workflow.next_action;
+  const directAction=["prepare_project","approve_project","start_execution","complete_project","resume_project"].includes(action);
+  return <Panel className="project-workflow-panel">
+    <div className="project-workflow-head"><div><small>الخطوة التالية</small><h3>{WORKFLOW_ACTIONS[action] || action}</h3></div><LifecycleBadge value={workflow.lifecycle}/></div>
+    <ol className="project-workflow-steps">{(workflow.steps || []).map((step) => <li key={step.key} className={step.complete ? "complete" : ""}><CheckCircle2 size={17}/><span>{step.label}</span></li>)}</ol>
+    <WorkflowReadiness workflow={workflow}/>
+    {action === "complete_budget_and_details" && <Button onClick={onBudget}>فتح الميزانية التقديرية</Button>}
+    {directAction && <PermissionGuard allow={workflow.capabilities?.approve || workflow.capabilities?.start || workflow.capabilities?.complete}><Button disabled={busy} onClick={()=>onAction(action)}>{WORKFLOW_ACTIONS[action]}</Button></PermissionGuard>}
+    {(action === "assign_project_manager" || project.project_manager_id) && <PermissionGuard allow={workflow.capabilities?.assign_manager}><div className="project-manager-action">
+      <Field label={project.project_manager_id ? "تغيير مدير المشروع" : "مدير المشروع"}><Select value={managerTarget} onChange={(event)=>setManagerTarget(event.target.value)}><option value="">اختر حسابًا نشطًا</option>{data.profiles.filter((row)=>row.status==="active").map((row)=><option key={row.id} value={row.id}>{row.full_name || row.email}</option>)}</Select></Field>
+      {project.project_manager_id && managerTarget !== project.project_manager_id && <Field label="سبب التغيير"><Input value={managerReason} onChange={(event)=>setManagerReason(event.target.value)} placeholder="سبب إلزامي ومحفوظ في السجل"/></Field>}
+      <Button disabled={busy || !managerTarget || managerTarget===project.project_manager_id || (project.project_manager_id && !managerReason.trim())} onClick={onAssign}>{project.project_manager_id ? "حفظ تغيير المدير" : "تعيين المدير"}</Button>
+    </div></PermissionGuard>}
+    {action === "close_project" && <PermissionGuard allow={workflow.capabilities?.close}><Button disabled={busy} onClick={onClose}>إغلاق المشروع بسبب موثق</Button></PermissionGuard>}
+  </Panel>;
+}
 
 function IdentityOptions({ data }) {
   const linkedEmployeeIds = new Set(data.profiles.map((profile) => profile.employee_id).filter(Boolean));
@@ -64,6 +112,9 @@ export function ProjectWorkspace({ project, data, profile, permissions, refresh,
   const [progress, setProgress] = useState({ mode:project.progress_mode || "hybrid", manual:project.manual_progress_percentage ?? project.progress_percentage ?? 0, reason:project.progress_override_reason || "" });
   const [milestone, setMilestone] = useState(emptyMilestone); const [showMilestoneForm, setShowMilestoneForm] = useState(false);
   const [member, setMember] = useState(emptyMember); const [showMemberForm, setShowMemberForm] = useState(false);
+  const [workflow, setWorkflow] = useState(null);
+  const [managerTarget, setManagerTarget] = useState(project.project_manager_id || "");
+  const [managerReason, setManagerReason] = useState("");
   const summary = useMemo(() => projectWorkspaceSummary(project, data), [project, data]);
   const calculatedProgress = calculatedMilestoneProgress(summary.milestones);
   const effectiveProgress = project.effective_progress_percentage ?? project.progress_percentage ?? effectiveProjectProgress({ mode:progress.mode, manual:progress.manual, calculated:calculatedProgress, overrideReason:progress.reason });
@@ -77,23 +128,38 @@ export function ProjectWorkspace({ project, data, profile, permissions, refresh,
     setDetails({ project_name:project.project_name,customer_id:project.customer_id || "",location:project.location || "",start_date:project.start_date || "",delivery_date:project.delivery_date || "",priority:project.priority || "normal",expected_cost:project.expected_cost ?? 0,revenue:project.revenue ?? 0,notes:project.notes || "" });
     setStage(project.execution_stage || project.status || "design");
     setProgress({ mode:project.progress_mode || "hybrid",manual:project.manual_progress_percentage ?? project.progress_percentage ?? 0,reason:project.progress_override_reason || "" });
+    setManagerTarget(project.project_manager_id || "");
   }, [project.id, project.updated_at]);
+
+  async function loadWorkflow() {
+    const result = await supabase.rpc("get_project_pilot_workflow", { target_project:project.id });
+    if (result.error) {
+      console.error("[ProjectWorkspace:get_project_pilot_workflow]", result.error);
+      setError(friendlyError(result.error));
+      return null;
+    }
+    setWorkflow(result.data);
+    return result.data;
+  }
+
+  useEffect(() => { loadWorkflow(); }, [project.id, project.updated_at]);
 
   async function runRpc(name, args, keys, message) {
     setBusy(true); setError(""); setSuccess("");
     try {
       const result = await supabase.rpc(name,args);
       console.info(`[ProjectWorkspace:${name}] mutationResult`,result);
-      if (result.error) return setError(result.error.message);
+      if (result.error) return setError(friendlyError(result.error));
       const refreshResult = await Promise.all([...new Set(keys)].map((key) => refresh(key)));
       console.info(`[ProjectWorkspace:${name}] refetchResult`,refreshResult);
       const failed = refreshResult.find((entry) => entry?.error);
-      if (failed?.error) return setError(`تم الحفظ لكن تعذر تحديث الواجهة: ${failed.error.message}`);
+      if (failed?.error) return setError(`تم الحفظ لكن تعذر تحديث الواجهة: ${friendlyError(failed.error)}`);
+      await loadWorkflow();
       setSuccess(message);
       return result.data;
     } catch (unexpected) {
       console.error(`[ProjectWorkspace:${name}] unexpected`,unexpected);
-      setError(unexpected?.message || "تعذر إكمال العملية");
+      setError(friendlyError(unexpected));
     } finally { setBusy(false); }
   }
 
@@ -128,9 +194,41 @@ export function ProjectWorkspace({ project, data, profile, permissions, refresh,
     if(result){setMember(emptyMember);setShowMemberForm(false);}
   }
   async function removeMember(row){if(window.confirm(`إزالة ${identityLabel(data,row.profile_id,row.employee_id)} من الفريق؟`))await runRpc("remove_project_member",{target_member:row.id},["projectMembers","projects","projectActivities"],"تمت إزالة عضو الفريق.");}
+  async function runWorkflowAction(action) {
+    const rpc = {
+      prepare_project:["transition_project_lifecycle",{ target_project:project.id,next_lifecycle:"planning",reason:null }],
+      approve_project:["approve_project_for_execution",{ target_project:project.id }],
+      start_execution:["start_project_execution",{ target_project:project.id }],
+      complete_project:["complete_project_execution",{ target_project:project.id }],
+      resume_project:["transition_project_lifecycle",{ target_project:project.id,next_lifecycle:"active",reason:null }],
+    }[action];
+    if (!rpc) return;
+    await runRpc(rpc[0],rpc[1],["projects","projectActivities"],"تم تنفيذ الخطوة التالية وحفظها في سجل المشروع.");
+  }
+  async function assignManager() {
+    const result = await runRpc(
+      "assign_project_manager_secure",
+      { target_project:project.id,target_profile:managerTarget,change_reason:managerReason.trim() || null },
+      ["projectMembers","projects","projectActivities"],
+      project.project_manager_id ? "تم تغيير مدير المشروع مع حفظ السبب." : "تم تعيين مدير المشروع."
+    );
+    if (result) setManagerReason("");
+  }
+  async function closeProject() {
+    const reason=window.prompt("اكتب سبب إغلاق المشروع. سيُحفظ في سجل التدقيق.");
+    if (reason?.trim()) await runRpc(
+      "close_project_secure",
+      { target_project:project.id,close_reason:reason.trim() },
+      ["projects","projectActivities"],
+      "تم إغلاق المشروع وحفظ السبب."
+    );
+  }
 
   const nextLifecycles = lifecycleTransitionsFor(project.lifecycle || "planning").filter((next) => next !== "active" || project.lifecycle !== "completed" || profile.role === "owner");
   const openAssignments = summary.assignments.length;
+  const fifthKpi = permissions.project_financials_view
+    ? { label:"التكلفة الفعلية",value:money(actual) }
+    : { label:"الملفات",value:summary.files.length };
 
   return <div className="project-workspace" dir="rtl">
     <PageTitle eyebrow={project.project_code} title={project.project_name} description={project.location || "مساحة عمل المشروع"} actions={<><Button variant="ghost" onClick={onBack}><ArrowRight size={16}/> كل المشاريع</Button><PermissionGuard allow={permissions.projects_edit}><Button variant="ghost" onClick={()=>setEditing((value)=>!value)}><Pencil size={15}/> تعديل البيانات</Button></PermissionGuard></>}/>
@@ -151,10 +249,10 @@ export function ProjectWorkspace({ project, data, profile, permissions, refresh,
     <nav className="workspace-tabs" aria-label="أقسام مساحة المشروع">{TABS.map(([id,label,Icon])=><button key={id} className={tab===id?"active":""} onClick={()=>setTab(id)}><Icon size={15}/><span>{label}</span>{id==="reports"&&<small>قريبًا</small>}</button>)}</nav>
 
     {tab === "overview" && <div className="workspace-overview">
+      <ProjectPilotWorkflow workflow={workflow} data={data} project={project} busy={busy} managerTarget={managerTarget} setManagerTarget={setManagerTarget} managerReason={managerReason} setManagerReason={setManagerReason} onAction={runWorkflowAction} onAssign={assignManager} onClose={closeProject} onBudget={()=>setTab("budget")}/>
       <div className="workspace-hero-grid"><Panel><h3>بطاقة المشروع</h3><dl className="workspace-facts"><div><dt>الكود</dt><dd>{project.project_code}</dd></div><div><dt>العميل</dt><dd>{customer?.name || "غير محدد"}</dd></div><div><dt>مدير المشروع</dt><dd>{manager?.full_name || manager?.email || "غير محدد"}</dd></div><div><dt>الأولوية</dt><dd>{PROJECT_PRIORITIES[project.priority || "normal"]}</dd></div><div><dt>البداية</dt><dd>{project.start_date || "غير محدد"}</dd></div><div><dt>التسليم</dt><dd>{project.delivery_date || "غير محدد"}</dd></div></dl></Panel>
       <Panel><h3>الإنجاز</h3><div className="progress-comparison"><div><span>الفعلي المعروض</span><strong>{number(effectiveProgress).toFixed(1)}%</strong></div><div><span>المحسوب من المراحل</span><strong>{number(project.calculated_progress_percentage ?? calculatedProgress).toFixed(1)}%</strong></div><div><span>اليدوي</span><strong>{number(project.manual_progress_percentage ?? project.progress_percentage).toFixed(1)}%</strong></div></div><p className="workspace-note">الإنجاز مادي وتشغيلي فقط؛ الإنفاق المالي لا يدخل في حسابه.</p></Panel></div>
-      <div className="v22-grid cols-5 workspace-kpis"><StatCard label="الملفات" value={summary.files.length}/><StatCard label="العُهد المفتوحة" value={openAssignments}/><StatCard label="أوامر الإنتاج" value={summary.productionOrders.length}/><StatCard label="العوائق" value={summary.blockers.length} tone={summary.blockers.length?"negative":"positive"}/><StatCard label="المراحل المتأخرة" value={summary.overdueMilestones.length} tone={summary.overdueMilestones.length?"negative":"normal"}/></div>
-      <PermissionGuard allow={permissions.project_financials_view}><div className="v22-grid cols-5 workspace-kpis"><StatCard label="التكلفة المتوقعة" value={money(project.expected_cost)}/><StatCard label="التكلفة الفعلية" value={money(actual)}/><StatCard label="الإيراد" value={money(project.revenue)}/><StatCard label="الربح" value={money(profit)} tone={profit>=0?"positive":"negative"}/><StatCard label="الهامش" value={`${margin.toFixed(1)}%`}/></div></PermissionGuard>
+      <div className="v22-grid cols-5 workspace-kpis"><StatCard label="العوائق" value={summary.blockers.length} tone={summary.blockers.length?"negative":"positive"}/><StatCard label="المراحل المتأخرة" value={summary.overdueMilestones.length} tone={summary.overdueMilestones.length?"negative":"normal"}/><StatCard label="العُهد المفتوحة" value={openAssignments}/><StatCard label="أوامر الإنتاج" value={summary.productionOrders.length}/><StatCard label={fifthKpi.label} value={fifthKpi.value}/></div>
       <details className="workspace-management"><summary>إدارة حالة المشروع والإنجاز</summary><div className="workspace-actions-grid"><PermissionGuard allow={permissions.projects_manage_lifecycle}><Panel><h3>دورة حياة المشروع</h3><div className="workspace-inline-form"><Select value={lifecycleTarget} onChange={(e)=>setLifecycleTarget(e.target.value)}><option value="">اختر الانتقال التالي</option>{nextLifecycles.map((next)=><option key={next} value={next}>{PROJECT_LIFECYCLES[next]}</option>)}</Select>{lifecycleTarget&&lifecycleNeedsReason(project.lifecycle,lifecycleTarget)&&<TextArea value={lifecycleReason} onChange={(e)=>setLifecycleReason(e.target.value)} placeholder="السبب الإجباري"/>}<Button disabled={busy||!lifecycleTarget} onClick={transitionLifecycle}>تنفيذ الانتقال</Button></div>{project.legacy_activation_exempt&&<small className="legacy-note">مشروع قديم: إعفاء التفعيل محفوظ وصريح، ولا يُطلب منه اعتماد ميزانية بأثر رجعي.</small>}</Panel></PermissionGuard>
       <PermissionGuard allow={permissions.projects_manage_milestones}><Panel><h3>مرحلة التنفيذ الحالية</h3><div className="workspace-inline-form"><Select value={stage} onChange={(e)=>setStage(e.target.value)}>{Object.entries(PROJECT_EXECUTION_STAGES).map(([key,label])=><option key={key} value={key}>{label}</option>)}</Select><Button disabled={busy} onClick={saveStage}>تحديث المرحلة</Button></div></Panel></PermissionGuard>
       <PermissionGuard allow={permissions.projects_update_progress}><Panel><h3>نموذج الإنجاز</h3><div className="workspace-inline-form"><Select value={progress.mode} onChange={(e)=>setProgress({...progress,mode:e.target.value})}>{Object.entries(PROJECT_PROGRESS_MODES).map(([key,label])=><option key={key} value={key}>{label}</option>)}</Select>{progress.mode!=="automatic"&&<Input type="number" min="0" max="100" value={progress.manual} onChange={(e)=>setProgress({...progress,manual:e.target.value})}/>} {progress.mode==="hybrid"&&<TextArea value={progress.reason} onChange={(e)=>setProgress({...progress,reason:e.target.value})} placeholder="سبب التجاوز عند اختلاف القيمة اليدوية"/>}<Button disabled={busy} onClick={saveProgress}>حفظ الإنجاز</Button></div></Panel></PermissionGuard></div></details>
@@ -166,7 +264,7 @@ export function ProjectWorkspace({ project, data, profile, permissions, refresh,
       {summary.milestones.length?<div className="milestone-list">{[...summary.milestones].sort((a,b)=>a.sequence-b.sequence).map((row)=><Panel key={row.id} className={`milestone-card ${row.status}`}><div className="milestone-head"><div><small>{PROJECT_EXECUTION_STAGES[row.stage_key]||row.stage_key} · وزن {number(row.weight_percentage)}%</small><h4>{row.title}</h4></div><span>{MILESTONE_STATUSES[row.status]}</span></div><div className="workspace-progress"><span style={{width:`${number(row.progress_percentage)}%`}}/><b>{number(row.progress_percentage)}%</b></div><div className="milestone-meta"><span><CalendarDays size={14}/>{row.planned_start_date||"—"} ← {row.planned_end_date||"—"}</span><span><Users size={14}/>{identityLabel(data,row.responsible_profile_id,row.responsible_employee_id)}</span></div>{row.blocking_reason&&<p className="blocking-reason"><AlertTriangle size={14}/>{row.blocking_reason}</p>}<PermissionGuard allow={permissions.projects_manage_milestones}><div className="v22-actions"><Button variant="ghost" onClick={()=>editMilestone(row)}>تعديل</Button>{row.status!=="cancelled"&&<Button variant="danger" onClick={()=>cancelMilestone(row)}>إلغاء المرحلة</Button>}</div></PermissionGuard></Panel>)}</div>:<Panel><EmptyState title="لا توجد مراحل تنفيذ" description="أضف المراحل المناسبة لهذا المشروع فقط؛ القالب غير مفروض."/></Panel>}
     </div>}
 
-    {tab === "team" && <div className="workspace-section"><div className="workspace-section-head"><div><h3>فريق المشروع</h3><p>العضوية تحدد رؤية المشروع ولا تمنح صلاحيات نظام عامة.</p></div><PermissionGuard allow={permissions.projects_manage_team}><Button onClick={()=>setShowMemberForm(true)}><Plus size={15}/> إضافة عضو</Button></PermissionGuard></div>{showMemberForm&&<Panel className="workspace-editor"><div className="v22-form-grid"><Field label="الهوية"><Select value={member.identity} onChange={(e)=>setMember({...member,identity:e.target.value})}><IdentityOptions data={data}/></Select></Field><Field label="دور المشروع"><Select value={member.project_role} onChange={(e)=>setMember({...member,project_role:e.target.value})}>{Object.entries(PROJECT_MEMBER_ROLES).map(([key,label])=><option key={key} value={key}>{label}</option>)}</Select></Field><Field label="من"><Input type="date" value={member.start_date} onChange={(e)=>setMember({...member,start_date:e.target.value})}/></Field><Field label="حتى"><Input type="date" value={member.end_date} onChange={(e)=>setMember({...member,end_date:e.target.value})}/></Field></div><div className="v22-actions"><Button variant="ghost" onClick={()=>setShowMemberForm(false)}>إلغاء</Button><Button disabled={busy||!member.identity} onClick={addMember}>إضافة للفريق</Button></div></Panel>}{summary.members.length?<div className="team-grid">{summary.members.map((row)=><Panel key={row.id} className="team-card"><div className="team-avatar">{identityLabel(data,row.profile_id,row.employee_id).slice(0,1)}</div><div><strong>{identityLabel(data,row.profile_id,row.employee_id)}</strong><span>{PROJECT_MEMBER_ROLES[row.project_role]}</span><small>{row.start_date||"بداية مفتوحة"} — {row.end_date||"مستمر"}</small></div><PermissionGuard allow={permissions.projects_manage_team}><Button variant="ghost" onClick={()=>removeMember(row)}>إزالة</Button></PermissionGuard></Panel>)}</div>:<Panel><EmptyState title="لم يُحدد فريق المشروع" description="أضف مدير المشروع وأعضاء التنفيذ دون منحهم صلاحيات عامة تلقائيًا."/></Panel>}</div>}
+    {tab === "team" && <div className="workspace-section"><div className="workspace-section-head"><div><h3>فريق المشروع</h3><p>العضوية تحدد رؤية المشروع ولا تمنح صلاحيات نظام عامة.</p></div><PermissionGuard allow={permissions.projects_manage_team}><Button onClick={()=>setShowMemberForm(true)}><Plus size={15}/> إضافة عضو</Button></PermissionGuard></div>{showMemberForm&&<Panel className="workspace-editor"><div className="v22-form-grid"><Field label="الهوية"><Select value={member.identity} onChange={(e)=>setMember({...member,identity:e.target.value})}><IdentityOptions data={data}/></Select></Field><Field label="دور المشروع"><Select value={member.project_role} onChange={(e)=>setMember({...member,project_role:e.target.value})}>{Object.entries(PROJECT_MEMBER_ROLES).filter(([key])=>key!=="project_manager").map(([key,label])=><option key={key} value={key}>{label}</option>)}</Select></Field><Field label="من"><Input type="date" value={member.start_date} onChange={(e)=>setMember({...member,start_date:e.target.value})}/></Field><Field label="حتى"><Input type="date" value={member.end_date} onChange={(e)=>setMember({...member,end_date:e.target.value})}/></Field></div><div className="v22-actions"><Button variant="ghost" onClick={()=>setShowMemberForm(false)}>إلغاء</Button><Button disabled={busy||!member.identity} onClick={addMember}>إضافة للفريق</Button></div></Panel>}{summary.members.length?<div className="team-grid">{summary.members.map((row)=><Panel key={row.id} className="team-card"><div className="team-avatar">{identityLabel(data,row.profile_id,row.employee_id).slice(0,1)}</div><div><strong>{identityLabel(data,row.profile_id,row.employee_id)}</strong><span>{PROJECT_MEMBER_ROLES[row.project_role]}</span><small>{row.start_date||"بداية مفتوحة"} — {row.end_date||"مستمر"}</small></div>{row.project_role!=="project_manager"&&<PermissionGuard allow={permissions.projects_manage_team}><Button variant="ghost" onClick={()=>removeMember(row)}>إزالة</Button></PermissionGuard>}</Panel>)}</div>:<Panel><EmptyState title="لم يُحدد فريق المشروع" description="عيّن مدير المشروع من مسار الاعتماد، وأضف بقية أعضاء التنفيذ هنا دون منحهم صلاحيات عامة تلقائيًا."/></Panel>}</div>}
 
     {tab === "files" && <FileUploader project={project} files={summary.files} permissions={permissions} profile={profile} refresh={refresh}/>} 
     {tab === "materials" && <LinkedRows title="الخامات والمشتريات" rows={summary.purchases} empty="لا توجد مشتريات مرتبطة" render={(row)=><><span>{data.materials.find((m)=>m.id===row.material_id)?.name||"مادة"}</span><small>{number(row.qty)} × {permissions.project_financials_view?money(row.unit_cost):"تكلفة محجوبة"}</small></>}/>} 

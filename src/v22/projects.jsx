@@ -6,6 +6,7 @@ import { buildProjectFilePath, FILE_CATEGORIES, isSupportedProjectFile, PROJECT_
 import { syncMutation } from "./mutations";
 import { PROJECT_EXECUTION_STAGES, PROJECT_LIFECYCLES } from "./projectDomain";
 import { ProjectWorkspace } from "./projectWorkspace";
+import { ArchiveSection, KpiCard, KpiGrid } from "../ui";
 
 export const PROJECT_STATUSES = PROJECT_EXECUTION_STAGES;
 export { FILE_CATEGORIES } from "./fileTypes";
@@ -48,6 +49,9 @@ export function ProjectsTab({ data, profile, permissions, refresh, initialProjec
       && (!status || (project.execution_stage || project.status) === status) && (!customer || project.customer_id === customer)
       && (!fromDate || project.start_date >= fromDate);
   }), [data.projects, search, status, customer, fromDate]);
+  const activeProjects = projects.filter((project) => !["closed","cancelled"].includes(project.lifecycle));
+  const archivedProjects = projects.filter((project) => ["closed","cancelled"].includes(project.lifecycle));
+  const renderProject = (project) => <ProjectCard key={project.id} project={project} customer={data.customers.find((c) => c.id === project.customer_id)} showFinancials={permissions.project_financials_view} onOpen={() => setSelectedId(project.id)} />;
 
   async function createProject(e) {
     e.preventDefault(); setError(""); setSuccess("");
@@ -67,13 +71,15 @@ export function ProjectsTab({ data, profile, permissions, refresh, initialProjec
     <PageTitle eyebrow="Project Workspace" title="المشاريع" description="إدارة دورة حياة المشروع ومراحل التنفيذ والفريق والملفات والروابط التشغيلية من مساحة واحدة."
       actions={<PermissionGuard allow={permissions.projects_create}><Button onClick={() => setShowForm(true)}><Plus size={16} /> مشروع جديد</Button></PermissionGuard>} />
     <ErrorState error={error} /><SuccessState message={success} />
+    <KpiGrid><KpiCard label="مشاريع نشطة" value={data.projects.filter((row)=>row.lifecycle==="active").length}/><KpiCard label="بانتظار الاعتماد" value={data.projects.filter((row)=>["planning","ready_for_activation"].includes(row.lifecycle)).length} tone="warning"/><KpiCard label="قيد التنفيذ" value={data.projects.filter((row)=>row.lifecycle==="active" && !["design","approval"].includes(row.execution_stage || row.status)).length} tone="info"/><KpiCard label="السجل المؤرشف" value={data.projects.filter((row)=>["closed","cancelled"].includes(row.lifecycle)).length}/></KpiGrid>
     <Panel className="v22-filters">
       <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ابحث بالكود أو اسم المشروع..." />
       <Select value={status} onChange={(e) => setStatus(e.target.value)}><option value="">كل الحالات</option>{Object.entries(PROJECT_STATUSES).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</Select>
       <Select value={customer} onChange={(e) => setCustomer(e.target.value)}><option value="">كل العملاء</option>{data.customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</Select>
       <Input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} aria-label="من تاريخ" />
     </Panel>
-    <div className="projects-result-count">عدد النتائج: <b>{projects.length}</b></div>{projects.length ? <div className="projects-grid">{projects.map((project) => <ProjectCard key={project.id} project={project} customer={data.customers.find((c) => c.id === project.customer_id)} showFinancials={permissions.project_financials_view} onOpen={() => setSelectedId(project.id)} />)}</div> : <Panel><EmptyState title="لا توجد مشاريع مطابقة" description="غيّر عوامل البحث أو أضف مشروعًا جديدًا." /></Panel>}
+    <div className="projects-result-count">المشاريع الحالية: <b>{activeProjects.length}</b></div>{activeProjects.length ? <div className="projects-grid">{activeProjects.map(renderProject)}</div> : <Panel><EmptyState title="لا توجد مشاريع حالية مطابقة" description="غيّر عوامل البحث أو أضف مشروعًا جديدًا." /></Panel>}
+    <ArchiveSection title="المشاريع المغلقة والملغاة" count={archivedProjects.length} helpText="السجل محفوظ للرجوع إليه ولا يظهر ضمن العمل اليومي.">{archivedProjects.length ? <div className="projects-grid">{archivedProjects.map(renderProject)}</div> : <EmptyState title="لا يوجد سجل مشاريع مؤرشف" />}</ArchiveSection>
     {showForm && <div className="v22-modal-backdrop"><form className="v22-modal" onSubmit={createProject}>
       <h3>إنشاء مشروع جديد</h3><div className="v22-form-grid">
         <Field label="كود المشروع"><Input required value={form.project_code} onChange={(e) => setForm({ ...form, project_code: e.target.value })} /></Field>
