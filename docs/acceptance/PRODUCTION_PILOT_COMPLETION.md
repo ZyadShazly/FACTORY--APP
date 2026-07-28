@@ -65,7 +65,7 @@ The historical employee workflow migration now guards its dependency query with 
 - Desktop/RTL visual QA: passed at 1,440×900 with no global overflow, four KPI cards, active-first cards, collapsed history, one primary action, and an on-demand execution drawer.
 - Mobile/RTL visual QA: passed in a real 375×812 iframe viewport; the inner document measured `clientWidth=scrollWidth=360`, used a two-column KPI layout, and rendered its details dialog at the full 360px content width.
 - Browser console: no warnings or errors.
-- Remote Quality Gate: passed, run 314.
+- Remote Quality Gate: passed on the latest branch head.
 - Vercel deployment status: passed.
 
 ## Regression and safety
