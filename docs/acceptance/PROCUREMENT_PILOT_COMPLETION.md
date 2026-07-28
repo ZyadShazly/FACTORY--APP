@@ -1,5 +1,7 @@
 # Phase 2 — Procurement Pilot Completion
 
+Draft PR: [#86](https://github.com/ZyadShazly/FACTORY--APP/pull/86)
+
 ## Outcome
 
 The procurement workspace now presents one workflow step at a time:
