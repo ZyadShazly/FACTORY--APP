@@ -10,12 +10,16 @@ test('inventory workspace exposes catalog management to managers',()=>{
   assert.match(workspace,/catalog:\[\],materials:\[\]/);
 });
 
-test('catalog supports link unlink activate and deactivate actions',()=>{
-  for(const label of ['حفظ الربط','فك الربط','تعطيل','تنشيط'])assert.match(panel,new RegExp(label));
+test('catalog keeps raw material management and automatic finished goods links separate',()=>{
+  for(const label of ['حفظ ربط المادة','فك ربط المادة','تعطيل','تنشيط'])assert.match(panel,new RegExp(label));
   assert.match(panel,/manage_inventory_item_catalog/);
+  assert.match(panel,/مرتبط تلقائيًا بالمنتج/);
+  assert.match(panel,/يحتاج مراجعة الربط/);
+  assert.match(panel,/item\.product_id/);
 });
 
-test('catalog explains history safety and receipt prerequisite',()=>{
+test('catalog explains receipt prerequisite and automatic product reconciliation',()=>{
   assert.match(panel,/قبل الاستلام/);
-  assert.match(panel,/لا يحذف أي حركة تاريخية/);
+  assert.match(panel,/يربطها النظام تلقائيًا/);
+  assert.match(panel,/عند الحاجة للمراجعة/);
 });
