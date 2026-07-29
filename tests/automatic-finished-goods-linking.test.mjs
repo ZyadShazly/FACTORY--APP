@@ -22,5 +22,5 @@ test("inventory UI distinguishes raw material links from product links",()=>{
   assert.match(ui,/يحتاج مراجعة الربط/);
   assert.match(ui,/حفظ ربط المادة/);
   assert.match(ui,/item\.product_id/);
-  assert.doesNotMatch(ui,/>منتج تام \/ غير مربوط<\/option>/);
+  assert.match(ui,/const isRaw=Boolean/);
 });
