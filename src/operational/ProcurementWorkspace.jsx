@@ -111,12 +111,14 @@ export function ProcurementWorkspace({data,onNavigate}){
   const[sendReference,setSendReference]=useState(""),[orderName,setOrderName]=useState("");
 
   const projects=data.projects||[],suppliers=data.suppliers||[],materials=data.materials||[];
-  async function load(){
-    setLoading(true);setError("");
+  async function load({preserveFeedback=false}={}){
+    setLoading(true);
+    if(!preserveFeedback)setError("");
     const[p,i]=await Promise.all([supabase.rpc("get_procurement_workspace_v2",{target_project:null}),supabase.rpc("get_inventory_workspace")]);
     if(p.error)setError(friendlyError(p.error));else setWs({...emptyWorkspace,...(p.data||{})});
-    if(i.error)setError(current=>current||friendlyError(i.error));else setInventory(i.data||{warehouses:[]});
+    if(!i.error)setInventory(i.data||{warehouses:[]});
     setLoading(false);
+    return !p.error;
   }
   useEffect(()=>{void load()},[]);
   async function call(name,args,msg,{keepSelection=false}={}){
@@ -127,12 +129,14 @@ export function ProcurementWorkspace({data,onNavigate}){
       setLinkingRequired(raw.includes("Receipt material is not linked to an active inventory item")||raw.includes("يجب ربط المادة"));
       setError(friendlyError(callError));return false
     }
-    setOk(msg);if(!keepSelection)setSelected(null);setRejecting(null);setRejectReason("");await load();return result||true;
+    setOk(msg);if(!keepSelection)setSelected(null);setRejecting(null);setRejectReason("");
+    await load({preserveFeedback:true});
+    return result||true;
   }
   async function saveRequest(){
     if(!request.display_name.trim())return setError("أدخل اسمًا واضحًا لطلب الشراء.");
     if(!request.description.trim()||Number(request.quantity)<=0)return setError("أدخل وصفًا وكمية صحيحة.");
-    const saved=await call("save_purchase_request_v2",{payload:{display_name:request.display_name,project_id:request.project_id||null,required_date:null,priority:"normal",justification:request.justification,items:[{material_id:request.material_id||null,description:request.description,quantity:Number(request.quantity),unit:request.unit,estimated_unit_cost:Number(request.estimated_unit_cost||0),sequence:1}]}},"تم حفظ طلب الشراء كمسودة.");
+    const saved=await call("save_purchase_request_v2",{payload:{display_name:request.display_name,project_id:request.project_id||null,required_date:null,priority:"normal",justification:request.justification,items:[{material_id:request.material_id||null,description:request.description,quantity:Number(request.quantity),unit:request.unit,estimated_unit_cost:Number(request.estimated_unit_cost||0),sequence:1}] }},"تم حفظ طلب الشراء كمسودة.");
     if(saved){setCreating(false);setRequest({...request,display_name:"",description:"",quantity:"",estimated_unit_cost:"",justification:""})}
   }
   async function saveQuote(){
