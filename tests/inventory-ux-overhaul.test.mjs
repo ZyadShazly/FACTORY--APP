@@ -35,14 +35,16 @@ test("operations expose receive issue transfer adjustment and count one at a tim
   assert.match(workspace,/اختر العملية المطلوبة فقط؛ لن تظهر النماذج الأخرى في نفس الوقت/);
 });
 
-test("inventory item table shows required fields and direct catalog actions",()=>{
-  for(const heading of["الاسم","الكود","الكمية","المخزن","الحالة","المادة المرتبطة","الإجراءات"])assert.match(catalog,new RegExp(heading));
-  for(const action of["إنشاء من المادة","ربط","فك الربط","تنشيط","تعطيل"])assert.match(catalog,new RegExp(action));
+test("inventory item table shows required fields and separates raw from finished links",()=>{
+  for(const heading of["الاسم","الكود","الكمية","المخزن","الحالة","الارتباط","الإجراءات"])assert.match(catalog,new RegExp(heading));
+  for(const action of["إنشاء من المادة","حفظ ربط المادة","فك ربط المادة","تنشيط","تعطيل"])assert.match(catalog,new RegExp(action));
+  assert.match(catalog,/مرتبط تلقائيًا بالمنتج/);
+  assert.match(catalog,/يحتاج مراجعة الربط/);
   assert.match(catalog,/balanceSummary/);
   assert.match(catalog,/inventory-table/);
 });
 
-test("history is movement-only and archive/history surfaces are collapsed",()=>{
+test("history is movement-only and archive\/history surfaces are collapsed",()=>{
   const historyBranch=workspace.slice(workspace.indexOf('tab==="history"'),workspace.indexOf('tab==="settings"'));
   assert.match(historyBranch,/workspace\.movements/);
   assert.doesNotMatch(historyBranch,/opening_documents|count_sessions|warehouse_admin/);
