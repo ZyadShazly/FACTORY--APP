@@ -76,7 +76,7 @@ export function InventoryCatalogPanel({workspace,onChanged,onOpenMaterials,canMa
 
   return <Panel title="أصناف المخزون" actions={canManage&&<Button onClick={()=>startCreate()}>+ صنف جديد</Button>}>
     <div className="inventory-section-heading">
-      <div><h3>أرصدة المواد الخام والمنتجات التامة</h3><p>المواد الخام تُربط يدويًا بصنف المخزون، أما المنتجات التامة فيربطها النظام تلقائيًا بالمنتج الصحيح. الربط الإداري يظهر فقط عند الحاجة للمراجعة.</p></div>
+      <div><h3>أرصدة المواد الخام والمنتجات التامة</h3><p>المواد الخام تُربط يدويًا بصنف المخزون قبل الاستلام، أما المنتجات التامة فيربطها النظام تلقائيًا بالمنتج الصحيح. الربط الإداري يظهر فقط عند الحاجة للمراجعة.</p></div>
       {onOpenMaterials&&<Button tone="ghost" onClick={onOpenMaterials}>فتح المواد الخام</Button>}
     </div>
     <div className="inventory-balance-switch" role="tablist" aria-label="نوع رصيد المخزون">
@@ -139,7 +139,7 @@ export function InventoryCatalogPanel({workspace,onChanged,onOpenMaterials,canMa
             :item.product_id?<span className="inventory-status">مرتبط تلقائيًا بالمنتج: {item.name}</span>:<span className="inventory-status is-inactive">يحتاج مراجعة الربط</span>}
           </td>
           {canManage&&<td><div className="inventory-row-actions">
-            {isRaw&&<><Button disabled={busy===item.id||selected===(item.material_id||"")} onClick={()=>save(item,selected,item.active)}>حفظ ربط المادة</Button><Button tone="ghost" disabled={busy===item.id||!item.material_id} onClick={()=>save(item,"",item.active)}>فك ربط المادة</Button></>}
+            {isRaw&&<><Button disabled={busy===item.id||selected===(item.material_id||"")} onClick={()=>save(item,selected,item.active)}>حفظ ربط المادة</Button><Button tone="ghost" title="فك الربط / تحويل لمنتج تام" disabled={busy===item.id||!item.material_id} onClick={()=>save(item,"",item.active)}>فك ربط المادة</Button></>}
             <Button tone="ghost" disabled={busy===item.id} onClick={()=>save(item,item.material_id,!item.active)}>{item.active===false?"تنشيط":"تعطيل"}</Button>
             <details className="inventory-row-more"><summary>المزيد</summary><div><Button tone="danger" disabled={busy===item.id} onClick={()=>deleteItem(item)}>حذف غير مستخدم</Button></div></details>
           </div></td>}
