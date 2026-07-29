@@ -18,8 +18,8 @@ test('catalog keeps raw material management and automatic finished goods links s
   assert.match(panel,/item\.product_id/);
 });
 
-test('catalog explains receipt prerequisite and automatic product reconciliation',()=>{
-  assert.match(panel,/قبل الاستلام/);
-  assert.match(panel,/يربطها النظام تلقائيًا/);
-  assert.match(panel,/عند الحاجة للمراجعة/);
+test('catalog explains explicit type and automatic reconciliation',()=>{
+  assert.match(panel,/نوع الصنف ثابت ومستقل عن الربط/);
+  assert.match(panel,/يربطه النظام تلقائيًا/);
+  assert.match(panel,/يحتاج مراجعة الربط/);
 });

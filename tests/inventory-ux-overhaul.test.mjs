@@ -37,9 +37,11 @@ test("operations expose receive issue transfer adjustment and count one at a tim
 
 test("inventory item table shows required fields and separates raw from finished links",()=>{
   for(const heading of["الاسم","الكود","الكمية","المخزن","الحالة","الارتباط","الإجراءات"])assert.match(catalog,new RegExp(heading));
-  for(const action of["إنشاء من المادة","حفظ ربط المادة","فك ربط المادة","تنشيط","تعطيل"])assert.match(catalog,new RegExp(action));
+  for(const action of["إنشاء صنف خام","حفظ ربط المادة","فك ربط المادة","تنشيط","تعطيل"])assert.match(catalog,new RegExp(action));
   assert.match(catalog,/مرتبط تلقائيًا بالمنتج/);
   assert.match(catalog,/يحتاج مراجعة الربط/);
+  assert.match(catalog,/item\.item_type==="raw_material"/);
+  assert.match(catalog,/item\.item_type==="finished_good"/);
   assert.match(catalog,/balanceSummary/);
   assert.match(catalog,/inventory-table/);
 });
@@ -58,7 +60,7 @@ test("UX overhaul preserves protected RPC contracts and avoids direct writes",()
     "get_inventory_workspace","transfer_inventory","adjust_inventory",
     "create_inventory_count_session","save_inventory_count_line","post_inventory_count_session"
   ])assert.match(workspace,new RegExp(`"${rpc}"`));
-  for(const rpc of["create_inventory_item","manage_inventory_item_catalog","delete_inventory_setup_entity"])assert.match(catalog,new RegExp(`"${rpc}"`));
+  for(const rpc of["create_inventory_item_typed","manage_inventory_item_catalog","delete_inventory_setup_entity"])assert.match(catalog,new RegExp(`"${rpc}"`));
   for(const rpc of["create_opening_inventory_document","save_opening_inventory_line","delete_opening_inventory_line","post_opening_inventory_document"])assert.match(opening,new RegExp(`"${rpc}"`));
   for(const rpc of["save_inventory_warehouse","save_inventory_location","get_inventory_warehouse_detail","archive_inventory_warehouse"])assert.match(warehouses,new RegExp(`"${rpc}"`));
   for(const source of[workspace,catalog,opening,warehouses])assert.doesNotMatch(source,/supabase\.from\(/);

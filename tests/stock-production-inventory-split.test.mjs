@@ -9,7 +9,8 @@ test("inventory separates raw materials and finished goods",()=>{
   assert.match(inventory,/stockKind/);
   assert.match(inventory,/المواد الخام/);
   assert.match(inventory,/المنتجات التامة/);
-  assert.match(inventory,/item\.material_id\|\|item\.material_name/);
+  assert.match(inventory,/item\.item_type==="raw_material"/);
+  assert.match(inventory,/item\.item_type==="finished_good"/);
 });
 
 test("stock production can release without a project",()=>{

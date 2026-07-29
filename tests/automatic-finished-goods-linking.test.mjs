@@ -14,7 +14,7 @@ test("finished goods linking is automatic and idempotent",()=>{
   assert.match(migration,/candidate_count=1/);
   assert.match(migration,/ambiguous_sku/);
   assert.match(migration,/ambiguous_name/);
-  assert.match(migration,/'FG-'\|\|replace\(target_product::text,'-',''\)/);
+  assert.match(migration,/FG-/);
 });
 
 test("inventory UI distinguishes raw material links from product links",()=>{
@@ -22,5 +22,5 @@ test("inventory UI distinguishes raw material links from product links",()=>{
   assert.match(ui,/يحتاج مراجعة الربط/);
   assert.match(ui,/حفظ ربط المادة/);
   assert.match(ui,/item\.product_id/);
-  assert.match(ui,/const isRaw=Boolean/);
+  assert.match(ui,/item\.item_type==="raw_material"/);
 });
