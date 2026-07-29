@@ -28,7 +28,8 @@ test("duplicate SKU and duplicate material links are rejected explicitly",()=>{
 test("unlinked materials are returned and actionable in setup UI",()=>{
   assert.match(migration,/'unlinked_materials'/);
   assert.match(migration,/left join public\.inventory_items i on i\.material_id=m\.id[\s\S]*m\.active and i\.id is null/);
-  assert.match(catalog,/يوجد مواد خام غير مربوطة\. أنشئ صنف مخزون لبدء تسجيل الأرصدة والاستلام\./);
+  assert.match(catalog,/يوجد مواد خام تحتاج مراجعة الربط/);
+  assert.match(catalog,/إنشاء صنف خام/);
 });
 
 test("opening inventory uses draft documents and does not touch balances before posting",()=>{
