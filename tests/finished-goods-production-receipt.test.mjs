@@ -24,6 +24,6 @@ test("finished-goods receipt is atomic with order completion and uses actual cos
 });
 
 test("finished products remain separate from raw materials in inventory UI", () => {
-  assert.match(inventoryUi, /finishedItems=.*!item\.material_id&&!item\.material_name/);
+  assert.match(inventoryUi, /finishedItems=.*item\.item_type==="finished_good"/);
   assert.match(inventoryUi, /المنتجات التامة/);
 });
