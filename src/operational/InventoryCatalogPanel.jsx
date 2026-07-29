@@ -76,7 +76,7 @@ export function InventoryCatalogPanel({workspace,onChanged,onOpenMaterials,canMa
 
   return <Panel title="أصناف المخزون" actions={canManage&&<Button onClick={()=>startCreate()}>+ صنف جديد</Button>}>
     <div className="inventory-section-heading">
-      <div><h3>أرصدة المواد الخام والمنتجات التامة</h3><p>أنشئ الأصناف واربط المواد قبل الاستلام، ثم اختر نوع المخزون حتى تظهر لك الأرصدة المهمة فقط. فك الربط أو التعطيل لا يحذف أي حركة تاريخية.</p></div>
+      <div><h3>أرصدة المواد الخام والمنتجات التامة</h3><p>المواد الخام تُربط يدويًا بصنف المخزون قبل الاستلام، أما المنتجات التامة فيربطها النظام تلقائيًا بالمنتج الصحيح. الربط الإداري يظهر فقط عند الحاجة للمراجعة.</p></div>
       {onOpenMaterials&&<Button tone="ghost" onClick={onOpenMaterials}>فتح المواد الخام</Button>}
     </div>
     <div className="inventory-balance-switch" role="tablist" aria-label="نوع رصيد المخزون">
@@ -91,8 +91,8 @@ export function InventoryCatalogPanel({workspace,onChanged,onOpenMaterials,canMa
       <summary>ما الفرق بين المادة الخام وصنف المخزون والرصيد والحركة؟</summary>
       <dl>
         <div><dt>المادة الخام</dt><dd>تعريف ما تشتريه أو تستخدمه في الإنتاج.</dd></div>
-        <div><dt>صنف المخزون</dt><dd>الكود الذي يربط المادة بدفتر المخزون.</dd></div>
-        <div><dt>المنتج التام</dt><dd>صنف مخزون غير مربوط بمادة خام ويظهر في رصيد المنتجات التامة.</dd></div>
+        <div><dt>صنف المخزون</dt><dd>الكود الذي يربط المادة أو المنتج بدفتر المخزون.</dd></div>
+        <div><dt>المنتج التام</dt><dd>صنف مخزون يربطه النظام تلقائيًا بالمنتج ويزيد رصيده عند إكمال أمر الإنتاج.</dd></div>
         <div><dt>رصيد المخزن</dt><dd>الكمية والقيمة الحالية لصنف داخل مخزن محدد.</dd></div>
         <div><dt>الرصيد الافتتاحي</dt><dd>مستند مستقل لإدخال مخزون المصنع الموجود قبل بدء النظام.</dd></div>
         <div><dt>حركة المخزون</dt><dd>سجل غير قابل للمحو لكل استلام أو صرف أو تحويل أو تسوية.</dd></div>
@@ -122,8 +122,9 @@ export function InventoryCatalogPanel({workspace,onChanged,onOpenMaterials,canMa
     </div>}
 
     <input style={{...inputStyle,width:"100%",marginBottom:12}} value={search} onChange={event=>setSearch(event.target.value)} placeholder={stockKind==="raw"?"ابحث في المواد الخام بالاسم أو الكود...":"ابحث في المنتجات التامة بالاسم أو الكود..."}/>
-    <div className="inventory-table-wrap"><table className="inventory-table"><thead><tr>{["الاسم","الكود","الكمية","المخزن","الحالة","المادة المرتبطة",...(canManage?["الإجراءات"]:[])].map(header=><th key={header}>{header}</th>)}</tr></thead><tbody>
+    <div className="inventory-table-wrap"><table className="inventory-table"><thead><tr>{["الاسم","الكود","الكمية","المخزن","الحالة","الارتباط",...(canManage?["الإجراءات"]:[])].map(header=><th key={header}>{header}</th>)}</tr></thead><tbody>
       {catalog.map(item=>{
+        const isRaw=Boolean(item.material_id||item.material_name);
         const selected=links[item.id]??item.material_id??"";
         const summary=balanceSummary.get(item.id)||{quantity:0,warehouses:new Set()};
         const availableMaterials=materials.filter(material=>material.id===item.material_id||!linkedMaterialIds.has(material.id));
@@ -133,10 +134,12 @@ export function InventoryCatalogPanel({workspace,onChanged,onOpenMaterials,canMa
           <td>{money(summary.quantity)}</td>
           <td>{[...summary.warehouses].join("، ")||"لا يوجد رصيد"}</td>
           <td><span className={`inventory-status${item.active===false?" is-inactive":""}`}>{item.active===false?"غير نشط":"نشط"}</span></td>
-          <td>{canManage?<select style={inputStyle} value={selected} onChange={event=>setLinks({...links,[item.id]:event.target.value})}><option value="">منتج تام / غير مربوط</option>{availableMaterials.map(material=><option key={material.id} value={material.id}>{material.name}</option>)}</select>:item.material_name||(stockKind==="finished"?"منتج تام":"غير مربوط")}</td>
+          <td>{isRaw
+            ?(canManage?<select style={inputStyle} value={selected} onChange={event=>setLinks({...links,[item.id]:event.target.value})}><option value="">مادة خام غير مربوطة</option>{availableMaterials.map(material=><option key={material.id} value={material.id}>{material.name}</option>)}</select>:item.material_name||"مادة خام غير مربوطة")
+            :item.product_id?<span className="inventory-status">مرتبط تلقائيًا بالمنتج: {item.name}</span>:<span className="inventory-status is-inactive">يحتاج مراجعة الربط</span>}
+          </td>
           {canManage&&<td><div className="inventory-row-actions">
-            <Button disabled={busy===item.id||selected===(item.material_id||"")} onClick={()=>save(item,selected,item.active)}>حفظ الربط</Button>
-            <Button tone="ghost" disabled={busy===item.id||!item.material_id} onClick={()=>save(item,"",item.active)}>فك الربط / تحويل لمنتج تام</Button>
+            {isRaw&&<><Button disabled={busy===item.id||selected===(item.material_id||"")} onClick={()=>save(item,selected,item.active)}>حفظ ربط المادة</Button><Button tone="ghost" title="فك الربط / تحويل لمنتج تام" disabled={busy===item.id||!item.material_id} onClick={()=>save(item,"",item.active)}>فك ربط المادة</Button></>}
             <Button tone="ghost" disabled={busy===item.id} onClick={()=>save(item,item.material_id,!item.active)}>{item.active===false?"تنشيط":"تعطيل"}</Button>
             <details className="inventory-row-more"><summary>المزيد</summary><div><Button tone="danger" disabled={busy===item.id} onClick={()=>deleteItem(item)}>حذف غير مستخدم</Button></div></details>
           </div></td>}
