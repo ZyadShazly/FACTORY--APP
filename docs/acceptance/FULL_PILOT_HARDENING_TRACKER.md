@@ -2,6 +2,16 @@
 
 Last updated: 2026-07-28
 
+> **Historical record — not the current implementation plan.**
+>
+> This file preserves the point-in-time evidence captured while PRs #84–#91
+> were Draft. Those PRs are now merged, PRs #34 and #80 are closed without
+> merge, and the remaining Phase 0–15 queue has been retired. Do not use the
+> status cells or coordination register below as current GitHub state or as an
+> instruction to resume the old phases. Use
+> [`docs/CURRENT_SYSTEM_STATUS.md`](../CURRENT_SYSTEM_STATUS.md) for the current
+> baseline, migration map, open-PR decision, and execution sequence.
+
 This tracker is the evidence index for the NextEP factory pilot mission. Every implementation phase must remain isolated in its own Draft PR. No PR is merged and no production migration is applied by this mission.
 
 | Phase | Branch | PR | Status | Tests | Build | Quality gate | Vercel | Migration status | Risks | UAT scenarios | Blockers |
@@ -27,7 +37,10 @@ This tracker is the evidence index for the NextEP factory pilot mission. Every i
 
 - PR #80 (`agent/fix-procurement-print-templates`) remains an open Draft. Phase 2 reused its two commits and completed them on the stacked phase branch; the two PRs must be reconciled before any future merge to avoid applying migration `202607260002` twice.
 - PR #34 (`feat/production-execution-quality`) remains an open Draft. Its live migration was already applied outside this mission under version `20260721041533`; Phase 4 reconciles that state with an additive idempotent migration and repository-safe replay guard. Do not merge PR #34 independently without reconciling the duplicate historical migration version and stacked implementation.
-- `agent/safe-delete-dependency-explorer` exists and is owned by another agent. Phases 6, 11, and 14 must not overwrite or duplicate that work.
+- Historical coordination assumption: `agent/safe-delete-dependency-explorer`
+  was treated as separately owned. Current reconciliation shows the branch is
+  already an ancestor of `main` and has no unique implementation diff, so it is
+  not a pending merge dependency. See `docs/CURRENT_SYSTEM_STATUS.md`.
 - Inventory UX PR #83 was merged into `main` before this mission began and is the Phase 3 review baseline.
 
 ## Mission safety state
