@@ -5,6 +5,7 @@ import fs from "node:fs";
 const ui = fs.readFileSync("src/v22/dailyLabor.jsx", "utf8");
 const migration = fs.readFileSync("supabase/migrations/202607210003_external_labor_review_workflow.sql", "utf8");
 const fix = fs.readFileSync("supabase/migrations/20260721164000_external_labor_payment_parameter_fix.sql", "utf8");
+const settlement = fs.readFileSync("supabase/migrations/202608020004_external_labor_settlement.sql", "utf8");
 
 test("external labor requires opening details before approval or payment", () => {
   assert.match(ui, /فتح التفاصيل/);
@@ -12,6 +13,23 @@ test("external labor requires opening details before approval or payment", () =>
   assert.match(ui, /review_daily_labor/);
   assert.match(ui, /pay_daily_labor/);
   assert.doesNotMatch(ui, /from\("daily_labor"\)\.update\(\{payment_status:"paid"/);
+});
+
+test("external labor settlement shows additions deductions reasons and net", () => {
+  for (const label of ["إضافات", "سبب الإضافة", "خصومات", "سبب الخصم", "صافي التسوية"]) {
+    assert.match(ui, new RegExp(label));
+  }
+  assert.match(settlement, /net_amount numeric generated always as/);
+  assert.match(settlement, /paid_amount=net_amount/);
+  assert.match(settlement, /deduction_amount <= total_amount \+ addition_amount/);
+  assert.match(ui, /الخصم لا يمكن أن يتجاوز الإجمالي بعد الإضافات/);
+});
+
+test("reviewed settlement values are immutable and active access is restrictive", () => {
+  assert.match(settlement, /Reviewed daily labor settlement is immutable/);
+  assert.match(settlement, /before update on public\.daily_labor/);
+  assert.match(settlement, /as restrictive[\s\S]*for all to authenticated/);
+  assert.match(settlement, /revoke all on function public\.pay_daily_labor\(uuid,text,text\)[\s\S]*public,anon,authenticated/);
 });
 
 test("shift detail explains time and amount calculation", () => {
