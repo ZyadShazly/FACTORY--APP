@@ -35,6 +35,10 @@ const emptyShift = {
   hourly_rate: 0,
   overtime_hours: 0,
   overtime_rate: 0,
+  addition_amount: 0,
+  addition_reason: "",
+  deduction_amount: 0,
+  deduction_reason: "",
   payment_status: "unpaid",
   notes: "",
 };
@@ -65,6 +69,9 @@ export function DailyLaborForm({ projects, profile, canSeeMoney, onSaved, onCanc
   async function submit(event) {
     event.preventDefault();
     setError("");
+    if (canSeeMoney && number(form.addition_amount) > 0 && !form.addition_reason.trim()) return setError("سبب الإضافة مطلوب.");
+    if (canSeeMoney && number(form.deduction_amount) > 0 && !form.deduction_reason.trim()) return setError("سبب الخصم مطلوب.");
+    if (canSeeMoney && number(form.deduction_amount) > calculation.totalAmount + number(form.addition_amount)) return setError("الخصم لا يمكن أن يتجاوز الإجمالي بعد الإضافات.");
     const payload = {
       ...form,
       project_id: form.project_id || null,
@@ -72,6 +79,10 @@ export function DailyLaborForm({ projects, profile, canSeeMoney, onSaved, onCanc
       hourly_rate: canSeeMoney ? number(form.hourly_rate) : 0,
       overtime_hours: number(form.overtime_hours),
       overtime_rate: canSeeMoney ? number(form.overtime_rate) : 0,
+      addition_amount: canSeeMoney ? number(form.addition_amount) : 0,
+      addition_reason: canSeeMoney && number(form.addition_amount) > 0 ? form.addition_reason.trim() : null,
+      deduction_amount: canSeeMoney ? number(form.deduction_amount) : 0,
+      deduction_reason: canSeeMoney && number(form.deduction_amount) > 0 ? form.deduction_reason.trim() : null,
       total_hours: calculation.totalHours,
       total_amount: calculation.totalAmount,
       review_status: "draft",
@@ -95,11 +106,15 @@ export function DailyLaborForm({ projects, profile, canSeeMoney, onSaved, onCanc
       <PermissionGuard allow={canSeeMoney}>
         <Field label="سعر الساعة"><Input type="number" min="0" value={form.hourly_rate} onChange={(e) => setForm({ ...form, hourly_rate: e.target.value })}/></Field>
         <Field label="سعر الساعة الإضافية"><Input type="number" min="0" value={form.overtime_rate} onChange={(e) => setForm({ ...form, overtime_rate: e.target.value })}/></Field>
+        <Field label="إضافات"><Input type="number" min="0" value={form.addition_amount} onChange={(e) => setForm({ ...form, addition_amount: e.target.value })}/></Field>
+        <Field label="سبب الإضافة"><Input required={number(form.addition_amount) > 0} value={form.addition_reason} onChange={(e) => setForm({ ...form, addition_reason: e.target.value })}/></Field>
+        <Field label="خصومات"><Input type="number" min="0" value={form.deduction_amount} onChange={(e) => setForm({ ...form, deduction_amount: e.target.value })}/></Field>
+        <Field label="سبب الخصم"><Input required={number(form.deduction_amount) > 0} value={form.deduction_reason} onChange={(e) => setForm({ ...form, deduction_reason: e.target.value })}/></Field>
       </PermissionGuard>
       <Field label="ساعات إضافية"><Input type="number" min="0" step=".25" value={form.overtime_hours} onChange={(e) => setForm({ ...form, overtime_hours: e.target.value })}/></Field>
       <Field label="ملاحظات" wide><TextArea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })}/></Field>
     </div>
-    <div className="labor-calculation"><span><Clock3 size={15}/> إجمالي الساعات <b>{calculation.totalHours}</b></span>{canSeeMoney && <span>القيمة المستحقة <b>{money(calculation.totalAmount)}</b></span>}</div>
+    <div className="labor-calculation"><span><Clock3 size={15}/> إجمالي الساعات <b>{calculation.totalHours}</b></span>{canSeeMoney && <><span>الإجمالي <b>{money(calculation.totalAmount)}</b></span><span>صافي التسوية <b>{money(calculation.totalAmount + number(form.addition_amount) - number(form.deduction_amount))}</b></span></>}</div>
     <ErrorState error={error}/>
     <div className="v22-actions modal-actions"><Button type="button" variant="ghost" onClick={onCancel}>إلغاء</Button><Button>حفظ الوردية</Button></div>
   </form>;
@@ -129,9 +144,9 @@ export function DailyLaborTab({ data, profile, permissions, refresh }) {
 
   const summary = useMemo(() => rows.reduce((acc, row) => ({
     hours: acc.hours + number(row.total_hours),
-    total: acc.total + number(row.total_amount),
+    total: acc.total + number(row.net_amount ?? row.total_amount),
     paid: acc.paid + number(row.paid_amount),
-    unpaid: acc.unpaid + Math.max(0, number(row.total_amount) - number(row.paid_amount)),
+    unpaid: acc.unpaid + Math.max(0, number(row.net_amount ?? row.total_amount) - number(row.paid_amount)),
   }), { hours: 0, total: 0, paid: 0, unpaid: 0 }), [rows]);
 
   const grouped = useMemo(() => group === "none" ? [["كل الورديات", rows]] : Object.entries(rows.reduce((acc, row) => {
@@ -191,7 +206,7 @@ export function DailyLaborTab({ data, profile, permissions, refresh }) {
     <ErrorState error={error}/>
     <div className={`v22-grid ${canSeeMoney ? "cols-5" : "cols-2"} labor-stats`}>
       <StatCard label="ساعات العمل" value={`${summary.hours.toFixed(2)} ساعة`}/>
-      {canSeeMoney && <><StatCard label="إجمالي تكلفة العمالة" value={money(summary.total)}/><StatCard label="المدفوع" value={money(summary.paid)} tone="positive"/><StatCard label="غير المدفوع" value={money(summary.unpaid)} tone="negative"/></>}
+      {canSeeMoney && <><StatCard label="صافي مستحقات العمالة" value={money(summary.total)}/><StatCard label="المدفوع" value={money(summary.paid)} tone="positive"/><StatCard label="غير المدفوع" value={money(summary.unpaid)} tone="negative"/></>}
       <StatCard label="عدد الورديات" value={rows.length}/>
     </div>
     <Panel>
@@ -209,7 +224,7 @@ export function DailyLaborTab({ data, profile, permissions, refresh }) {
             <td>{data.projects.find((item) => item.id === row.project_id)?.project_name || "—"}</td>
             <td>{row.work_date}<br/><small>{row.start_time?.slice(0, 5)} — {row.end_time?.slice(0, 5)}</small></td>
             <td>{row.total_hours}</td>
-            {canSeeMoney && <td><strong>{money(row.total_amount)}</strong></td>}
+            {canSeeMoney && <td><strong>{money(row.net_amount ?? row.total_amount)}</strong></td>}
             <td><span className={`payroll-status ${row.review_status || "draft"}`}>{REVIEW_STATUS[row.review_status || "draft"]}</span></td>
             {canSeeMoney && <td><span className={`payroll-status ${row.payment_status}`}>{PAYMENT_STATUS[row.payment_status]}</span></td>}
             <td><div className="v22-actions">
@@ -228,7 +243,7 @@ export function DailyLaborTab({ data, profile, permissions, refresh }) {
       <div className="v22-form-grid">
         <Info label="العامل" value={selected.worker_name}/><Info label="الهاتف" value={selected.phone || "—"}/><Info label="الحرفة" value={selected.trade || "—"}/><Info label="المشروع" value={data.projects.find((item) => item.id === selected.project_id)?.project_name || "بدون مشروع"}/>
         <Info label="تاريخ العمل" value={selected.work_date}/><Info label="بداية الوردية" value={selected.start_time?.slice(0, 5)}/><Info label="نهاية الوردية" value={selected.end_time?.slice(0, 5)}/><Info label="الراحة" value={`${number(selected.break_minutes)} دقيقة`}/>
-        <Info label="الساعات الفعلية" value={`${number(selected.total_hours).toFixed(2)} ساعة`}/><Info label="الساعات الإضافية" value={`${number(selected.overtime_hours).toFixed(2)} ساعة`}/>{canSeeMoney && <><Info label="سعر الساعة" value={money(selected.hourly_rate)}/><Info label="سعر الإضافي" value={money(selected.overtime_rate)}/><Info label="الإجمالي المحتسب" value={money(selected.total_amount)}/><Info label="المدفوع" value={money(selected.paid_amount)}/></>}
+        <Info label="الساعات الفعلية" value={`${number(selected.total_hours).toFixed(2)} ساعة`}/><Info label="الساعات الإضافية" value={`${number(selected.overtime_hours).toFixed(2)} ساعة`}/>{canSeeMoney && <><Info label="سعر الساعة" value={money(selected.hourly_rate)}/><Info label="سعر الإضافي" value={money(selected.overtime_rate)}/><Info label="الإجمالي المحتسب" value={money(selected.total_amount)}/><Info label="الإضافات" value={money(selected.addition_amount)}/>{number(selected.addition_amount) > 0 && <Info label="سبب الإضافة" value={selected.addition_reason}/>}<Info label="الخصومات" value={money(selected.deduction_amount)}/>{number(selected.deduction_amount) > 0 && <Info label="سبب الخصم" value={selected.deduction_reason}/>}<Info label="صافي التسوية" value={money(selected.net_amount ?? selected.total_amount)}/><Info label="المدفوع" value={money(selected.paid_amount)}/></>}
         <Info label="حالة المراجعة" value={REVIEW_STATUS[selected.review_status || "draft"]}/><Info label="حالة الدفع" value={PAYMENT_STATUS[selected.payment_status]}/>
         {selected.rejection_reason && <Info label="سبب الرفض" value={selected.rejection_reason}/>} {selected.payment_reference && <Info label="مرجع الدفع" value={selected.payment_reference}/>} {selected.payment_notes && <Info label="ملاحظات الدفع" value={selected.payment_notes}/>} {selected.notes && <Info label="ملاحظات الوردية" value={selected.notes}/>} 
       </div>
@@ -249,7 +264,7 @@ export function DailyLaborTab({ data, profile, permissions, refresh }) {
 
     {paymentAction && <div className="v22-modal-backdrop"><form className="v22-modal" onSubmit={payShift}>
       <h3>تسجيل دفع مستحق العامل</h3>
-      <p>سيتم تسجيل دفع {money(paymentAction.total_amount)} للعامل {paymentAction.worker_name} بعد اعتماده.</p>
+      <p>سيتم تسجيل دفع صافي التسوية {money(paymentAction.net_amount ?? paymentAction.total_amount)} للعامل {paymentAction.worker_name} بعد اعتماده.</p>
       <Field label="مرجع الدفع"><Input value={paymentReference} onChange={(e) => setPaymentReference(e.target.value)} placeholder="رقم التحويل أو السند..."/></Field>
       <Field label="ملاحظات الدفع"><TextArea value={paymentNotes} onChange={(e) => setPaymentNotes(e.target.value)} placeholder="أي تفاصيل تساعد المراجعة لاحقًا..."/></Field>
       <div className="v22-actions modal-actions"><Button type="button" variant="ghost" onClick={() => setPaymentAction(null)}>رجوع</Button><Button disabled={busy}><Banknote size={14}/> تأكيد الدفع</Button></div>
