@@ -651,7 +651,7 @@ export default function App() {
         {activeTab === "projectFiles" && <ProjectFilesHub data={data} permissions={permissions} refresh={refetchTable} />}
         {activeTab === "inventory" && <InventoryTab canViewFinancials={permissions.view_financials} onNavigate={setTab} allowedPages={permissions.pages || []} />}
         {activeTab === "purchases" && <ProcurementWorkspace data={data} onNavigate={setTab} />}
-        {activeTab === "expenses" && <ExpensesTab data={data} insertRow={insertRow} deleteRow={deleteRow} canDelete={permissions.can_delete} />}
+        {activeTab === "expenses" && <ExpensesTab data={data} insertRow={insertRow} profileRole={role} refresh={() => refetchTable("expenses")} />}
         {activeTab === "materials" && <MaterialsTab data={data} canDelete={permissions.can_delete} insertRow={insertRow} deleteRow={deleteRow} updateRow={updateRow} onNavigate={setTab} />}
         {activeTab === "products" && <ProductsTab data={data} canCreate={permissions.can_create_products} canEdit={permissions.can_edit_products} canDelete={permissions.can_delete} hideProfitInfo={!permissions.view_financials} insertRow={insertRow} deleteRow={deleteRow} updateRow={updateRow} />}
         {activeTab === "production" && <ProductionTab data={data} profileRole={role} canViewFinancials={permissions.view_financials} />}
@@ -1273,24 +1273,39 @@ function PurchasesTab({ data, insertRow, deleteRow, canDelete }) {
 }
 
 /* -------------------------------- Expenses --------------------------------- */
-function ExpensesTab({ data, insertRow, deleteRow, canDelete }) {
+function ExpensesTab({ data, insertRow, profileRole, refresh }) {
   const categories = ["كهرباء", "إيجار", "رواتب", "نقل", "صيانة", "إنترنت", "تسويق", "أخرى"];
-  const [form, setForm] = useState({ category: categories[0], amount: "", date: todayStr(), notes: "" });
+  const [form, setForm] = useState({ category: categories[0], amount: "", date: todayStr(), notes: "", projectId: "" });
   const [err, setErr] = useState(""); const [ok, setOk] = useState("");
+  const [busyId, setBusyId] = useState(null);
   async function submit() {
     setErr(""); setOk("");
     if (num(form.amount) <= 0) return setErr("أدخل مبلغ أكبر من صفر");
     const { data: authData } = await supabase.auth.getUser();
-    const e = await insertRow("expenses", { category: form.category, amount: num(form.amount), expense_date: form.date, notes: form.notes.trim() || null, created_by: authData?.user?.id || null });
+    const e = await insertRow("expenses", { category: form.category, amount: num(form.amount), expense_date: form.date, notes: form.notes.trim() || null, project_id: form.projectId || null, created_by: authData?.user?.id || null });
     if (e) return setErr(e);
     setOk("تم تسجيل المصروف بنجاح");
-    setForm({ category: categories[0], amount: "", date: todayStr(), notes: "" });
+    setForm({ category: categories[0], amount: "", date: todayStr(), notes: "", projectId: "" });
   }
-  async function remove(row) {
-    if (!window.confirm("متأكد من حذف المصروف؟")) return;
-    const e = await deleteRow("expenses", row.id); if (e) setErr(e);
+  async function runFinancialAction(name, row, reason = null) {
+    setErr(""); setOk(""); setBusyId(row.id);
+    const args = name === "prepare_operational_source_actual_cost"
+      ? { target_source_type: "approved_expense", target_source_id: row.id }
+      : { target_expense_id: row.id, reason };
+    const { error } = await supabase.rpc(name, args);
+    setBusyId(null);
+    if (error) return setErr(error.message);
+    await refresh();
+    setOk(name === "cancel_expense" ? "تم إلغاء المصروف مع الحفاظ على سجله" : "تم إرسال المصروف لمراجعة التكلفة الفعلية");
   }
-  const total = data.expenses.reduce((sum, e) => sum + num(e.amount), 0);
+  async function cancel(row) {
+    const reason = window.prompt("اكتب سبب إلغاء المصروف");
+    if (reason === null) return;
+    if (!reason.trim()) return setErr("سبب الإلغاء مطلوب");
+    await runFinancialAction("cancel_expense", row, reason.trim());
+  }
+  const activeExpenses = data.expenses.filter((expense) => !expense.cancelled_at);
+  const total = activeExpenses.reduce((sum, e) => sum + num(e.amount), 0);
   return <div>
     <SectionTitle eyebrow="المالية" title="المصروفات" icon={<ReceiptText size={14} />} />
     <Card style={{ marginBottom: 18 }}><div style={{ color: C.muted, fontSize: 13 }}>إجمالي المصروفات المسجلة</div><div style={{ color: C.red, fontSize: 24, fontWeight: 800, marginTop: 8 }}>{fmt(total)} ج.م</div></Card>
@@ -1298,6 +1313,7 @@ function ExpensesTab({ data, insertRow, deleteRow, canDelete }) {
       <div style={{ fontWeight: 800, marginBottom: 12 }}>مصروف جديد</div>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
         <Field label="البند"><Select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>{categories.map((c) => <option key={c} value={c}>{c}</option>)}</Select></Field>
+        <Field label="المشروع (اختياري للمصروف العام)"><Select value={form.projectId} onChange={(e) => setForm({ ...form, projectId: e.target.value })}><option value="">مصروف عام بدون مشروع</option>{data.projects.filter((p) => !["closed"].includes(p.lifecycle)).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select></Field>
         <Field label="المبلغ"><Input type="number" min="0" step="any" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} /></Field>
         <Field label="التاريخ"><Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></Field>
         <Field label="ملاحظات"><Input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></Field>
@@ -1305,7 +1321,12 @@ function ExpensesTab({ data, insertRow, deleteRow, canDelete }) {
       <div style={{ marginTop: 12 }}><Btn onClick={submit}><Plus size={15}/> تسجيل المصروف</Btn></div>
       {err && <Banner type="error">{err}</Banner>}{ok && <Banner type="success">{ok}</Banner>}
     </Card>
-    <Card>{data.expenses.length === 0 ? <Empty text="لا توجد مصروفات مسجلة" /> : <Table headers={["التاريخ","البند","الملاحظات","المبلغ",""]}>{[...data.expenses].reverse().map((e) => <tr key={e.id}><Td>{e.expense_date}</Td><Td>{e.category}</Td><Td>{e.notes || "—"}</Td><Td style={{fontWeight:700,color:C.red}}>{fmt(e.amount)} ج.م</Td><Td>{canDelete && <button onClick={() => remove(e)} style={{background:"none",border:"none",cursor:"pointer",color:C.red}}><Trash2 size={15}/></button>}</Td></tr>)}</Table>}</Card>
+    <Card>{data.expenses.length === 0 ? <Empty text="لا توجد مصروفات مسجلة" /> : <Table headers={["التاريخ","البند","المشروع","الحالة","الملاحظات","المبلغ","الإجراءات"]}>{[...data.expenses].reverse().map((e) => {
+      const project = data.projects.find((p) => p.id === e.project_id);
+      const status = e.cancelled_at ? "ملغي" : ({not_posted:"غير مرحّل",submitted:"قيد المراجعة",posted:"مرحّل",rejected:"مرفوض",reversed:"معكوس"}[e.cost_posting_status] || e.cost_posting_status);
+      const canCancel = ["owner","manager"].includes(profileRole) && !e.cancelled_at;
+      return <tr key={e.id} style={{opacity:e.cancelled_at?0.65:1}}><Td>{e.expense_date}</Td><Td>{e.category}</Td><Td>{project?.name || "عام"}</Td><Td>{status}</Td><Td>{e.cancellation_reason || e.notes || "—"}</Td><Td style={{fontWeight:700,color:C.red}}>{fmt(e.amount)} ج.م</Td><Td><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{e.project_id && e.cost_posting_status === "not_posted" && !e.cancelled_at && <Btn disabled={busyId===e.id} onClick={() => runFinancialAction("prepare_operational_source_actual_cost", e)}>إرسال للتكلفة</Btn>}{canCancel && <Btn variant="danger" disabled={busyId===e.id} onClick={() => cancel(e)}>إلغاء</Btn>}</div></Td></tr>;
+    })}</Table>}</Card>
   </div>;
 }
 
