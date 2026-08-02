@@ -25,6 +25,7 @@ const emptyMember = { identity:"", project_role:"viewer", start_date:"", end_dat
 const WORKFLOW_ACTIONS = {
   prepare_project:"بدء تجهيز المشروع",
   complete_budget_and_details:"استكمال البيانات والميزانية",
+  reconcile_project_approval_history:"مراجعة سجل اعتماد المشروع",
   approve_project:"اعتماد المشروع",
   assign_project_manager:"تعيين مدير المشروع",
   start_execution:"بدء التنفيذ",
@@ -43,7 +44,9 @@ function WorkflowReadiness({ workflow }) {
     ? workflow.approval_readiness
     : workflow?.next_action === "resolve_open_dependencies"
       ? workflow.completion_readiness
-      : null;
+      : workflow?.next_action === "reconcile_project_approval_history"
+        ? workflow.approval_reconciliation
+        : null;
   const checks = source?.checks || [];
   const blockers = checks.filter((check) => check.blocking ? !check.passed : number(check.count)>0);
   if (!blockers.length) return null;
