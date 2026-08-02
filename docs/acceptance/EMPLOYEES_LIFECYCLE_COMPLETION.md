@@ -14,9 +14,11 @@ through the additive migration
 - Permanent deletion remains available only through
   `delete_employee_if_unused`, after the dependency summary proves that the
   employee has no linked account or transaction.
-- The separate `agent/safe-delete-dependency-explorer` branch is not modified
-  or duplicated. This phase extends only the established employee-specific
-  dependency contract.
+- Historical phase note: the then-separate
+  `agent/safe-delete-dependency-explorer` branch was not modified or duplicated.
+  Current reconciliation shows that branch is already an ancestor of `main` and
+  has no unique implementation diff. See `docs/CURRENT_SYSTEM_STATUS.md`.
+  This phase extends only the established employee-specific dependency contract.
 
 ## Delivered lifecycle
 

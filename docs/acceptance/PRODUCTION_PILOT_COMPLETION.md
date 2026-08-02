@@ -36,7 +36,11 @@ Phase 4 completes the pilot Production workflow without deleting operational his
 - Assignment requires an active employee and uses `ON DELETE RESTRICT` foreign keys.
 - Every new foreign key has a covering idempotent index.
 - New database errors are mapped to friendly Arabic guidance.
-- Global Safe Delete and Dependency Explorer work remains owned by its separate branch and was not duplicated here.
+- Historical phase note: Global Safe Delete and Dependency Explorer work was
+  treated as separately owned and was not duplicated here. Current
+  reconciliation shows the referenced branch is already an ancestor of `main`
+  and has no unique implementation diff; it is not a pending integration
+  dependency. See `docs/CURRENT_SYSTEM_STATUS.md`.
 
 ## Migration review
 
