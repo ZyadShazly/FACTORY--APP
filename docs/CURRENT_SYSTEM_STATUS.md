@@ -2,12 +2,12 @@
 
 > **Authority:** current operational baseline and execution-plan index
 >
-> **Snapshot date:** 2026-07-30
+> **Snapshot date:** 2026-08-02
 >
 > **Repository:** `ZyadShazly/FACTORY--APP`
 >
 > **Baseline:** `origin/main` at
-> `fe07e74d56d0bae63b8e3eb572b9ecc0249225e2`
+> `8e7d9496d0f55060dae3f35a60d5d597d9bcd3b3`
 
 This document supersedes status claims in older sprint trackers. It does not
 delete or rewrite their historical evidence.
@@ -27,13 +27,13 @@ When sources disagree, use this order:
 
 | Item | Current state |
 | --- | --- |
-| `main` | `fe07e74d56d0bae63b8e3eb572b9ecc0249225e2` |
-| Latest merged change | PR #101 — preserve successful Procurement save feedback |
+| `main` | `8e7d9496d0f55060dae3f35a60d5d597d9bcd3b3` |
+| Latest merged change | PR #102 — reconcile current system baseline |
 | Quality Gate | Passed on the current `main` SHA |
 | Vercel | Passed on the current `main` SHA |
 | Former Full Pilot PRs | #84–#91 are merged |
 | Historical conflict PRs | #34 and #80 are closed without merge |
-| Open PR | Draft PR #99 only; merge state `DIRTY` |
+| Open PR | EP-01 Draft branch only; PR #99 is closed without merge |
 | Live Supabase project | `FACTORY APP` / `cyjtbbkurmqyohbdmhbq` / `ACTIVE_HEALTHY` |
 
 The local branch from which this status reconciliation started was an old
@@ -293,7 +293,16 @@ auto-merge, production migration application, or live-data mutation.
 - removal of newly created or workload-protecting indexes solely because an
   advisor reports them unused.
 
-## Known uncertainties carried into EP-01
+## EP-01 evidence
+
+The read-only live inspection and its safety decisions are recorded in
+[EP-01 Live Schema and Data Reconciliation](EP_01_LIVE_SCHEMA_DATA_RECONCILIATION.md).
+It confirms that the two Expense counts refer to one row, adopts immutable
+Purchase Request status history as the canonical conversion/completion record,
+and identifies one unintended anonymous Inventory RPC grant for bounded
+migration hardening.
+
+## Known uncertainties carried beyond the EP-01 snapshot
 
 1. Exact application provenance for live objects whose repository migration name
    is absent from `schema_migrations`.
