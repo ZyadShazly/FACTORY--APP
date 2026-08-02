@@ -79,7 +79,15 @@ begin
         and p.project_approved_at is null,
       'reason','Execution exists without recorded project approval',
       'safe_alternative','راجع سجل النشاط وحدد الاستثناء التاريخي بسبب موثق؛ لا تسجل اعتمادًا بأثر رجعي',
-      'execution_started_at',p.execution_started_at
+      'execution_started_at',p.execution_started_at,
+      'checks',jsonb_build_array(jsonb_build_object(
+        'key','project_approval_history',
+        'label','سجل اعتماد المشروع غير مكتمل',
+        'passed',not (p.lifecycle in ('active','on_hold','completed','closed')
+          and p.project_approved_at is null),
+        'blocking',true,
+        'safe_alternative','راجع سجل النشاط وحدد الاستثناء التاريخي بسبب موثق؛ لا تسجل اعتمادًا بأثر رجعي'
+      ))
     ),
     'steps',jsonb_build_array(
       jsonb_build_object(
