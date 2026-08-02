@@ -19,11 +19,12 @@ test("active project without approval evidence is surfaced for reconciliation", 
 });
 
 test("project approval step depends on recorded evidence, not lifecycle inference", () => {
-  const approvalStep = migration.match(
-    /'key','project_approved'[\\s\\S]*?(?='key','manager_assigned')/,
-  )?.[0] || "";
-  assert.match(approvalStep, /'complete',p\\.project_approved_at is not null/);
-  assert.doesNotMatch(approvalStep, /'complete',p\\.lifecycle in/);
+  const approvalStart = migration.indexOf("'key','project_approved'");
+  const approvalEnd = migration.indexOf("'key','manager_assigned'", approvalStart);
+  const approvalStep = migration.slice(approvalStart, approvalEnd);
+  assert.ok(approvalStart >= 0 && approvalEnd > approvalStart);
+  assert.ok(approvalStep.includes("'complete',p.project_approved_at is not null"));
+  assert.ok(!approvalStep.includes("'complete',p.lifecycle in"));
 });
 
 test("reconciliation does not fabricate or rewrite project history", () => {
