@@ -84,7 +84,7 @@ export function ProjectsTab({ data, profile, permissions, refresh, initialProjec
       <h3>إنشاء مشروع جديد</h3><div className="v22-form-grid">
         <Field label="كود المشروع"><Input required value={form.project_code} onChange={(e) => setForm({ ...form, project_code: e.target.value })} /></Field>
         <Field label="اسم المشروع"><Input required value={form.project_name} onChange={(e) => setForm({ ...form, project_name: e.target.value })} /></Field>
-        <Field label="العميل"><Select value={form.customer_id} onChange={(e) => setForm({ ...form, customer_id: e.target.value })}><option value="">بدون عميل</option>{data.customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</Select></Field>
+        <Field label="العميل"><Select value={form.customer_id} onChange={(e) => setForm({ ...form, customer_id: e.target.value })}><option value="">بدون عميل</option>{data.customers.filter((c) => !c.archived_at).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</Select></Field>
         <Field label="الموقع"><Input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} /></Field>
         <Field label="تاريخ البدء"><Input type="date" value={form.start_date} onChange={(e) => setForm({ ...form, start_date: e.target.value })} /></Field>
         <Field label="موعد التسليم"><Input type="date" value={form.delivery_date} onChange={(e) => setForm({ ...form, delivery_date: e.target.value })} /></Field>
