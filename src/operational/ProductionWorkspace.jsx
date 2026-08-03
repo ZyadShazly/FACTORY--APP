@@ -225,7 +225,7 @@ export function ProductionWorkspace({data,profileRole,canViewFinancials=true}){
       <h3>مسودة أمر إنتاج جديد</h3>
       <HelpText title="قبل الإنشاء">اربط المنتج بتركيبة خامات نشطة واختر المخزن. الإنشاء لا يصرف مخزونًا حتى إصدار الأمر وتسجيل كل دفعة.</HelpText>
       <div className="production-form-grid">
-        <Field label="المنتج"><select style={inputStyle} value={form.product} onChange={event=>setForm({...form,product:event.target.value})}><option value="">اختر</option>{(data.products||[]).map(row=><option key={row.id} value={row.id}>{row.name}</option>)}</select></Field>
+        <Field label="المنتج"><select style={inputStyle} value={form.product} onChange={event=>setForm({...form,product:event.target.value})}><option value="">اختر</option>{(data.products||[]).filter(row=>!row.archived_at).map(row=><option key={row.id} value={row.id}>{row.name}</option>)}</select></Field>
         <Field label="المشروع"><select style={inputStyle} value={form.project} onChange={event=>setForm({...form,project:event.target.value})}><option value="">اختر</option>{(data.projects||[]).map(row=><option key={row.id} value={row.id}>{row.project_name||row.name||row.project_code}</option>)}</select></Field>
         <Field label="المخزن"><select style={inputStyle} value={form.warehouse} onChange={event=>setForm({...form,warehouse:event.target.value})}><option value="">اختر</option>{(inventory.warehouses||[]).map(row=><option key={row.id} value={row.id}>{row.name}</option>)}</select></Field>
         <Field label="الكمية"><input type="number" min="0" style={inputStyle} value={form.qty} onChange={event=>setForm({...form,qty:event.target.value})}/></Field>

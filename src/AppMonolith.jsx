@@ -654,7 +654,7 @@ export default function App() {
         {activeTab === "purchases" && <ProcurementWorkspace data={data} onNavigate={setTab} />}
         {activeTab === "expenses" && <ExpensesTab data={data} insertRow={insertRow} profileRole={role} refresh={() => refetchTable("expenses")} />}
         {activeTab === "materials" && <MaterialsTab data={data} canDelete={permissions.can_delete} insertRow={insertRow} deleteRow={deleteRow} updateRow={updateRow} onNavigate={setTab} />}
-        {activeTab === "products" && <ProductsTab data={data} canCreate={permissions.can_create_products} canEdit={permissions.can_edit_products} canDelete={permissions.can_delete} hideProfitInfo={!permissions.view_financials} insertRow={insertRow} deleteRow={deleteRow} updateRow={updateRow} />}
+        {activeTab === "products" && <ProductsTab data={data} canCreate={permissions.can_create_products} canEdit={permissions.can_edit_products} canArchive={permissions.can_delete && permissions.can_edit_products} hideProfitInfo={!permissions.view_financials} insertRow={insertRow} updateRow={updateRow} />}
         {activeTab === "production" && <ProductionTab data={data} profileRole={role} canViewFinancials={permissions.view_financials} />}
         {activeTab === "assets" && permissions.assets_view && <AssetsPage data={data} profile={profile} permissions={permissions} refresh={refetchTable} />}
         {activeTab === "sales" && <SalesTab data={data} insertRow={insertRow} refresh={() => refetchTable("sales")} canManage={isAdministrativeRole(role)} />}
@@ -695,7 +695,7 @@ function Dashboard({ data, navigate, permissions }) {
     const delayedProjects = activeProjects.filter((project) => project.delivery_date && project.delivery_date < today);
     const averageProgress = activeProjects.length ? activeProjects.reduce((sum, project) => sum + num(project.progress), 0) / activeProjects.length : 0;
     const lowMaterials = data.materials.map((material) => ({ ...material, stock: materialStock(material.id, data) })).filter((material) => material.stock <= 10).sort((a, b) => a.stock - b.stock);
-    const lowProducts = data.products.map((product) => ({ ...product, stock: finishedStock(product.id, data) })).filter((product) => product.stock <= 5).sort((a, b) => a.stock - b.stock);
+    const lowProducts = data.products.filter((product) => !product.archived_at).map((product) => ({ ...product, stock: finishedStock(product.id, data) })).filter((product) => product.stock <= 5).sort((a, b) => a.stock - b.stock);
     const postedSales = data.sales.filter((sale) => sale.status !== "cancelled");
     const revenue = postedSales.reduce((sum, sale) => sum + num(sale.total), 0);
     const cogs = postedSales.reduce((sum, sale) => {
@@ -780,7 +780,7 @@ const InventoryTab=InventoryWorkspace;
 const MaterialsTab=MaterialsCatalogWorkspace;
 
 /* --------------------------------- Products --------------------------------- */
-function ProductsTab({ data, canCreate, canEdit, canDelete, hideProfitInfo, insertRow, deleteRow, updateRow }) {
+function ProductsTab({ data, canCreate, canEdit, canArchive, hideProfitInfo, insertRow, updateRow }) {
   const blank = { name: "", sku: "", laborCost: "", overheadCost: "", sellingPrice: "", itemType: "sale" };
   const [form, setForm] = useState(blank);
   const [bom, setBom] = useState([]);
@@ -809,13 +809,26 @@ function ProductsTab({ data, canCreate, canEdit, canDelete, hideProfitInfo, inse
     if (e) return setErr(e);
     setForm(blank); setBom([]); setEditingId(null); setErr("");
   }
-  async function removeProduct(product) {
-    if (!window.confirm(`متأكد من حذف المنتج "${product.name}"؟`)) return;
-    const error = await deleteRow("products", product.id);
-    if (error) setErr(error);
+  async function archiveProduct(product) {
+    const reason = window.prompt(`سبب أرشفة المنتج "${product.name}"؟`);
+    if (!reason?.trim()) return;
+    if (!window.confirm("سيُمنع المنتج من العمليات الجديدة مع الاحتفاظ بكل تاريخه. متابعة؟")) return;
+    const error = await updateRow("products", product.id, { archived_at: new Date().toISOString(), archived_reason: reason.trim() });
+    if (error) return setErr(error);
+    if (editingId === product.id) cancelEdit();
+    setErr("");
+  }
+  async function restoreProduct(product) {
+    if (!window.confirm(`استعادة المنتج "${product.name}" للعمليات الجديدة؟`)) return;
+    const error = await updateRow("products", product.id, { archived_at: null, archived_reason: null });
+    if (error) setErr(error); else setErr("");
   }
 
-  const filtered = data.products.filter((p) => p.name.toLowerCase().includes(search.toLowerCase()));
+  const activeProducts = data.products.filter((product) => !product.archived_at);
+  const archivedProducts = data.products.filter((product) => product.archived_at);
+  const matchesSearch = (product) => product.name.toLowerCase().includes(search.toLowerCase());
+  const filtered = activeProducts.filter(matchesSearch);
+  const filteredArchived = archivedProducts.filter(matchesSearch);
   const ITEM_TYPE_LABEL = { sale: "للبيع", rental: "للإيجار", both: "بيع وإيجار" };
 
   return (
@@ -883,7 +896,7 @@ function ProductsTab({ data, canCreate, canEdit, canDelete, hideProfitInfo, inse
                   <Td>{finishedStock(p.id, data)}</Td>
                   <Td style={{ display: "flex", gap: 10 }}>
                     {canEdit && <button onClick={() => startEdit(p)} style={{ background: "none", border: "none", cursor: "pointer", color: C.brass }}><Pencil size={15} /></button>}
-                    {canDelete && <button aria-label={`حذف ${p.name}`} onClick={() => removeProduct(p)} style={{ background: "none", border: "none", cursor: "pointer", color: C.red }}><Trash2 size={15} /></button>}
+                    {canArchive && <button aria-label={`أرشفة ${p.name}`} onClick={() => archiveProduct(p)} style={{ background: "none", border: "none", cursor: "pointer", color: C.red }}><Archive size={15} /></button>}
                   </Td>
                 </tr>
               );
@@ -891,6 +904,9 @@ function ProductsTab({ data, canCreate, canEdit, canDelete, hideProfitInfo, inse
           </Table>
         )}
       </Card>
+      <ArchiveSection title="المنتجات المؤرشفة" count={archivedProducts.length} helpText="محفوظة للتاريخ ولا تظهر في البيع أو الإيجار أو أوامر الإنتاج الجديدة.">
+        {filteredArchived.length === 0 ? <Empty text="لا توجد منتجات مؤرشفة مطابقة" /> : <Table headers={["المنتج", "SKU", "النوع", "سبب الأرشفة", "تاريخ الأرشفة", ""]}>{filteredArchived.map((p) => <tr key={p.id}><Td>{p.name}</Td><Td>{p.sku || "—"}</Td><Td>{ITEM_TYPE_LABEL[p.item_type] || "للبيع"}</Td><Td>{p.archived_reason || "—"}</Td><Td>{p.archived_at ? new Date(p.archived_at).toLocaleDateString("ar-EG") : "—"}</Td><Td>{canArchive && <button aria-label={`استعادة ${p.name}`} onClick={() => restoreProduct(p)} style={{background:"none",border:"none",cursor:"pointer",color:C.green}}><RotateCcw size={15}/></button>}</Td></tr>)}</Table>}
+      </ArchiveSection>
     </div>
   );
 }
@@ -942,7 +958,7 @@ function SalesTab({ data, insertRow, refresh, canManage }) {
       <Card style={{ marginBottom: 18 }}>
         <div style={{ fontWeight: 700, marginBottom: 12 }}>عملية بيع جديدة</div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <Field label="المنتج"><Select value={form.productId} onChange={(e) => setForm({ ...form, productId: e.target.value })}><option value="">اختر المنتج</option>{data.products.filter((p) => (p.item_type || "sale") !== "rental").map((p) => <option key={p.id} value={p.id}>{p.name} (متاح: {finishedStock(p.id, data)})</option>)}</Select></Field>
+          <Field label="المنتج"><Select value={form.productId} onChange={(e) => setForm({ ...form, productId: e.target.value })}><option value="">اختر المنتج</option>{data.products.filter((p) => !p.archived_at && (p.item_type || "sale") !== "rental").map((p) => <option key={p.id} value={p.id}>{p.name} (متاح: {finishedStock(p.id, data)})</option>)}</Select></Field>
           <Field label="العميل"><Select value={form.customerId} onChange={(e) => setForm({ ...form, customerId: e.target.value })}><option value="">اختر العميل</option>{data.customers.filter((c) => !c.archived_at).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</Select></Field>
           <Field label="الكمية"><Input type="number" value={form.qty} onChange={(e) => setForm({ ...form, qty: e.target.value })} /></Field>
           <Field label="سعر الوحدة"><Input type="number" value={form.unitPrice} onChange={(e) => setForm({ ...form, unitPrice: e.target.value })} placeholder={selectedProduct ? `افتراضي: ${fmt(selectedProduct.selling_price)}` : ""} /></Field>
@@ -1000,7 +1016,7 @@ function RentalsTab({ data, insertRow, refresh, canManage }) {
     setOk("تم تسجيل إرجاع الصنف بنجاح");
   }
 
-  const rentalProducts = data.products.filter((p) => (p.item_type || "sale") !== "sale");
+  const rentalProducts = data.products.filter((p) => !p.archived_at && (p.item_type || "sale") !== "sale");
 
   async function cancelRental(r) {
     const reason = window.prompt("سبب إلغاء الإيجار؟ سيبقى السجل محفوظًا وستعود الكمية للمتاح.");
