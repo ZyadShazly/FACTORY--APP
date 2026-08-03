@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from "react";
-import { BadgeCheck, Banknote, Clock3, Eye, Plus, Trash2, XCircle } from "lucide-react";
+import { BadgeCheck, Banknote, Clock3, Eye, Pencil, Plus, Trash2, XCircle } from "lucide-react";
 import { isAdministrativeRole } from "../identity";
 import { supabase } from "../supabaseClient";
+import { ArchiveSection } from "../ui";
 import {
   Button,
   DataTable,
@@ -52,6 +53,12 @@ function friendlyError(error) {
   if (text.includes("must be approved before payment")) return "لا يمكن الدفع قبل اعتماد الوردية.";
   if (text.includes("already paid")) return "تم دفع هذه الوردية بالفعل.";
   if (text.includes("cannot be reviewed again")) return "لا يمكن إعادة مراجعة وردية مدفوعة.";
+  if (text.includes("must be corrected before review")) return "يجب تصحيح الوردية المرفوضة قبل إعادة المراجعة.";
+  if (text.includes("Only draft daily labor shifts")) return "المراجعة متاحة للمسودات فقط.";
+  if (text.includes("Correction reason")) return "سبب التصحيح مطلوب.";
+  if (text.includes("Only rejected daily labor shifts")) return "التصحيح متاح للورديات المرفوضة فقط.";
+  if (text.includes("Posted daily labor shift")) return "لا يمكن تصحيح وردية مرتبطة بتكلفة مشروع.";
+  if (text.includes("Complete corrected shift details")) return "بيانات الوردية المصححة غير مكتملة.";
   if (text.includes("cannot be deleted")) return "لا يمكن حذف وردية تمت مراجعتها أو دفعها أو ربطها بتكلفة مشروع.";
   if (text.includes("permission required")) return "ليس لديك الصلاحية المطلوبة لتنفيذ الإجراء.";
   return text || "تعذر تنفيذ الإجراء.";
@@ -61,34 +68,62 @@ function Info({ label, value }) {
   return <div><small>{label}</small><strong className="table-sub">{value}</strong></div>;
 }
 
-export function DailyLaborForm({ projects, profile, canSeeMoney, onSaved, onCancel }) {
-  const [form, setForm] = useState(emptyShift);
+export function DailyLaborForm({ projects, profile, canSeeMoney, onSaved, onCancel, initialShift = null, correctionReason = "", onCorrectionReasonChange, onCorrect, busy = false }) {
+  const [form, setForm] = useState(() => ({
+    ...emptyShift,
+    ...(initialShift || {}),
+    project_id: initialShift?.project_id || "",
+    phone: initialShift?.phone || "",
+    trade: initialShift?.trade || "",
+    addition_reason: initialShift?.addition_reason || "",
+    deduction_reason: initialShift?.deduction_reason || "",
+    notes: initialShift?.notes || "",
+    start_time: initialShift?.start_time?.slice(0, 5) || emptyShift.start_time,
+    end_time: initialShift?.end_time?.slice(0, 5) || emptyShift.end_time,
+  }));
   const [error, setError] = useState("");
   const calculation = calculateDailyLabor(form);
 
   async function submit(event) {
     event.preventDefault();
     setError("");
+    if (onCorrect && !correctionReason.trim()) return setError("سبب التصحيح مطلوب.");
     if (canSeeMoney && number(form.addition_amount) > 0 && !form.addition_reason.trim()) return setError("سبب الإضافة مطلوب.");
     if (canSeeMoney && number(form.deduction_amount) > 0 && !form.deduction_reason.trim()) return setError("سبب الخصم مطلوب.");
     if (canSeeMoney && number(form.deduction_amount) > calculation.totalAmount + number(form.addition_amount)) return setError("الخصم لا يمكن أن يتجاوز الإجمالي بعد الإضافات.");
     const payload = {
-      ...form,
+      worker_name: form.worker_name.trim(),
+      phone: form.phone?.trim() || "",
+      trade: form.trade?.trim() || "",
       project_id: form.project_id || null,
+      work_date: form.work_date,
+      start_time: form.start_time,
+      end_time: form.end_time,
       break_minutes: number(form.break_minutes),
       hourly_rate: canSeeMoney ? number(form.hourly_rate) : 0,
       overtime_hours: number(form.overtime_hours),
       overtime_rate: canSeeMoney ? number(form.overtime_rate) : 0,
       addition_amount: canSeeMoney ? number(form.addition_amount) : 0,
-      addition_reason: canSeeMoney && number(form.addition_amount) > 0 ? form.addition_reason.trim() : null,
+      addition_reason: canSeeMoney && number(form.addition_amount) > 0 ? form.addition_reason.trim() : "",
       deduction_amount: canSeeMoney ? number(form.deduction_amount) : 0,
-      deduction_reason: canSeeMoney && number(form.deduction_amount) > 0 ? form.deduction_reason.trim() : null,
+      deduction_reason: canSeeMoney && number(form.deduction_amount) > 0 ? form.deduction_reason.trim() : "",
+      notes: form.notes?.trim() || "",
+    };
+    if (onCorrect) {
+      const result = await onCorrect(payload, correctionReason.trim());
+      if (result?.error) setError(friendlyError(result.error));
+      return;
+    }
+    const mutationResult = await supabase.from("daily_labor").insert({
+      ...payload,
+      addition_reason: payload.addition_reason || null,
+      deduction_reason: payload.deduction_reason || null,
+      notes: payload.notes || null,
       total_hours: calculation.totalHours,
       total_amount: calculation.totalAmount,
       review_status: "draft",
       created_by: profile.id,
-    };
-    const mutationResult = await supabase.from("daily_labor").insert(payload);
+    });
     const result = await syncMutation({ scope: "dailyLabor:create", mutationResult, refetch: onSaved });
     if (result.error) setError(friendlyError(result.error));
   }
@@ -113,10 +148,11 @@ export function DailyLaborForm({ projects, profile, canSeeMoney, onSaved, onCanc
       </PermissionGuard>
       <Field label="ساعات إضافية"><Input type="number" min="0" step=".25" value={form.overtime_hours} onChange={(e) => setForm({ ...form, overtime_hours: e.target.value })}/></Field>
       <Field label="ملاحظات" wide><TextArea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })}/></Field>
+      {onCorrect && <Field label="سبب التصحيح" wide><TextArea required value={correctionReason} onChange={(e) => onCorrectionReasonChange(e.target.value)} placeholder="اشرح الخطأ الذي تم تصحيحه..."/></Field>}
     </div>
     <div className="labor-calculation"><span><Clock3 size={15}/> إجمالي الساعات <b>{calculation.totalHours}</b></span>{canSeeMoney && <><span>الإجمالي <b>{money(calculation.totalAmount)}</b></span><span>صافي التسوية <b>{money(calculation.totalAmount + number(form.addition_amount) - number(form.deduction_amount))}</b></span></>}</div>
     <ErrorState error={error}/>
-    <div className="v22-actions modal-actions"><Button type="button" variant="ghost" onClick={onCancel}>إلغاء</Button><Button>حفظ الوردية</Button></div>
+    <div className="v22-actions modal-actions"><Button type="button" variant="ghost" disabled={busy} onClick={onCancel}>إلغاء</Button><Button disabled={busy}>{onCorrect ? "حفظ التصحيح وإعادة المراجعة" : "حفظ الوردية"}</Button></div>
   </form>;
 }
 
@@ -128,6 +164,9 @@ export function DailyLaborTab({ data, profile, permissions, refresh }) {
   const [paymentAction, setPaymentAction] = useState(null);
   const [paymentReference, setPaymentReference] = useState("");
   const [paymentNotes, setPaymentNotes] = useState("");
+  const [correctionAction, setCorrectionAction] = useState(null);
+  const [correctionReason, setCorrectionReason] = useState("");
+  const [correctionHistory, setCorrectionHistory] = useState([]);
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [project, setProject] = useState("");
@@ -137,23 +176,47 @@ export function DailyLaborTab({ data, profile, permissions, refresh }) {
   const [busy, setBusy] = useState(false);
   const canSeeMoney = profile.role !== "production";
   const canReview = isAdministrativeRole(profile.role) || permissions.daily_labor_edit;
+  const canCorrect = canSeeMoney && canReview;
 
   const rows = useMemo(() => data.dailyLabor
     .filter((row) => (!from || row.work_date >= from) && (!to || row.work_date <= to) && (!project || row.project_id === project))
     .sort((a, b) => b.work_date.localeCompare(a.work_date)), [data.dailyLabor, from, to, project]);
 
-  const summary = useMemo(() => rows.reduce((acc, row) => ({
+  const activeRows = useMemo(() => rows.filter((row) =>
+    row.review_status !== "rejected"
+    && row.payment_status !== "paid"
+    && !["posted", "reversed"].includes(row.cost_posting_status)
+  ), [rows]);
+  const archivedRows = useMemo(() => rows.filter((row) => !activeRows.includes(row)), [rows, activeRows]);
+
+  const summary = useMemo(() => activeRows.reduce((acc, row) => ({
     hours: acc.hours + number(row.total_hours),
     total: acc.total + number(row.net_amount ?? row.total_amount),
     paid: acc.paid + number(row.paid_amount),
     unpaid: acc.unpaid + Math.max(0, number(row.net_amount ?? row.total_amount) - number(row.paid_amount)),
-  }), { hours: 0, total: 0, paid: 0, unpaid: 0 }), [rows]);
+  }), { hours: 0, total: 0, paid: 0, unpaid: 0 }), [activeRows]);
 
-  const grouped = useMemo(() => group === "none" ? [["كل الورديات", rows]] : Object.entries(rows.reduce((acc, row) => {
+  const grouped = useMemo(() => group === "none" ? [["الورديات النشطة", activeRows]] : Object.entries(activeRows.reduce((acc, row) => {
     const key = group === "worker" ? row.worker_name : (data.projects.find((item) => item.id === row.project_id)?.project_name || "بدون مشروع");
     (acc[key] ??= []).push(row);
     return acc;
-  }, {})), [rows, group, data.projects]);
+  }, {})), [activeRows, group, data.projects]);
+
+  async function loadCorrectionHistory(shiftId) {
+    const result = await supabase.rpc("get_daily_labor_corrections", { target_shift_id: shiftId });
+    if (result.error) {
+      setCorrectionHistory([]);
+      setError(friendlyError(result.error));
+      return;
+    }
+    setCorrectionHistory(result.data || []);
+  }
+
+  async function openDetails(row) {
+    setSelected(row);
+    setCorrectionHistory([]);
+    if (number(row.correction_count) > 0) await loadCorrectionHistory(row.id);
+  }
 
   async function reviewShift(approve) {
     setError("");
@@ -192,6 +255,25 @@ export function DailyLaborTab({ data, profile, permissions, refresh }) {
     setSuccess("تم تسجيل دفع مستحق العامل مع مرجع الدفع.");
   }
 
+  async function correctShift(payload, reason) {
+    setError("");
+    setBusy(true);
+    const result = await supabase.rpc("correct_daily_labor", {
+      target_shift_id: correctionAction.id,
+      correction_reason: reason,
+      payload,
+    });
+    if (!result.error) await refresh("dailyLabor");
+    setBusy(false);
+    if (result.error) return result;
+    setCorrectionAction(null);
+    setCorrectionReason("");
+    setSelected(result.data.shift);
+    await loadCorrectionHistory(result.data.shift.id);
+    setSuccess("تم حفظ التصحيح وإعادة الوردية لمسار المراجعة.");
+    return result;
+  }
+
   async function remove(row) {
     if (!window.confirm(`حذف مسودة وردية ${row.worker_name}؟`)) return;
     setError("");
@@ -207,7 +289,7 @@ export function DailyLaborTab({ data, profile, permissions, refresh }) {
     <div className={`v22-grid ${canSeeMoney ? "cols-5" : "cols-2"} labor-stats`}>
       <StatCard label="ساعات العمل" value={`${summary.hours.toFixed(2)} ساعة`}/>
       {canSeeMoney && <><StatCard label="صافي مستحقات العمالة" value={money(summary.total)}/><StatCard label="المدفوع" value={money(summary.paid)} tone="positive"/><StatCard label="غير المدفوع" value={money(summary.unpaid)} tone="negative"/></>}
-      <StatCard label="عدد الورديات" value={rows.length}/>
+      <StatCard label="الورديات النشطة" value={activeRows.length}/>
     </div>
     <Panel>
       <div className="v22-filters">
@@ -216,7 +298,7 @@ export function DailyLaborTab({ data, profile, permissions, refresh }) {
         <Select value={project} onChange={(e) => setProject(e.target.value)}><option value="">كل المشاريع</option>{data.projects.map((item) => <option key={item.id} value={item.id}>{item.project_name}</option>)}</Select>
         <Select value={group} onChange={(e) => setGroup(e.target.value)}><option value="none">بدون تجميع</option><option value="worker">تجميع حسب العامل</option><option value="project">تجميع حسب المشروع</option></Select>
       </div>
-      {rows.length ? grouped.map(([label, items]) => <div className="labor-group" key={label}>
+      {activeRows.length ? grouped.map(([label, items]) => <div className="labor-group" key={label}>
         <h3>{label}<span>{items.length} وردية</span></h3>
         <DataTable headers={canSeeMoney ? ["العامل", "المشروع", "التاريخ", "الساعات", "الإجمالي", "المراجعة", "الدفع", "إجراءات"] : ["العامل", "المشروع", "التاريخ", "الساعات", "المراجعة", "إجراءات"]}>
           {items.map((row) => <tr key={row.id}>
@@ -228,13 +310,28 @@ export function DailyLaborTab({ data, profile, permissions, refresh }) {
             <td><span className={`payroll-status ${row.review_status || "draft"}`}>{REVIEW_STATUS[row.review_status || "draft"]}</span></td>
             {canSeeMoney && <td><span className={`payroll-status ${row.payment_status}`}>{PAYMENT_STATUS[row.payment_status]}</span></td>}
             <td><div className="v22-actions">
-              <Button variant="ghost" onClick={() => setSelected(row)}><Eye size={14}/> فتح التفاصيل</Button>
-              {permissions.daily_labor_delete && (row.review_status || "draft") === "draft" && row.payment_status !== "paid" && !row.actual_cost_entry_id && <button className="v22-icon-button danger" onClick={() => remove(row)}><Trash2 size={15}/></button>}
+              <Button variant="ghost" onClick={() => openDetails(row)}><Eye size={14}/> فتح التفاصيل</Button>
+              {permissions.daily_labor_delete && (row.review_status || "draft") === "draft" && row.payment_status !== "paid" && !row.actual_cost_entry_id && number(row.correction_count) === 0 && <button className="v22-icon-button danger" onClick={() => remove(row)}><Trash2 size={15}/></button>}
             </div></td>
           </tr>)}
         </DataTable>
-      </div>) : <EmptyState title="لا توجد ورديات مطابقة"/>}
+      </div>) : <EmptyState title="لا توجد ورديات نشطة مطابقة"/>}
     </Panel>
+
+    <ArchiveSection title="سجل الورديات المكتملة والمرفوضة" count={archivedRows.length} helpText="الورديات المدفوعة أو المرفوضة أو المرحلة للتكلفة محفوظة هنا ولا تزاحم العمل الجاري.">
+      {archivedRows.length ? <DataTable headers={canSeeMoney ? ["العامل", "المشروع", "التاريخ", "الساعات", "الإجمالي", "المراجعة", "الدفع", "إجراءات"] : ["العامل", "المشروع", "التاريخ", "الساعات", "المراجعة", "إجراءات"]}>
+        {archivedRows.map((row) => <tr key={row.id}>
+          <td><strong>{row.worker_name}</strong><br/><small>{row.trade || "—"}</small></td>
+          <td>{data.projects.find((item) => item.id === row.project_id)?.project_name || "—"}</td>
+          <td>{row.work_date}<br/><small>{row.start_time?.slice(0, 5)} — {row.end_time?.slice(0, 5)}</small></td>
+          <td>{row.total_hours}</td>
+          {canSeeMoney && <td><strong>{money(row.net_amount ?? row.total_amount)}</strong></td>}
+          <td><span className={`payroll-status ${row.review_status || "draft"}`}>{REVIEW_STATUS[row.review_status || "draft"]}</span></td>
+          {canSeeMoney && <td><span className={`payroll-status ${row.payment_status}`}>{PAYMENT_STATUS[row.payment_status]}</span></td>}
+          <td><Button variant="ghost" onClick={() => openDetails(row)}><Eye size={14}/> فتح التفاصيل</Button></td>
+        </tr>)}
+      </DataTable> : <EmptyState title="لا توجد ورديات في السجل"/>}
+    </ArchiveSection>
 
     {showForm && <div className="v22-modal-backdrop"><div className="v22-modal"><h3>تسجيل وردية يومية</h3><DailyLaborForm projects={data.projects} profile={profile} canSeeMoney={canSeeMoney} onCancel={() => setShowForm(false)} onSaved={async () => { const refetchResult = await refresh("dailyLabor"); if (!refetchResult?.error) { setShowForm(false); setSuccess("تم حفظ الوردية بنجاح"); } return refetchResult; }}/></div></div>}
 
@@ -245,14 +342,24 @@ export function DailyLaborTab({ data, profile, permissions, refresh }) {
         <Info label="تاريخ العمل" value={selected.work_date}/><Info label="بداية الوردية" value={selected.start_time?.slice(0, 5)}/><Info label="نهاية الوردية" value={selected.end_time?.slice(0, 5)}/><Info label="الراحة" value={`${number(selected.break_minutes)} دقيقة`}/>
         <Info label="الساعات الفعلية" value={`${number(selected.total_hours).toFixed(2)} ساعة`}/><Info label="الساعات الإضافية" value={`${number(selected.overtime_hours).toFixed(2)} ساعة`}/>{canSeeMoney && <><Info label="سعر الساعة" value={money(selected.hourly_rate)}/><Info label="سعر الإضافي" value={money(selected.overtime_rate)}/><Info label="الإجمالي المحتسب" value={money(selected.total_amount)}/><Info label="الإضافات" value={money(selected.addition_amount)}/>{number(selected.addition_amount) > 0 && <Info label="سبب الإضافة" value={selected.addition_reason}/>}<Info label="الخصومات" value={money(selected.deduction_amount)}/>{number(selected.deduction_amount) > 0 && <Info label="سبب الخصم" value={selected.deduction_reason}/>}<Info label="صافي التسوية" value={money(selected.net_amount ?? selected.total_amount)}/><Info label="المدفوع" value={money(selected.paid_amount)}/></>}
         <Info label="حالة المراجعة" value={REVIEW_STATUS[selected.review_status || "draft"]}/><Info label="حالة الدفع" value={PAYMENT_STATUS[selected.payment_status]}/>
+        {number(selected.correction_count) > 0 && <><Info label="عدد التصحيحات" value={number(selected.correction_count)}/><Info label="آخر سبب تصحيح" value={selected.last_correction_reason || "—"}/></>}
         {selected.rejection_reason && <Info label="سبب الرفض" value={selected.rejection_reason}/>} {selected.payment_reference && <Info label="مرجع الدفع" value={selected.payment_reference}/>} {selected.payment_notes && <Info label="ملاحظات الدفع" value={selected.payment_notes}/>} {selected.notes && <Info label="ملاحظات الوردية" value={selected.notes}/>} 
       </div>
+      {correctionHistory.length > 0 && <div className="labor-correction-history"><h4>سجل التصحيحات</h4>{correctionHistory.map((item) => <div key={item.number}><strong>تصحيح #{item.number}</strong><span>{item.reason}</span><small>{item.corrected_by_name} · {new Date(item.corrected_at).toLocaleString("ar-EG")}</small></div>)}</div>}
       <div className="v22-alert info">طريقة الحساب: الساعات الفعلية × سعر الساعة + الساعات الإضافية × سعر الإضافي. راجع التوقيت والراحة والأسعار قبل الاعتماد.</div>
       <div className="v22-actions modal-actions">
-        {canReview && selected.payment_status !== "paid" && <><Button variant="danger" onClick={() => { setReviewAction(selected); setReviewReason(""); setSelected(null); }}><XCircle size={14}/> رفض</Button><Button onClick={() => { setReviewAction(selected); setReviewReason(""); setSelected(null); }}><BadgeCheck size={14}/> اعتماد</Button></>}
+        {canReview && (selected.review_status || "draft") === "draft" && selected.payment_status !== "paid" && <><Button variant="danger" onClick={() => { setReviewAction(selected); setReviewReason(""); setSelected(null); }}><XCircle size={14}/> رفض</Button><Button onClick={() => { setReviewAction(selected); setReviewReason(""); setSelected(null); }}><BadgeCheck size={14}/> اعتماد</Button></>}
+        {canCorrect && selected.review_status === "rejected" && selected.payment_status === "unpaid" && !selected.actual_cost_entry_id && selected.cost_posting_status === "not_posted" && <Button onClick={() => { setCorrectionAction(selected); setCorrectionReason(""); setSelected(null); }}><Pencil size={14}/> تصحيح الوردية</Button>}
         {canSeeMoney && permissions.daily_labor_pay && selected.review_status === "approved" && selected.payment_status !== "paid" && <Button onClick={() => { setPaymentAction(selected); setSelected(null); }}><Banknote size={14}/> تسجيل الدفع</Button>}
         <Button variant="ghost" onClick={() => setSelected(null)}>إغلاق</Button>
       </div>
+    </div></div>}
+
+    {correctionAction && <div className="v22-modal-backdrop"><div className="v22-modal">
+      <h3>تصحيح وردية مرفوضة</h3>
+      <p>سيُحفظ الوضع السابق كاملًا في سجل غير قابل للحذف، ثم تعود الوردية لمسودة تحتاج اعتمادًا جديدًا.</p>
+      <DailyLaborForm projects={data.projects} profile={profile} canSeeMoney={canSeeMoney} initialShift={correctionAction} correctionReason={correctionReason} onCorrectionReasonChange={setCorrectionReason} onCorrect={correctShift} busy={busy} onCancel={() => { setCorrectionAction(null); setCorrectionReason(""); }}/>
+      {busy && <div className="v22-alert info">جارٍ حفظ التصحيح...</div>}
     </div></div>}
 
     {reviewAction && <div className="v22-modal-backdrop"><div className="v22-modal">
