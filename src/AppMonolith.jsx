@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Package, Layers, Factory, ShoppingCart, Truck, Users,
   BarChart3, Plus, Trash2, AlertCircle, CheckCircle2, Wallet, Boxes,
   CalendarClock, ShieldCheck, Pencil, X, ReceiptText, ClipboardList,
-  BriefcaseBusiness, FolderOpen, UserRoundCog, BadgeDollarSign, HardHat, ScrollText, ChevronDown, Settings, Wrench,
+  BriefcaseBusiness, FolderOpen, UserRoundCog, BadgeDollarSign, HardHat, ScrollText, ChevronDown, Settings, Wrench, Archive, RotateCcw,
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
@@ -34,6 +34,7 @@ import { InventoryWorkspace } from "./operational/InventoryWorkspace";
 import { MaterialsCatalogWorkspace } from "./operational/MaterialsCatalogWorkspace";
 import { ProductionWorkspace } from "./operational/ProductionWorkspace";
 import { ProcurementWorkspace } from "./operational/ProcurementWorkspace";
+import { ArchiveSection } from "./ui/foundation";
 
 const V22_DEMO = (import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEMO === "true") && new URLSearchParams(window.location.search).get("demo") === "v22";
 const DEMO_ROLE = ["owner", "manager", "accountant", "production"].includes(new URLSearchParams(window.location.search).get("role")) ? new URLSearchParams(window.location.search).get("role") : "owner";
@@ -658,8 +659,8 @@ export default function App() {
         {activeTab === "assets" && permissions.assets_view && <AssetsPage data={data} profile={profile} permissions={permissions} refresh={refetchTable} />}
         {activeTab === "sales" && <SalesTab data={data} insertRow={insertRow} updateRow={updateRow} deleteRow={deleteRow} canManage={isAdministrativeRole(role)} />}
         {activeTab === "rentals" && <RentalsTab data={data} insertRow={insertRow} updateRow={updateRow} deleteRow={deleteRow} canManage={isAdministrativeRole(role)} />}
-        {activeTab === "suppliers" && <SuppliersTab data={data} insertRow={insertRow} updateRow={updateRow} deleteRow={deleteRow} canManage={isAdministrativeRole(role)} />}
-        {activeTab === "customers" && <CustomersTab data={data} insertRow={insertRow} updateRow={updateRow} deleteRow={deleteRow} canManage={isAdministrativeRole(role)} />}
+        {activeTab === "suppliers" && <SuppliersTab data={data} insertRow={insertRow} updateRow={updateRow} canManage={isAdministrativeRole(role)} />}
+        {activeTab === "customers" && <CustomersTab data={data} insertRow={insertRow} updateRow={updateRow} canManage={isAdministrativeRole(role)} />}
         {activeTab === "employees" && role !== "production" && <EmployeesTab data={data} profile={profile} refresh={refetchTable} />}
         {activeTab === "workCalendar" && permissions.payroll_calendar_view && <WorkCalendarTab data={data} profile={profile} permissions={permissions} refresh={refetchTable} />}
         {activeTab === "payroll" && permissions.payroll_view && data.payroll.some((row) => row.status === "draft" && row.calendar_stale) && <div className="module-state error compact"><AlertCircle size={20}/><div><strong>مسودة الراتب تحتاج إعادة حساب</strong><p>تغير تقويم العمل بعد إنشاء المسودة. تمنع قاعدة البيانات اعتمادها حتى إعادة الحساب أو استخدام صلاحية التجاوز الموثقة.</p></div></div>}
@@ -941,7 +942,7 @@ function SalesTab({ data, insertRow, updateRow, deleteRow, canManage }) {
         <div style={{ fontWeight: 700, marginBottom: 12 }}>عملية بيع جديدة</div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <Field label="المنتج"><Select value={form.productId} onChange={(e) => setForm({ ...form, productId: e.target.value })}><option value="">اختر المنتج</option>{data.products.filter((p) => (p.item_type || "sale") !== "rental").map((p) => <option key={p.id} value={p.id}>{p.name} (متاح: {finishedStock(p.id, data)})</option>)}</Select></Field>
-          <Field label="العميل"><Select value={form.customerId} onChange={(e) => setForm({ ...form, customerId: e.target.value })}><option value="">اختر العميل</option>{data.customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</Select></Field>
+          <Field label="العميل"><Select value={form.customerId} onChange={(e) => setForm({ ...form, customerId: e.target.value })}><option value="">اختر العميل</option>{data.customers.filter((c) => !c.archived_at).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</Select></Field>
           <Field label="الكمية"><Input type="number" value={form.qty} onChange={(e) => setForm({ ...form, qty: e.target.value })} /></Field>
           <Field label="سعر الوحدة"><Input type="number" value={form.unitPrice} onChange={(e) => setForm({ ...form, unitPrice: e.target.value })} placeholder={selectedProduct ? `افتراضي: ${fmt(selectedProduct.selling_price)}` : ""} /></Field>
           <Field label="التاريخ"><Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></Field>
@@ -1019,7 +1020,7 @@ function RentalsTab({ data, insertRow, updateRow, deleteRow, canManage }) {
         <div style={{ fontWeight: 700, marginBottom: 12 }}>عملية إيجار جديدة</div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <Field label="الصنف"><Select value={form.productId} onChange={(e) => setForm({ ...form, productId: e.target.value })}><option value="">اختر الصنف</option>{rentalProducts.map((p) => <option key={p.id} value={p.id}>{p.name} (متاح: {finishedStock(p.id, data)})</option>)}</Select></Field>
-          <Field label="العميل"><Select value={form.customerId} onChange={(e) => setForm({ ...form, customerId: e.target.value })}><option value="">اختر العميل</option>{data.customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</Select></Field>
+          <Field label="العميل"><Select value={form.customerId} onChange={(e) => setForm({ ...form, customerId: e.target.value })}><option value="">اختر العميل</option>{data.customers.filter((c) => !c.archived_at).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</Select></Field>
           <Field label="الكمية"><Input type="number" value={form.qty} onChange={(e) => setForm({ ...form, qty: e.target.value })} /></Field>
           <Field label="قيمة الإيجار الإجمالية"><Input type="number" value={form.rentalFee} onChange={(e) => setForm({ ...form, rentalFee: e.target.value })} /></Field>
           <Field label="تاريخ البداية"><Input type="date" value={form.startDate} onChange={(e) => setForm({ ...form, startDate: e.target.value })} /></Field>
@@ -1052,7 +1053,7 @@ function RentalsTab({ data, insertRow, updateRow, deleteRow, canManage }) {
 }
 
 /* -------------------------------- Suppliers --------------------------------- */
-function SuppliersTab({ data, insertRow, updateRow, deleteRow, canManage }) {
+function SuppliersTab({ data, insertRow, updateRow, canManage }) {
   const [name, setName] = useState(""); const [phone, setPhone] = useState("");
   const [editingId, setEditingId] = useState(null);
   const [payment, setPayment] = useState({ supplierId: "", amount: "", date: todayStr() });
@@ -1075,7 +1076,25 @@ function SuppliersTab({ data, insertRow, updateRow, deleteRow, canManage }) {
     if (e) return setErr(e);
     setPayment({ supplierId: "", amount: "", date: todayStr() }); setErr("");
   }
-  const filtered = data.suppliers.filter((s) => s.name.toLowerCase().includes(search.toLowerCase()));
+  async function archiveSupplier(supplier) {
+    const reason = window.prompt(`سبب أرشفة المورد "${supplier.name}"؟`);
+    if (!reason?.trim()) return;
+    if (!window.confirm("سيُمنع المورد من المعاملات الجديدة مع الاحتفاظ بكل تاريخه. متابعة؟")) return;
+    const e = await updateRow("suppliers", supplier.id, { archived_at: new Date().toISOString(), archived_reason: reason.trim() });
+    if (e) return setErr(e);
+    if (editingId === supplier.id) cancelEdit();
+    setErr("");
+  }
+  async function restoreSupplier(supplier) {
+    if (!window.confirm(`استعادة المورد "${supplier.name}" للمعاملات الجديدة؟`)) return;
+    const e = await updateRow("suppliers", supplier.id, { archived_at: null, archived_reason: null });
+    if (e) setErr(e); else setErr("");
+  }
+  const activeSuppliers = data.suppliers.filter((supplier) => !supplier.archived_at);
+  const archivedSuppliers = data.suppliers.filter((supplier) => supplier.archived_at);
+  const matchesSearch = (supplier) => supplier.name.toLowerCase().includes(search.toLowerCase());
+  const filtered = activeSuppliers.filter(matchesSearch);
+  const filteredArchived = archivedSuppliers.filter(matchesSearch);
 
   return (
     <div>
@@ -1094,7 +1113,7 @@ function SuppliersTab({ data, insertRow, updateRow, deleteRow, canManage }) {
       <Card style={{ marginBottom: 18 }}>
         <div style={{ fontWeight: 700, marginBottom: 12 }}>تسجيل دفعة لمورد</div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <Field label="المورد"><Select value={payment.supplierId} onChange={(e) => setPayment({ ...payment, supplierId: e.target.value })}><option value="">اختر المورد</option>{data.suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</Select></Field>
+          <Field label="المورد"><Select value={payment.supplierId} onChange={(e) => setPayment({ ...payment, supplierId: e.target.value })}><option value="">اختر المورد</option>{activeSuppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</Select></Field>
           <Field label="المبلغ"><Input type="number" value={payment.amount} onChange={(e) => setPayment({ ...payment, amount: e.target.value })} /></Field>
           <Field label="التاريخ"><Input type="date" value={payment.date} onChange={(e) => setPayment({ ...payment, date: e.target.value })} /></Field>
         </div>
@@ -1112,7 +1131,7 @@ function SuppliersTab({ data, insertRow, updateRow, deleteRow, canManage }) {
                   <Td style={{ fontWeight: 700, color: bal > 0 ? C.red : C.green }}>{fmt(bal)} ج.م</Td>
                   <Td style={{ display: "flex", gap: 10, alignItems: "center" }}>
                     <button onClick={() => startEdit(s)} style={{ background: "none", border: "none", cursor: "pointer", color: C.brass }}><Pencil size={15} /></button>
-                    {canManage && <button onClick={async () => { if (window.confirm("متأكد من حذف المورد؟")) { const e = await deleteRow("suppliers", s.id); if (e) setErr(e); } }} style={{ background: "none", border: "none", cursor: "pointer", color: C.red }}><Trash2 size={15} /></button>}
+                    {canManage && <button aria-label={`أرشفة ${s.name}`} onClick={() => archiveSupplier(s)} style={{ background: "none", border: "none", cursor: "pointer", color: C.red }}><Archive size={15} /></button>}
                     <button onClick={() => setExpanded(expanded === s.id ? null : s.id)} style={{ background: "none", border: "none", color: C.brass, cursor: "pointer", fontSize: 12.5 }}>{expanded === s.id ? "إخفاء الحركات" : "عرض الحركات"}</button>
                   </Td>
                 </tr>
@@ -1122,6 +1141,13 @@ function SuppliersTab({ data, insertRow, updateRow, deleteRow, canManage }) {
           </Table>
         )}
       </Card>
+      <ArchiveSection title="الموردون المؤرشفون" count={archivedSuppliers.length} helpText="محفوظون للتاريخ ولا يظهرون في المعاملات الجديدة. يمكن للمدير استعادة المورد عند الحاجة.">
+        {filteredArchived.length === 0 ? <Empty text="لا توجد سجلات مؤرشفة مطابقة" /> : (
+          <Table headers={["المورد", "الهاتف", "سبب الأرشفة", "تاريخ الأرشفة", ""]}>
+            {filteredArchived.map((s) => <tr key={s.id}><Td>{s.name}</Td><Td>{s.phone || "—"}</Td><Td>{s.archived_reason || "—"}</Td><Td>{s.archived_at ? new Date(s.archived_at).toLocaleDateString("ar-EG") : "—"}</Td><Td>{canManage && <button aria-label={`استعادة ${s.name}`} onClick={() => restoreSupplier(s)} style={{ background: "none", border: "none", cursor: "pointer", color: C.green }}><RotateCcw size={15} /></button>}</Td></tr>)}
+          </Table>
+        )}
+      </ArchiveSection>
     </div>
   );
 }
@@ -1134,7 +1160,7 @@ function SupplierLedger({ supplierId, data }) {
 }
 
 /* -------------------------------- Customers --------------------------------- */
-function CustomersTab({ data, insertRow, updateRow, deleteRow, canManage }) {
+function CustomersTab({ data, insertRow, updateRow, canManage }) {
   const [name, setName] = useState(""); const [phone, setPhone] = useState("");
   const [editingId, setEditingId] = useState(null);
   const [receipt, setReceipt] = useState({ customerId: "", amount: "", date: todayStr() });
@@ -1157,7 +1183,25 @@ function CustomersTab({ data, insertRow, updateRow, deleteRow, canManage }) {
     if (e) return setErr(e);
     setReceipt({ customerId: "", amount: "", date: todayStr() }); setErr("");
   }
-  const filtered = data.customers.filter((c) => c.name.toLowerCase().includes(search.toLowerCase()));
+  async function archiveCustomer(customer) {
+    const reason = window.prompt(`سبب أرشفة العميل "${customer.name}"؟`);
+    if (!reason?.trim()) return;
+    if (!window.confirm("سيُمنع العميل من المعاملات الجديدة مع الاحتفاظ بكل تاريخه. متابعة؟")) return;
+    const e = await updateRow("customers", customer.id, { archived_at: new Date().toISOString(), archived_reason: reason.trim() });
+    if (e) return setErr(e);
+    if (editingId === customer.id) cancelEdit();
+    setErr("");
+  }
+  async function restoreCustomer(customer) {
+    if (!window.confirm(`استعادة العميل "${customer.name}" للمعاملات الجديدة؟`)) return;
+    const e = await updateRow("customers", customer.id, { archived_at: null, archived_reason: null });
+    if (e) setErr(e); else setErr("");
+  }
+  const activeCustomers = data.customers.filter((customer) => !customer.archived_at);
+  const archivedCustomers = data.customers.filter((customer) => customer.archived_at);
+  const matchesSearch = (customer) => customer.name.toLowerCase().includes(search.toLowerCase());
+  const filtered = activeCustomers.filter(matchesSearch);
+  const filteredArchived = archivedCustomers.filter(matchesSearch);
 
   return (
     <div>
@@ -1176,7 +1220,7 @@ function CustomersTab({ data, insertRow, updateRow, deleteRow, canManage }) {
       <Card style={{ marginBottom: 18 }}>
         <div style={{ fontWeight: 700, marginBottom: 12 }}>تسجيل تحصيل من عميل</div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <Field label="العميل"><Select value={receipt.customerId} onChange={(e) => setReceipt({ ...receipt, customerId: e.target.value })}><option value="">اختر العميل</option>{data.customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</Select></Field>
+          <Field label="العميل"><Select value={receipt.customerId} onChange={(e) => setReceipt({ ...receipt, customerId: e.target.value })}><option value="">اختر العميل</option>{activeCustomers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</Select></Field>
           <Field label="المبلغ"><Input type="number" value={receipt.amount} onChange={(e) => setReceipt({ ...receipt, amount: e.target.value })} /></Field>
           <Field label="التاريخ"><Input type="date" value={receipt.date} onChange={(e) => setReceipt({ ...receipt, date: e.target.value })} /></Field>
         </div>
@@ -1194,7 +1238,7 @@ function CustomersTab({ data, insertRow, updateRow, deleteRow, canManage }) {
                   <Td style={{ fontWeight: 700, color: bal > 0 ? C.brass : C.green }}>{fmt(bal)} ج.م</Td>
                   <Td style={{ display: "flex", gap: 10, alignItems: "center" }}>
                     <button onClick={() => startEdit(c)} style={{ background: "none", border: "none", cursor: "pointer", color: C.brass }}><Pencil size={15} /></button>
-                    {canManage && <button onClick={async () => { if (window.confirm("متأكد من حذف العميل؟")) { const e = await deleteRow("customers", c.id); if (e) setErr(e); } }} style={{ background: "none", border: "none", cursor: "pointer", color: C.red }}><Trash2 size={15} /></button>}
+                    {canManage && <button aria-label={`أرشفة ${c.name}`} onClick={() => archiveCustomer(c)} style={{ background: "none", border: "none", cursor: "pointer", color: C.red }}><Archive size={15} /></button>}
                     <button onClick={() => setExpanded(expanded === c.id ? null : c.id)} style={{ background: "none", border: "none", color: C.brass, cursor: "pointer", fontSize: 12.5 }}>{expanded === c.id ? "إخفاء الحركات" : "عرض الحركات"}</button>
                   </Td>
                 </tr>
@@ -1204,6 +1248,13 @@ function CustomersTab({ data, insertRow, updateRow, deleteRow, canManage }) {
           </Table>
         )}
       </Card>
+      <ArchiveSection title="العملاء المؤرشفون" count={archivedCustomers.length} helpText="محفوظون للتاريخ ولا يظهرون في المعاملات الجديدة. يمكن للمدير استعادة العميل عند الحاجة.">
+        {filteredArchived.length === 0 ? <Empty text="لا توجد سجلات مؤرشفة مطابقة" /> : (
+          <Table headers={["العميل", "الهاتف", "سبب الأرشفة", "تاريخ الأرشفة", ""]}>
+            {filteredArchived.map((c) => <tr key={c.id}><Td>{c.name}</Td><Td>{c.phone || "—"}</Td><Td>{c.archived_reason || "—"}</Td><Td>{c.archived_at ? new Date(c.archived_at).toLocaleDateString("ar-EG") : "—"}</Td><Td>{canManage && <button aria-label={`استعادة ${c.name}`} onClick={() => restoreCustomer(c)} style={{ background: "none", border: "none", cursor: "pointer", color: C.green }}><RotateCcw size={15} /></button>}</Td></tr>)}
+          </Table>
+        )}
+      </ArchiveSection>
     </div>
   );
 }
@@ -1257,7 +1308,7 @@ function PurchasesTab({ data, insertRow, deleteRow, canDelete }) {
       <div style={{ fontWeight: 800, marginBottom: 12 }}>عملية شراء جديدة</div>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
         <Field label="المادة"><Select value={form.materialId} onChange={(e) => setForm({ ...form, materialId: e.target.value })}><option value="">اختر المادة</option>{data.materials.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}</Select></Field>
-        <Field label="المورد"><Select value={form.supplierId} onChange={(e) => setForm({ ...form, supplierId: e.target.value })}><option value="">بدون مورد محدد</option>{data.suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</Select></Field>
+        <Field label="المورد"><Select value={form.supplierId} onChange={(e) => setForm({ ...form, supplierId: e.target.value })}><option value="">بدون مورد محدد</option>{data.suppliers.filter((s) => !s.archived_at).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</Select></Field>
         <Field label="الكمية"><Input type="number" min="0" step="any" value={form.qty} onChange={(e) => setForm({ ...form, qty: e.target.value })} /></Field>
         <Field label="سعر الوحدة"><Input type="number" min="0" step="any" value={form.unitCost} onChange={(e) => setForm({ ...form, unitCost: e.target.value })} /></Field>
         <Field label="التاريخ"><Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></Field>

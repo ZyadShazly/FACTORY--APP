@@ -240,7 +240,7 @@ export function ProjectWorkspace({ project, data, profile, permissions, refresh,
 
     {editing && <Panel className="workspace-editor"><h3>بيانات المشروع</h3><div className="v22-form-grid">
       <Field label="اسم المشروع"><Input value={details.project_name || ""} onChange={(e)=>setDetails({...details,project_name:e.target.value})}/></Field>
-      <Field label="العميل"><Select value={details.customer_id || ""} onChange={(e)=>setDetails({...details,customer_id:e.target.value})}><option value="">بدون عميل</option>{data.customers.map((row)=><option key={row.id} value={row.id}>{row.name}</option>)}</Select></Field>
+      <Field label="العميل"><Select value={details.customer_id || ""} onChange={(e)=>setDetails({...details,customer_id:e.target.value})}><option value="">بدون عميل</option>{data.customers.filter((row)=>!row.archived_at || row.id===details.customer_id).map((row)=><option key={row.id} value={row.id}>{row.name}{row.archived_at ? " (مؤرشف)" : ""}</option>)}</Select></Field>
       <Field label="الموقع"><Input value={details.location || ""} onChange={(e)=>setDetails({...details,location:e.target.value})}/></Field>
       <Field label="الأولوية"><Select value={details.priority || "normal"} onChange={(e)=>setDetails({...details,priority:e.target.value})}>{Object.entries(PROJECT_PRIORITIES).map(([key,label])=><option key={key} value={key}>{label}</option>)}</Select></Field>
       <Field label="تاريخ البدء"><Input type="date" value={details.start_date || ""} onChange={(e)=>setDetails({...details,start_date:e.target.value})}/></Field>

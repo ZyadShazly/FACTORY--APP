@@ -110,7 +110,7 @@ export function ProcurementWorkspace({data,onNavigate}){
   const[invoice,setInvoice]=useState({order_id:"",invoice_number:"",invoice_date:new Date().toISOString().slice(0,10)});
   const[sendReference,setSendReference]=useState(""),[orderName,setOrderName]=useState("");
 
-  const projects=data.projects||[],suppliers=data.suppliers||[],materials=data.materials||[];
+  const projects=data.projects||[],suppliers=data.suppliers||[],activeSuppliers=suppliers.filter(row=>!row.archived_at),materials=data.materials||[];
   async function load({preserveFeedback=false}={}){
     setLoading(true);
     if(!preserveFeedback)setError("");
@@ -206,7 +206,7 @@ export function ProcurementWorkspace({data,onNavigate}){
       {tab==="quotes"&&<>
         {ws.capabilities.quote&&<Panel title="تسجيل عرض مورد"><div style={formStyle}>
           <Field label="الطلب المعتمد"><select style={inputStyle} value={quote.request_id} onChange={event=>setQuote({...quote,request_id:event.target.value})}><option value="">اختر</option>{approvedRequests.map(row=><option key={row.id} value={row.id}>{recordName(row,"request_number")} · {row.request_number}</option>)}</select></Field>
-          <Field label="المورد"><select style={inputStyle} value={quote.supplier_id} onChange={event=>setQuote({...quote,supplier_id:event.target.value})}><option value="">اختر</option>{suppliers.map(row=><option key={row.id} value={row.id}>{row.name}</option>)}</select></Field>
+          <Field label="المورد"><select style={inputStyle} value={quote.supplier_id} onChange={event=>setQuote({...quote,supplier_id:event.target.value})}><option value="">اختر</option>{activeSuppliers.map(row=><option key={row.id} value={row.id}>{row.name}</option>)}</select></Field>
           <Field label="سعر الوحدة"><input type="number" min="0" style={inputStyle} value={quote.unit_price} onChange={event=>setQuote({...quote,unit_price:event.target.value})}/></Field>
           <Field label="العملة"><input readOnly style={inputStyle} value={quote.currency}/></Field><Button onClick={saveQuote}>حفظ العرض</Button>
         </div></Panel>}
