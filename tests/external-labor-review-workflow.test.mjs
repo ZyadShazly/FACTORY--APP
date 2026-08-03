@@ -7,6 +7,7 @@ const migration = fs.readFileSync("supabase/migrations/202607210003_external_lab
 const fix = fs.readFileSync("supabase/migrations/20260721164000_external_labor_payment_parameter_fix.sql", "utf8");
 const settlement = fs.readFileSync("supabase/migrations/202608020004_external_labor_settlement.sql", "utf8");
 const correction = fs.readFileSync("supabase/migrations/20260803052525_daily_labor_correction_archive.sql", "utf8");
+const correctionIndexes = fs.readFileSync("supabase/migrations/20260803053906_daily_labor_correction_indexes.sql", "utf8");
 
 test("external labor requires opening details before approval or payment", () => {
   assert.match(ui, /فتح التفاصيل/);
@@ -100,4 +101,10 @@ test("active work is separated from collapsed immutable history", () => {
   assert.match(ui, /الورديات المدفوعة أو المرفوضة أو المرحلة للتكلفة محفوظة هنا/);
   assert.match(ui, /get_daily_labor_corrections/);
   assert.match(ui, /سجل التصحيحات/);
+});
+
+test("daily labor correction actor foreign keys are covered", () => {
+  assert.match(correctionIndexes, /daily_labor_last_corrected_by_idx[\s\S]*daily_labor\(last_corrected_by\)/);
+  assert.match(correctionIndexes, /daily_labor_corrections_corrected_by_idx[\s\S]*daily_labor_corrections\(corrected_by\)/);
+  assert.doesNotMatch(correctionIndexes, /drop table|truncate|delete from/i);
 });
