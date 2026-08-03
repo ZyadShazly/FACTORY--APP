@@ -6,6 +6,7 @@ const ui = fs.readFileSync("src/v22/dailyLabor.jsx", "utf8");
 const migration = fs.readFileSync("supabase/migrations/202607210003_external_labor_review_workflow.sql", "utf8");
 const fix = fs.readFileSync("supabase/migrations/20260721164000_external_labor_payment_parameter_fix.sql", "utf8");
 const settlement = fs.readFileSync("supabase/migrations/202608020004_external_labor_settlement.sql", "utf8");
+const correction = fs.readFileSync("supabase/migrations/20260803052525_daily_labor_correction_archive.sql", "utf8");
 
 test("external labor requires opening details before approval or payment", () => {
   assert.match(ui, /فتح التفاصيل/);
@@ -58,4 +59,45 @@ test("delete action is only shown for untouched draft shifts", () => {
   assert.match(ui, /review_status \|\| "draft"\) === "draft"/);
   assert.match(ui, /row\.payment_status !== "paid"/);
   assert.match(ui, /!row\.actual_cost_entry_id/);
+  assert.match(ui, /number\(row\.correction_count\) === 0/);
+});
+
+test("rejected shifts use an audited correction workflow before another review", () => {
+  assert.match(ui, /correct_daily_labor/);
+  assert.match(ui, /تصحيح الوردية/);
+  assert.match(ui, /سبب التصحيح/);
+  assert.match(correction, /create table if not exists public\.daily_labor_corrections/);
+  assert.match(correction, /before_snapshot jsonb not null/);
+  assert.match(correction, /after_snapshot jsonb not null/);
+  assert.match(correction, /Only rejected daily labor shifts can be corrected/);
+  assert.match(correction, /review_status='draft',reviewed_by=null,reviewed_at=null,rejection_reason=null/);
+  assert.match(correction, /Rejected daily labor shift must be corrected before review/);
+  assert.doesNotMatch(correction, /on delete cascade/i);
+});
+
+test("review payment and correction audit fields cannot bypass protected RPCs", () => {
+  assert.match(correction, /Daily labor review fields can only change through review workflow/);
+  assert.match(correction, /Daily labor payment fields can only change through payment workflow/);
+  assert.match(correction, /Daily labor correction audit fields are immutable/);
+  for (const signature of [
+    "review_daily_labor\\(uuid,boolean,text\\)",
+    "pay_daily_labor\\(uuid,text,text\\)",
+    "correct_daily_labor\\(uuid,text,jsonb\\)",
+    "get_daily_labor_corrections\\(uuid\\)",
+  ]) assert.match(correction, new RegExp(`revoke all on function public\\.${signature}[\\s\\S]*public,anon,authenticated`));
+});
+
+test("payment calculation preserves additions in the paid net amount", () => {
+  assert.match(correction, /settlement_cap := greatest\(new\.total_amount \+ coalesce\(new\.addition_amount,0\) - coalesce\(new\.deduction_amount,0\),0\)/);
+  assert.match(correction, /new\.paid_amount := least\(greatest\(new\.paid_amount,0\),settlement_cap\)/);
+  assert.match(correction, /paid_amount=net_amount/);
+});
+
+test("active work is separated from collapsed immutable history", () => {
+  assert.match(ui, /const activeRows = useMemo/);
+  assert.match(ui, /const archivedRows = useMemo/);
+  assert.match(ui, /ArchiveSection title="سجل الورديات المكتملة والمرفوضة"/);
+  assert.match(ui, /الورديات المدفوعة أو المرفوضة أو المرحلة للتكلفة محفوظة هنا/);
+  assert.match(ui, /get_daily_labor_corrections/);
+  assert.match(ui, /سجل التصحيحات/);
 });
