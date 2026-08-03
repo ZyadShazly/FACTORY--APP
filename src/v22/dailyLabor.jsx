@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { BadgeCheck, Banknote, Clock3, Eye, Pencil, Plus, Trash2, XCircle } from "lucide-react";
+import { BadgeCheck, Banknote, Clock3, Eye, Pencil, Plus, Send, Trash2, XCircle } from "lucide-react";
 import { isAdministrativeRole } from "../identity";
 import { supabase } from "../supabaseClient";
 import { ArchiveSection } from "../ui";
@@ -46,6 +46,7 @@ const emptyShift = {
 
 const PAYMENT_STATUS = { unpaid: "غير مدفوع", partially_paid: "مدفوع جزئيًا", paid: "مدفوع" };
 const REVIEW_STATUS = { draft: "بانتظار المراجعة", rejected: "مرفوض", approved: "معتمد" };
+const COST_STATUS = { not_posted: "غير مرسلة", submitted: "قيد مراجعة التكلفة", posted: "مرحّلة للتكلفة", rejected: "مرفوضة من التكلفة", reversed: "معكوسة" };
 
 function friendlyError(error) {
   const text = String(error?.message || error || "");
@@ -59,6 +60,10 @@ function friendlyError(error) {
   if (text.includes("Only rejected daily labor shifts")) return "التصحيح متاح للورديات المرفوضة فقط.";
   if (text.includes("Posted daily labor shift")) return "لا يمكن تصحيح وردية مرتبطة بتكلفة مشروع.";
   if (text.includes("Complete corrected shift details")) return "بيانات الوردية المصححة غير مكتملة.";
+  if (text.includes("must be approved before Actual Cost")) return "يجب اعتماد الوردية قبل إرسالها للتكلفة الفعلية.";
+  if (text.includes("already in the Actual Cost workflow") || text.includes("already linked to an Actual Cost")) return "الوردية مرتبطة بالفعل بمسار التكلفة الفعلية.";
+  if (text.includes("must be linked to a project")) return "يجب ربط الوردية بمشروع قبل إرسالها للتكلفة الفعلية.";
+  if (text.includes("Owner, manager, or accountant")) return "إرسال التكلفة متاح للمالك أو المدير أو المحاسب فقط.";
   if (text.includes("cannot be deleted")) return "لا يمكن حذف وردية تمت مراجعتها أو دفعها أو ربطها بتكلفة مشروع.";
   if (text.includes("permission required")) return "ليس لديك الصلاحية المطلوبة لتنفيذ الإجراء.";
   return text || "تعذر تنفيذ الإجراء.";
@@ -177,6 +182,7 @@ export function DailyLaborTab({ data, profile, permissions, refresh }) {
   const canSeeMoney = profile.role !== "production";
   const canReview = isAdministrativeRole(profile.role) || permissions.daily_labor_edit;
   const canCorrect = canSeeMoney && canReview;
+  const canSubmitActualCost = ["owner", "manager", "accountant"].includes(profile.role);
 
   const rows = useMemo(() => data.dailyLabor
     .filter((row) => (!from || row.work_date >= from) && (!to || row.work_date <= to) && (!project || row.project_id === project))
@@ -274,6 +280,20 @@ export function DailyLaborTab({ data, profile, permissions, refresh }) {
     return result;
   }
 
+  async function submitActualCost(row) {
+    setError("");
+    setBusy(true);
+    const result = await supabase.rpc("prepare_operational_source_actual_cost", {
+      target_source_type: "daily_labor",
+      target_source_id: row.id,
+    });
+    if (!result.error) await refresh("dailyLabor");
+    setBusy(false);
+    if (result.error) return setError(friendlyError(result.error));
+    setSelected(null);
+    setSuccess("تم إرسال صافي التسوية للتكلفة الفعلية، وينتظر اعتماد المدير.");
+  }
+
   async function remove(row) {
     if (!window.confirm(`حذف مسودة وردية ${row.worker_name}؟`)) return;
     setError("");
@@ -342,15 +362,18 @@ export function DailyLaborTab({ data, profile, permissions, refresh }) {
         <Info label="تاريخ العمل" value={selected.work_date}/><Info label="بداية الوردية" value={selected.start_time?.slice(0, 5)}/><Info label="نهاية الوردية" value={selected.end_time?.slice(0, 5)}/><Info label="الراحة" value={`${number(selected.break_minutes)} دقيقة`}/>
         <Info label="الساعات الفعلية" value={`${number(selected.total_hours).toFixed(2)} ساعة`}/><Info label="الساعات الإضافية" value={`${number(selected.overtime_hours).toFixed(2)} ساعة`}/>{canSeeMoney && <><Info label="سعر الساعة" value={money(selected.hourly_rate)}/><Info label="سعر الإضافي" value={money(selected.overtime_rate)}/><Info label="الإجمالي المحتسب" value={money(selected.total_amount)}/><Info label="الإضافات" value={money(selected.addition_amount)}/>{number(selected.addition_amount) > 0 && <Info label="سبب الإضافة" value={selected.addition_reason}/>}<Info label="الخصومات" value={money(selected.deduction_amount)}/>{number(selected.deduction_amount) > 0 && <Info label="سبب الخصم" value={selected.deduction_reason}/>}<Info label="صافي التسوية" value={money(selected.net_amount ?? selected.total_amount)}/><Info label="المدفوع" value={money(selected.paid_amount)}/></>}
         <Info label="حالة المراجعة" value={REVIEW_STATUS[selected.review_status || "draft"]}/><Info label="حالة الدفع" value={PAYMENT_STATUS[selected.payment_status]}/>
+        {canSeeMoney && <Info label="حالة التكلفة الفعلية" value={COST_STATUS[selected.cost_posting_status || "not_posted"] || selected.cost_posting_status}/>}
         {number(selected.correction_count) > 0 && <><Info label="عدد التصحيحات" value={number(selected.correction_count)}/><Info label="آخر سبب تصحيح" value={selected.last_correction_reason || "—"}/></>}
         {selected.rejection_reason && <Info label="سبب الرفض" value={selected.rejection_reason}/>} {selected.payment_reference && <Info label="مرجع الدفع" value={selected.payment_reference}/>} {selected.payment_notes && <Info label="ملاحظات الدفع" value={selected.payment_notes}/>} {selected.notes && <Info label="ملاحظات الوردية" value={selected.notes}/>} 
       </div>
       {correctionHistory.length > 0 && <div className="labor-correction-history"><h4>سجل التصحيحات</h4>{correctionHistory.map((item) => <div key={item.number}><strong>تصحيح #{item.number}</strong><span>{item.reason}</span><small>{item.corrected_by_name} · {new Date(item.corrected_at).toLocaleString("ar-EG")}</small></div>)}</div>}
       <div className="v22-alert info">طريقة الحساب: الساعات الفعلية × سعر الساعة + الساعات الإضافية × سعر الإضافي. راجع التوقيت والراحة والأسعار قبل الاعتماد.</div>
+      {canSubmitActualCost && selected.review_status === "approved" && selected.project_id && (selected.cost_posting_status || "not_posted") === "not_posted" && !selected.actual_cost_entry_id && <div className="v22-alert info">إرسال التكلفة ينشئ قيدًا بصافي التسوية فقط في حالة «قيد المراجعة»؛ لا يتم اعتماده أو إضافته لتكلفة المشروع تلقائيًا.</div>}
       <div className="v22-actions modal-actions">
         {canReview && (selected.review_status || "draft") === "draft" && selected.payment_status !== "paid" && <><Button variant="danger" onClick={() => { setReviewAction(selected); setReviewReason(""); setSelected(null); }}><XCircle size={14}/> رفض</Button><Button onClick={() => { setReviewAction(selected); setReviewReason(""); setSelected(null); }}><BadgeCheck size={14}/> اعتماد</Button></>}
         {canCorrect && selected.review_status === "rejected" && selected.payment_status === "unpaid" && !selected.actual_cost_entry_id && selected.cost_posting_status === "not_posted" && <Button onClick={() => { setCorrectionAction(selected); setCorrectionReason(""); setSelected(null); }}><Pencil size={14}/> تصحيح الوردية</Button>}
         {canSeeMoney && permissions.daily_labor_pay && selected.review_status === "approved" && selected.payment_status !== "paid" && <Button onClick={() => { setPaymentAction(selected); setSelected(null); }}><Banknote size={14}/> تسجيل الدفع</Button>}
+        {canSubmitActualCost && selected.review_status === "approved" && selected.project_id && (selected.cost_posting_status || "not_posted") === "not_posted" && !selected.actual_cost_entry_id && <Button disabled={busy} onClick={() => submitActualCost(selected)}><Send size={14}/> إرسال للتكلفة الفعلية</Button>}
         <Button variant="ghost" onClick={() => setSelected(null)}>إغلاق</Button>
       </div>
     </div></div>}
