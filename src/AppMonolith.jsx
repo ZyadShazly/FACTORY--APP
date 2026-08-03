@@ -175,7 +175,7 @@ function producedQty(productId, data) {
   return data.productionOrders.filter((o) => o.product_id === productId).reduce((s, o) => s + o.qty, 0);
 }
 function soldQty(productId, data) {
-  return data.sales.filter((s) => s.product_id === productId).reduce((s, o) => s + o.qty, 0);
+  return data.sales.filter((s) => s.product_id === productId && s.status !== "cancelled").reduce((s, o) => s + o.qty, 0);
 }
 function activeRentedQty(productId, data) {
   return data.rentals.filter((r) => r.product_id === productId && r.status === "active").reduce((s, r) => s + r.qty, 0);
@@ -195,13 +195,13 @@ function supplierPaymentTotal(supplierId, data) {
 }
 function supplierBalance(supplierId, data) { return supplierPurchaseTotal(supplierId, data) - supplierPaymentTotal(supplierId, data); }
 function customerSaleTotal(customerId, data) {
-  return data.sales.filter((s) => s.customer_id === customerId).reduce((s, o) => s + o.total, 0);
+  return data.sales.filter((s) => s.customer_id === customerId && s.status !== "cancelled").reduce((s, o) => s + o.total, 0);
 }
 function customerReceiptTotal(customerId, data) {
   return data.customerReceipts.filter((r) => r.customer_id === customerId).reduce((s, r) => s + r.amount, 0);
 }
 function customerRentalTotal(customerId, data) {
-  return data.rentals.filter((r) => r.customer_id === customerId).reduce((s, r) => s + r.rental_fee, 0);
+  return data.rentals.filter((r) => r.customer_id === customerId && r.status !== "cancelled").reduce((s, r) => s + r.rental_fee, 0);
 }
 function customerBalance(customerId, data) { return customerSaleTotal(customerId, data) + customerRentalTotal(customerId, data) - customerReceiptTotal(customerId, data); }
 
@@ -657,8 +657,8 @@ export default function App() {
         {activeTab === "products" && <ProductsTab data={data} canCreate={permissions.can_create_products} canEdit={permissions.can_edit_products} canDelete={permissions.can_delete} hideProfitInfo={!permissions.view_financials} insertRow={insertRow} deleteRow={deleteRow} updateRow={updateRow} />}
         {activeTab === "production" && <ProductionTab data={data} profileRole={role} canViewFinancials={permissions.view_financials} />}
         {activeTab === "assets" && permissions.assets_view && <AssetsPage data={data} profile={profile} permissions={permissions} refresh={refetchTable} />}
-        {activeTab === "sales" && <SalesTab data={data} insertRow={insertRow} updateRow={updateRow} deleteRow={deleteRow} canManage={isAdministrativeRole(role)} />}
-        {activeTab === "rentals" && <RentalsTab data={data} insertRow={insertRow} updateRow={updateRow} deleteRow={deleteRow} canManage={isAdministrativeRole(role)} />}
+        {activeTab === "sales" && <SalesTab data={data} insertRow={insertRow} refresh={() => refetchTable("sales")} canManage={isAdministrativeRole(role)} />}
+        {activeTab === "rentals" && <RentalsTab data={data} insertRow={insertRow} refresh={() => refetchTable("rentals")} canManage={isAdministrativeRole(role)} />}
         {activeTab === "suppliers" && <SuppliersTab data={data} insertRow={insertRow} updateRow={updateRow} canManage={isAdministrativeRole(role)} />}
         {activeTab === "customers" && <CustomersTab data={data} insertRow={insertRow} updateRow={updateRow} canManage={isAdministrativeRole(role)} />}
         {activeTab === "employees" && role !== "production" && <EmployeesTab data={data} profile={profile} refresh={refetchTable} />}
@@ -696,8 +696,9 @@ function Dashboard({ data, navigate, permissions }) {
     const averageProgress = activeProjects.length ? activeProjects.reduce((sum, project) => sum + num(project.progress), 0) / activeProjects.length : 0;
     const lowMaterials = data.materials.map((material) => ({ ...material, stock: materialStock(material.id, data) })).filter((material) => material.stock <= 10).sort((a, b) => a.stock - b.stock);
     const lowProducts = data.products.map((product) => ({ ...product, stock: finishedStock(product.id, data) })).filter((product) => product.stock <= 5).sort((a, b) => a.stock - b.stock);
-    const revenue = data.sales.reduce((sum, sale) => sum + num(sale.total), 0);
-    const cogs = data.sales.reduce((sum, sale) => {
+    const postedSales = data.sales.filter((sale) => sale.status !== "cancelled");
+    const revenue = postedSales.reduce((sum, sale) => sum + num(sale.total), 0);
+    const cogs = postedSales.reduce((sum, sale) => {
       const product = data.products.find((row) => row.id === sale.product_id);
       return sum + (product ? num(sale.qty) * (avgProductionUnitCost(product.id, data) || productUnitCost(product, data)) : 0);
     }, 0);
@@ -709,7 +710,7 @@ function Dashboard({ data, navigate, permissions }) {
       todayProduction: data.productionOrders.filter((order) => order.order_date === today).reduce((sum, order) => sum + num(order.qty), 0),
       lowMaterials,
       lowProducts,
-      todaySales: data.sales.filter((sale) => sale.sale_date === today).reduce((sum, sale) => sum + num(sale.total), 0),
+      todaySales: postedSales.filter((sale) => sale.sale_date === today).reduce((sum, sale) => sum + num(sale.total), 0),
       profit: revenue - cogs,
       receivables: data.customers.reduce((sum, customer) => sum + customerBalance(customer.id, data), 0),
       activeEmployees: data.employees.filter((employee) => !["inactive", "suspended"].includes(employee.status)).length,
@@ -898,7 +899,7 @@ function ProductsTab({ data, canCreate, canEdit, canDelete, hideProfitInfo, inse
 const ProductionTab=ProductionWorkspace;
 
 /* ----------------------------------- Sales ---------------------------------- */
-function SalesTab({ data, insertRow, updateRow, deleteRow, canManage }) {
+function SalesTab({ data, insertRow, refresh, canManage }) {
   const [form, setForm] = useState({ productId: "", customerId: "", qty: "", unitPrice: "", date: todayStr() });
   const [err, setErr] = useState(""); const [ok, setOk] = useState("");
   const selectedProduct = data.products.find((p) => p.id === form.productId);
@@ -912,6 +913,7 @@ function SalesTab({ data, insertRow, updateRow, deleteRow, canManage }) {
     const stock = finishedStock(form.productId, data);
     if (stock < qty) return setErr(`المخزون التام المتاح ${stock} وحدة فقط`);
     const unitPrice = num(form.unitPrice) || selectedProduct.selling_price;
+    if (unitPrice < 0) return setErr("سعر الوحدة لا يمكن أن يكون سالبًا");
     const total = unitPrice * qty;
     const e = await insertRow("sales", { product_id: form.productId, customer_id: form.customerId, qty, unit_price: unitPrice, total, sale_date: form.date });
     if (e) return setErr(e);
@@ -919,21 +921,20 @@ function SalesTab({ data, insertRow, updateRow, deleteRow, canManage }) {
     setForm({ productId: "", customerId: "", qty: "", unitPrice: "", date: todayStr() });
   }
 
-  async function quickEditSale(row) {
-    const qty = Number(window.prompt("الكمية الجديدة", row.qty));
-    if (!Number.isFinite(qty) || qty <= 0) return;
-    const unitPrice = Number(window.prompt("سعر الوحدة الجديد", row.unit_price));
-    if (!Number.isFinite(unitPrice) || unitPrice < 0) return;
-    const availableExcludingThisSale = finishedStock(row.product_id, data) + row.qty;
-    if (availableExcludingThisSale < qty) return window.alert(`المتاح ${availableExcludingThisSale} وحدة فقط`);
-    const e = await updateRow("sales", row.id, { qty, unit_price: unitPrice, total: qty * unitPrice });
-    if (e) setErr(e);
+  async function cancelSale(row) {
+    const reason = window.prompt("سبب إلغاء عملية البيع؟ سيبقى السجل محفوظًا وسيعود رصيد المنتج للحساب.");
+    if (!reason?.trim()) return;
+    if (!window.confirm("تأكيد إلغاء البيع مع الحفاظ على السجل التاريخي؟")) return;
+    setErr(""); setOk("");
+    const mutationResult = await supabase.rpc("cancel_sale", { target_sale_id: row.id, reason: reason.trim() });
+    const result = await syncMutation({ scope: "sales:cancel", mutationResult, refetch: refresh });
+    if (result.error) return setErr(result.error.message);
+    setOk("تم إلغاء البيع، واستُبعد من الرصيد والإيراد مع حفظ أثر المراجعة.");
   }
-  async function removeSale(row) {
-    if (!window.confirm("متأكد من حذف عملية البيع؟")) return;
-    const e = await deleteRow("sales", row.id);
-    if (e) setErr(e);
-  }
+
+  const postedSales = data.sales.filter((sale) => sale.status !== "cancelled");
+  const cancelledSales = data.sales.filter((sale) => sale.status === "cancelled");
+  const invalidLegacySale = (sale) => num(sale.qty) <= 0 || num(sale.unit_price) < 0 || num(sale.total) < 0 || num(sale.total) !== num(sale.qty) * num(sale.unit_price);
 
   return (
     <div>
@@ -952,20 +953,23 @@ function SalesTab({ data, insertRow, updateRow, deleteRow, canManage }) {
         {ok && <Banner type="success">{ok}</Banner>}
       </Card>
       <Card>
-        {data.sales.length === 0 ? <Empty text="لا توجد مبيعات مسجلة بعد" /> : (
-          <Table headers={["التاريخ", "المنتج", "العميل", "الكمية", "سعر الوحدة", "الإجمالي", ""]}>
-            {[...data.sales].reverse().map((s) => { const p = data.products.find((x) => x.id === s.product_id); const c = data.customers.find((x) => x.id === s.customer_id); return (
-              <tr key={s.id}><Td>{s.sale_date}</Td><Td>{p?.name || "—"}</Td><Td>{c?.name || "—"}</Td><Td>{s.qty}</Td><Td>{fmt(s.unit_price)} ج.م</Td><Td style={{ fontWeight: 700, color: C.green }}>{fmt(s.total)} ج.م</Td><Td>{canManage && <div style={{display:"flex",gap:8}}><button onClick={() => quickEditSale(s)} style={{background:"none",border:"none",cursor:"pointer",color:C.brass}}><Pencil size={15}/></button><button onClick={() => removeSale(s)} style={{background:"none",border:"none",cursor:"pointer",color:C.red}}><Trash2 size={15}/></button></div>}</Td></tr>
+        {postedSales.length === 0 ? <Empty text="لا توجد مبيعات مسجلة بعد" /> : (
+          <Table headers={["التاريخ", "المنتج", "العميل", "الكمية", "سعر الوحدة", "الإجمالي", "الحالة", ""]}>
+            {[...postedSales].reverse().map((s) => { const p = data.products.find((x) => x.id === s.product_id); const c = data.customers.find((x) => x.id === s.customer_id); return (
+              <tr key={s.id}><Td>{s.sale_date}</Td><Td>{p?.name || "—"}</Td><Td>{c?.name || "—"}</Td><Td>{s.qty}</Td><Td>{fmt(s.unit_price)} ج.م</Td><Td style={{ fontWeight: 700, color: invalidLegacySale(s) ? C.red : C.green }}>{fmt(s.total)} ج.م</Td><Td>{invalidLegacySale(s) ? <span style={{color:C.red,fontWeight:700}}>سجل قديم يحتاج مراجعة</span> : "مرحّل"}</Td><Td>{canManage && <button aria-label="إلغاء البيع" onClick={() => cancelSale(s)} style={{background:"none",border:"none",cursor:"pointer",color:C.red}}><X size={15}/></button>}</Td></tr>
             ); })}
           </Table>
         )}
       </Card>
+      <ArchiveSection title="المبيعات الملغاة" count={cancelledSales.length} helpText="السجلات الملغاة محفوظة للمراجعة، ولا تدخل في المخزون أو الإيراد أو رصيد العميل.">
+        {cancelledSales.length === 0 ? <Empty text="لا توجد مبيعات ملغاة" /> : <Table headers={["التاريخ", "المنتج", "العميل", "الإجمالي", "سبب الإلغاء", "وقت الإلغاء"]}>{[...cancelledSales].reverse().map((s) => <tr key={s.id}><Td>{s.sale_date}</Td><Td>{data.products.find((p) => p.id === s.product_id)?.name || "—"}</Td><Td>{data.customers.find((c) => c.id === s.customer_id)?.name || "—"}</Td><Td>{fmt(s.total)} ج.م</Td><Td>{s.cancellation_reason || "—"}</Td><Td>{s.cancelled_at ? new Date(s.cancelled_at).toLocaleString("ar-EG") : "—"}</Td></tr>)}</Table>}
+      </ArchiveSection>
     </div>
   );
 }
 
 /* --------------------------------- Rentals ----------------------------------- */
-function RentalsTab({ data, insertRow, updateRow, deleteRow, canManage }) {
+function RentalsTab({ data, insertRow, refresh, canManage }) {
   const [form, setForm] = useState({ productId: "", customerId: "", qty: "", rentalFee: "", startDate: todayStr(), expectedReturn: "" });
   const [err, setErr] = useState(""); const [ok, setOk] = useState("");
 
@@ -977,6 +981,8 @@ function RentalsTab({ data, insertRow, updateRow, deleteRow, canManage }) {
     if (qty <= 0) return setErr("أدخل كمية أكبر من صفر");
     const stock = finishedStock(form.productId, data);
     if (stock < qty) return setErr(`المتاح ${stock} وحدة فقط (بعد خصم اللي مؤجر حاليًا)`);
+    if (num(form.rentalFee) < 0) return setErr("قيمة الإيجار لا يمكن أن تكون سالبة");
+    if (form.expectedReturn && form.expectedReturn < form.startDate) return setErr("تاريخ الاسترجاع المتوقع لا يمكن أن يسبق تاريخ البداية");
     const e = await insertRow("rentals", {
       product_id: form.productId, customer_id: form.customerId, qty,
       rental_fee: num(form.rentalFee), start_date: form.startDate,
@@ -988,30 +994,27 @@ function RentalsTab({ data, insertRow, updateRow, deleteRow, canManage }) {
   }
   async function markReturned(r) {
     setErr(""); setOk("");
-    const error = await updateRow("rentals", r.id, { status: "returned", return_date: todayStr() });
-    if (error) return setErr(error);
+    const mutationResult = await supabase.rpc("mark_rental_returned", { target_rental_id: r.id, target_return_date: todayStr() });
+    const result = await syncMutation({ scope: "rentals:return", mutationResult, refetch: refresh });
+    if (result.error) return setErr(result.error.message);
     setOk("تم تسجيل إرجاع الصنف بنجاح");
   }
 
   const rentalProducts = data.products.filter((p) => (p.item_type || "sale") !== "sale");
 
-  async function quickEditRental(r) {
-    const qty = Number(window.prompt("الكمية الجديدة", r.qty));
-    if (!Number.isFinite(qty) || qty <= 0) return;
-    const rentalFee = Number(window.prompt("قيمة الإيجار الجديدة", r.rental_fee));
-    if (!Number.isFinite(rentalFee) || rentalFee < 0) return;
-    if (r.status === "active") {
-      const availableExcludingThisRental = finishedStock(r.product_id, data) + r.qty;
-      if (availableExcludingThisRental < qty) return window.alert(`المتاح ${availableExcludingThisRental} وحدة فقط`);
-    }
-    const e = await updateRow("rentals", r.id, { qty, rental_fee: rentalFee });
-    if (e) setErr(e);
+  async function cancelRental(r) {
+    const reason = window.prompt("سبب إلغاء الإيجار؟ سيبقى السجل محفوظًا وستعود الكمية للمتاح.");
+    if (!reason?.trim()) return;
+    if (!window.confirm("تأكيد إلغاء الإيجار مع الحفاظ على السجل التاريخي؟")) return;
+    setErr(""); setOk("");
+    const mutationResult = await supabase.rpc("cancel_rental", { target_rental_id: r.id, reason: reason.trim() });
+    const result = await syncMutation({ scope: "rentals:cancel", mutationResult, refetch: refresh });
+    if (result.error) return setErr(result.error.message);
+    setOk("تم إلغاء الإيجار واستبعاده من الرصيد والمتاح مع حفظ أثر المراجعة.");
   }
-  async function removeRental(r) {
-    if (!window.confirm("متأكد من حذف عملية الإيجار؟")) return;
-    const e = await deleteRow("rentals", r.id);
-    if (e) setErr(e);
-  }
+
+  const activeRentals = data.rentals.filter((rental) => rental.status === "active");
+  const rentalHistory = data.rentals.filter((rental) => rental.status !== "active");
 
   return (
     <div>
@@ -1031,23 +1034,26 @@ function RentalsTab({ data, insertRow, updateRow, deleteRow, canManage }) {
         {ok && <Banner type="success">{ok}</Banner>}
       </Card>
       <Card>
-        {data.rentals.length === 0 ? <Empty text="لا توجد عمليات إيجار مسجلة بعد" /> : (
+        {activeRentals.length === 0 ? <Empty text="لا توجد عمليات إيجار نشطة" /> : (
           <Table headers={["الصنف", "العميل", "الكمية", "القيمة", "تاريخ البداية", "الاسترجاع المتوقع", "الحالة", ""]}>
-            {[...data.rentals].reverse().map((r) => {
+            {[...activeRentals].reverse().map((r) => {
               const p = data.products.find((x) => x.id === r.product_id);
               const c = data.customers.find((x) => x.id === r.customer_id);
               return (
                 <tr key={r.id}>
                   <Td>{p?.name || "—"}</Td><Td>{c?.name || "—"}</Td><Td>{r.qty}</Td>
                   <Td>{fmt(r.rental_fee)} ج.م</Td><Td>{r.start_date}</Td><Td>{r.expected_return_date || "—"}</Td>
-                  <Td style={{ color: r.status === "active" ? C.brass : C.green, fontWeight: 700 }}>{r.status === "active" ? "مؤجر حاليًا" : "تم الاسترجاع"}</Td>
-                  <Td><div style={{display:"flex",gap:8,alignItems:"center"}}>{r.status === "active" && <Btn variant="ghost" onClick={() => markReturned(r)} style={{ fontSize: 12, padding: "5px 10px" }}>تسجيل الاسترجاع</Btn>}{canManage && <><button onClick={() => quickEditRental(r)} style={{background:"none",border:"none",cursor:"pointer",color:C.brass}}><Pencil size={15}/></button><button onClick={() => removeRental(r)} style={{background:"none",border:"none",cursor:"pointer",color:C.red}}><Trash2 size={15}/></button></>}</div></Td>
+                  <Td style={{ color: C.brass, fontWeight: 700 }}>مؤجر حاليًا</Td>
+                  <Td><div style={{display:"flex",gap:8,alignItems:"center"}}><Btn variant="ghost" onClick={() => markReturned(r)} style={{ fontSize: 12, padding: "5px 10px" }}>تسجيل الاسترجاع</Btn>{canManage && <button aria-label="إلغاء الإيجار" onClick={() => cancelRental(r)} style={{background:"none",border:"none",cursor:"pointer",color:C.red}}><X size={15}/></button>}</div></Td>
                 </tr>
               );
             })}
           </Table>
         )}
       </Card>
+      <ArchiveSection title="سجل الإيجارات المكتملة والملغاة" count={rentalHistory.length} helpText="الإرجاعات والإلغاءات نهائية ومحفوظة للمراجعة، ولا تزاحم الإيجارات النشطة.">
+        {rentalHistory.length === 0 ? <Empty text="لا يوجد سجل إيجارات سابق" /> : <Table headers={["الصنف", "العميل", "الكمية", "القيمة", "الحالة", "التاريخ النهائي", "السبب"]}>{[...rentalHistory].reverse().map((r) => <tr key={r.id}><Td>{data.products.find((p) => p.id === r.product_id)?.name || "—"}</Td><Td>{data.customers.find((c) => c.id === r.customer_id)?.name || "—"}</Td><Td>{r.qty}</Td><Td>{fmt(r.rental_fee)} ج.م</Td><Td style={{color:r.status === "returned" ? C.green : C.red,fontWeight:700}}>{r.status === "returned" ? "تم الاسترجاع" : "ملغي"}</Td><Td>{r.status === "returned" ? r.return_date || "—" : r.cancelled_at ? new Date(r.cancelled_at).toLocaleString("ar-EG") : "—"}</Td><Td>{r.cancellation_reason || "—"}</Td></tr>)}</Table>}
+      </ArchiveSection>
     </div>
   );
 }
@@ -1259,8 +1265,8 @@ function CustomersTab({ data, insertRow, updateRow, canManage }) {
   );
 }
 function CustomerLedger({ customerId, data }) {
-  const sales = data.sales.filter((s) => s.customer_id === customerId).map((s) => ({ date: s.sale_date, type: "بيع", amount: s.total, note: data.products.find((p) => p.id === s.product_id)?.name }));
-  const rentals = data.rentals.filter((r) => r.customer_id === customerId).map((r) => ({ date: r.start_date, type: "إيجار", amount: r.rental_fee, note: data.products.find((p) => p.id === r.product_id)?.name }));
+  const sales = data.sales.filter((s) => s.customer_id === customerId).map((s) => ({ date: s.sale_date, type: s.status === "cancelled" ? "بيع ملغي" : "بيع", amount: s.status === "cancelled" ? 0 : s.total, note: `${data.products.find((p) => p.id === s.product_id)?.name || "—"}${s.status === "cancelled" ? ` — ${s.cancellation_reason || "ملغي"}` : ""}` }));
+  const rentals = data.rentals.filter((r) => r.customer_id === customerId).map((r) => ({ date: r.start_date, type: r.status === "cancelled" ? "إيجار ملغي" : "إيجار", amount: r.status === "cancelled" ? 0 : r.rental_fee, note: `${data.products.find((p) => p.id === r.product_id)?.name || "—"}${r.status === "cancelled" ? ` — ${r.cancellation_reason || "ملغي"}` : ""}` }));
   const receipts = data.customerReceipts.filter((r) => r.customer_id === customerId).map((r) => ({ date: r.receipt_date, type: "تحصيل", amount: -r.amount, note: r.note }));
   const rows = [...sales, ...rentals, ...receipts].sort((a, b) => (a.date || "").localeCompare(b.date || ""));
   if (rows.length === 0) return <div style={{ color: C.muted, fontSize: 13 }}>لا توجد حركات مسجلة</div>;
