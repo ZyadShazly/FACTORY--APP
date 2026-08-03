@@ -65,7 +65,7 @@ Phase 7 branch. Future implementation branches must be created from the latest
 | Employees | Unit lifecycle implemented | Global dependency framework is not independently implemented |
 | Payroll | Review/approval/payment implemented | End-to-end regression only |
 | External labor | Review/payment foundation only | Additions, deductions, net settlement, correction, and archive UX remain |
-| Assets | Custody foundation is extensive | Maintenance boundary, focused UX, link UAT, and targeted indexes remain |
+| Assets | Operationally closed for Pilot in EP-04 | Advanced maintenance remains explicitly deferred; preserve the verified custody, confirmation, audit, history, and index contracts |
 | Expenses | Basic direct CRUD plus cost-source fields | Protected financial lifecycle and reversal are required |
 | Products/Sales/Suppliers/Customers | Legacy CRUD | Archive, reversal, and dependency-safe lifecycle are required |
 | Reporting/exports | Reporting foundation exists | Currency, PDF, permissions, and artifact QA remain |
@@ -297,6 +297,11 @@ auto-merge, production migration application, or live-data mutation.
 
 The read-only live inspection and its safety decisions are recorded in
 [EP-01 Live Schema and Data Reconciliation](EP_01_LIVE_SCHEMA_DATA_RECONCILIATION.md).
+
+## EP-04 evidence
+
+Assets Operational Closeout evidence is recorded in
+[EP-04 Assets Operational Closeout](EP_04_ASSETS_OPERATIONAL_CLOSEOUT.md).
 It confirms that the two Expense counts refer to one row, adopts immutable
 Purchase Request status history as the canonical conversion/completion record,
 and identifies one unintended anonymous Inventory RPC grant for bounded
