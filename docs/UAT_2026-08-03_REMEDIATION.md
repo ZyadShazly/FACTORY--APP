@@ -17,7 +17,7 @@
 | UAT-003 | Sales | Reject unit price `<= 0` in UI, service/RPC, and database | Fixed on `main` by PR #116; deployment/UAT verification pending |
 | UAT-004 | Customers | Classify excess receipt as explicit customer advance | Root cause confirmed; implementation pending |
 | UAT-005 | Suppliers | Classify excess payment as explicit supplier advance | Root cause confirmed; implementation pending |
-| UAT-006 | Currency | Persist document currency and conversion metadata; render consistently | Open |
+| UAT-006 | Currency | Persist document currency and conversion metadata; render consistently | Root cause confirmed; implementation pending |
 | UAT-007 | Reversal | Reliable in-app confirmation, idempotency, retry, and server verification | Partially fixed on `main`; native dialogs remain in production flows |
 | UAT-008 | Production | Reject negative quantity/scrap explicitly without coercion | Server rule already rejects negative quantity/waste; UI and deployed-version verification pending |
 | UAT-009 | Navigation | Deep-linkable URLs and refresh-safe context | Open |
@@ -106,6 +106,33 @@ Required implementation:
 8. Add regression tests for zero-due advance, partial settlement, exact settlement, overpayment, later allocation, cancellation, and audit history.
 
 A migration is likely required because the current transaction rows do not carry an explicit classification. It must be additive and backward compatible, and it must not be applied to production without owner review.
+
+### UAT-006 — supplier invoice currency mismatch
+
+Root cause confirmed in code and schema.
+
+The procurement database defaults supplier quotes, purchase orders, and supplier invoices to `SAR`. The invoice approval RPC copies `purchase_orders.currency` into `supplier_invoices.currency`, and the action center correctly renders the stored invoice currency. Therefore an invoice created from an order that retained the schema default is stored and notified as `SAR`.
+
+The procurement document preview uses `formatMoney(value)` without passing the document currency. `formatMoney` falls back to the application-wide currency settings, currently `EGP / ج.م`. This creates two different presentation sources for the same stored invoice:
+
+- notification source: `supplier_invoices.currency` (for invoice `1222`, `SAR`)
+- invoice preview source: global UI currency settings (`EGP / ج.م`)
+
+The current schema also lacks persisted exchange-rate metadata on the procurement documents, so even where a foreign-currency purchase is valid there is no complete conversion contract for posting project actual cost into the base currency.
+
+Required implementation:
+
+1. Treat the document currency stored on the quote, order, and invoice as authoritative for document display.
+2. Pass a currency-specific formatter configuration to every amount in procurement preview, print, PDF, and notification surfaces.
+3. Show the currency code in the document header and totals, not only a symbol.
+4. Add persisted `exchange_rate`, `base_currency`, `rate_date`, and converted base amount metadata for foreign-currency documents.
+5. Require a positive exchange rate whenever document currency differs from base currency; use rate `1` only when both currencies match.
+6. Post project actual cost in the base currency using the stored rate, while preserving the original document amount and currency for audit.
+7. Prevent quote → order → invoice currency drift unless a protected manager-approved conversion/revision workflow is used.
+8. Add a reconciliation report for documents whose stored currency differs from the rendered/exported currency or whose conversion metadata is incomplete.
+9. Add regression tests for EGP document, SAR document, foreign-currency conversion, notification consistency, print/PDF consistency, and project-cost posting.
+
+The existing invoice `1222` must not be silently rewritten. It requires controlled review to determine whether `SAR` is the correct document currency or whether the originating order should be corrected through an audited workflow.
 
 ### UAT-008 — negative production values
 
