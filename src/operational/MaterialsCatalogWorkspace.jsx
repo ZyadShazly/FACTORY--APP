@@ -4,6 +4,7 @@ import{Button,Field,Notice,Panel,friendlyError,inputStyle}from"./ui";
 
 export function MaterialsCatalogWorkspace({data,insertRow,onNavigate}){
   const[name,setName]=useState("");
+  const[code,setCode]=useState("");
   const[unit,setUnit]=useState("قطعة");
   const[error,setError]=useState("");
   const[ok,setOk]=useState("");
@@ -21,11 +22,18 @@ export function MaterialsCatalogWorkspace({data,insertRow,onNavigate}){
 
   async function add(){
     setError("");setOk("");
-    if(!name.trim())return setError("اكتب اسم المادة");
-    const e=await insertRow("materials",{name:name.trim(),unit,unit_cost:0,initial_stock:0});
+    const cleanName=name.trim().replace(/\s+/g," ");
+    const cleanCode=code.trim().replace(/\s+/g,"-").toUpperCase();
+    if(!cleanName)return setError("اكتب اسم المادة");
+    if(!cleanCode)return setError("اكتب كودًا فريدًا للمادة");
+    const duplicateName=materials.find(material=>material.name?.trim().replace(/\s+/g," ").toLowerCase()===cleanName.toLowerCase());
+    if(duplicateName)return setError(`المادة موجودة بالفعل باسم «${duplicateName.name}».`);
+    const duplicateCode=materials.find(material=>material.material_code?.trim().replace(/\s+/g,"-").toUpperCase()===cleanCode);
+    if(duplicateCode)return setError(`كود المادة «${cleanCode}» مستخدم بالفعل مع «${duplicateCode.name}».`);
+    const e=await insertRow("materials",{name:cleanName,material_code:cleanCode,unit,unit_cost:0,initial_stock:0});
     if(e)return setError(friendlyError(e));
     await refreshSetup();
-    setName("");setOk("تم إنشاء تعريف المادة. أنشئ صنف مخزون مربوطًا بها قبل الاستلام.");
+    setName("");setCode("");setOk("تم إنشاء تعريف المادة بكود فريد. أنشئ صنف مخزون مربوطًا بها قبل الاستلام.");
   }
 
   async function createItem(material){
@@ -74,6 +82,7 @@ export function MaterialsCatalogWorkspace({data,insertRow,onNavigate}){
     <Notice>زيادة الرصيد لا تتم من دليل المواد مباشرة. أنشئ صنف مخزون مربوطًا ثم استخدم طلب شراء ← أمر شراء ← استلام، أو مستند الرصيد الافتتاحي.</Notice>
     {error&&<Notice type="error">{error}</Notice>}{ok&&<Notice>{ok}</Notice>}
     <Panel title="إضافة تعريف مادة"><div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"end"}}>
+      <Field label="كود المادة"><input style={inputStyle} value={code} onChange={e=>setCode(e.target.value)} placeholder="مثال: MDF-18" autoCapitalize="characters"/></Field>
       <Field label="اسم المادة"><input style={inputStyle} value={name} onChange={e=>setName(e.target.value)}/></Field>
       <Field label="الوحدة"><input style={inputStyle} value={unit} onChange={e=>setUnit(e.target.value)}/></Field>
       <Button onClick={add}>إضافة</Button>
@@ -82,7 +91,7 @@ export function MaterialsCatalogWorkspace({data,insertRow,onNavigate}){
       const linkedItem=linkedByMaterial.get(material.id);
       const linked=Boolean(linkedItem);
       return <div key={material.id} style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"center",padding:10,border:"1px solid var(--color-border)",borderRadius:9}}>
-        <span><strong>{material.name}</strong> — {material.unit||"وحدة"}<small style={{display:"block",color:"var(--color-text-muted)"}}>{material.active===false?"مؤرشفة":linked?`مربوطة بـ ${linkedItem.name} — ${linkedItem.sku}`:"غير مربوطة"}</small></span>
+        <span><strong>{material.name}</strong> — {material.unit||"وحدة"}<small style={{display:"block",color:"var(--color-text-muted)"}}>كود المادة: {material.material_code||"قديم — يحتاج مراجعة"}</small><small style={{display:"block",color:"var(--color-text-muted)"}}>{material.active===false?"مؤرشفة":linked?`مربوطة بـ ${linkedItem.name} — ${linkedItem.sku}`:"غير مربوطة"}</small></span>
         <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
           {!linked&&material.active!==false&&<Button disabled={busy===material.id} onClick={()=>createItem(material)}>إنشاء صنف مخزون من المادة</Button>}
           {!linked&&material.active!==false&&onNavigate&&<Button tone="ghost" onClick={()=>onNavigate("inventory")}>ربط بصنف موجود</Button>}
