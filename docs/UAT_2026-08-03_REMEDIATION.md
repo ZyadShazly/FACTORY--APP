@@ -12,7 +12,7 @@
 
 | ID | Area | Target outcome | Status |
 |---|---|---|---|
-| UAT-001 | Inventory | One canonical stock calculation across dashboard and inventory ledger | Investigating |
+| UAT-001 | Inventory | One canonical stock calculation across dashboard and inventory ledger | Root cause confirmed; implementation pending |
 | UAT-002 | Projects | One canonical approved actual-cost aggregate across every view/report | Investigating |
 | UAT-003 | Sales | Reject unit price `<= 0` in UI, service/RPC, and database | Fixed on `main` by PR #116; deployment/UAT verification pending |
 | UAT-004 | Customers | Classify excess receipt as explicit customer advance | Open |
@@ -28,6 +28,27 @@
 | UAT-014 | Project reports | Complete the feature or hide it from production navigation | Open |
 
 ## Evidence reconciled against `main`
+
+### UAT-001 — dashboard vs inventory material balance
+
+Root cause confirmed in code. The dashboard still calculates raw-material stock locally with the legacy formula:
+
+`initial_stock + materialPurchases - BOM consumption from productionOrders`
+
+The inventory workspace does not use that formula. It loads `get_inventory_workspace()` and renders `balances[].quantity_on_hand`, which is the protected inventory ledger result and includes warehouse movements, opening documents, receipts, issues, transfers, adjustments, counts, and reversals.
+
+Therefore the two screens are reading different accounting models. The dashboard can show a negative or stale quantity even while the inventory ledger shows the correct on-hand balance.
+
+Required implementation:
+
+1. Make the dashboard consume the same canonical inventory balance payload as the inventory workspace.
+2. Aggregate ledger balances by inventory item/material across warehouses for the dashboard alert.
+3. Show unit, warehouse scope, and last refresh/source label.
+4. Remove the legacy `materialStock()` path from dashboard decisions after compatibility verification.
+5. Add a regression contract asserting dashboard aggregate equals the sum of `get_inventory_workspace().balances` for each linked material.
+6. Preserve unlinked legacy materials as a clearly labelled data-quality warning rather than silently estimating stock.
+
+No production data rewrite is required for this fix.
 
 ### UAT-003 — negative sale price
 
