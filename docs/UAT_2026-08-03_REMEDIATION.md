@@ -15,8 +15,8 @@
 | UAT-001 | Inventory | One canonical stock calculation across dashboard and inventory ledger | Root cause confirmed; implementation pending |
 | UAT-002 | Projects | One canonical approved actual-cost aggregate across every view/report | Root cause confirmed; implementation pending |
 | UAT-003 | Sales | Reject unit price `<= 0` in UI, service/RPC, and database | Fixed on `main` by PR #116; deployment/UAT verification pending |
-| UAT-004 | Customers | Classify excess receipt as explicit customer advance | Open |
-| UAT-005 | Suppliers | Classify excess payment as explicit supplier advance | Open |
+| UAT-004 | Customers | Classify excess receipt as explicit customer advance | Root cause confirmed; implementation pending |
+| UAT-005 | Suppliers | Classify excess payment as explicit supplier advance | Root cause confirmed; implementation pending |
 | UAT-006 | Currency | Persist document currency and conversion metadata; render consistently | Open |
 | UAT-007 | Reversal | Reliable in-app confirmation, idempotency, retry, and server verification | Partially fixed on `main`; native dialogs remain in production flows |
 | UAT-008 | Production | Reject negative quantity/scrap explicitly without coercion | Server rule already rejects negative quantity/waste; UI and deployed-version verification pending |
@@ -76,6 +76,36 @@ No historical cost rows should be rewritten silently. Any cache backfill must be
 ### UAT-003 — negative sale price
 
 PR #116 introduced protected sales/rental lifecycle handling, rejects new negative/incomplete/inconsistent transactions, preserves the existing legacy `-1` sale for controlled cancellation, and added regression coverage. This item must still be re-tested on the preview/live deployment before closure.
+
+### UAT-004 / UAT-005 — customer and supplier advances
+
+Root cause confirmed in code. The UI currently posts every customer receipt directly to `customerReceipts` and every supplier payment directly to `supplierPayments` after checking only that the amount is greater than zero. It does not compare the payment to the current due balance and does not persist a transaction classification.
+
+The ledgers then calculate:
+
+- customer balance = sales + rentals - receipts
+- supplier balance = purchases - payments
+
+So a legitimate advance is displayed only as a negative receivable/payable, with no distinction between:
+
+- settlement against an existing due amount
+- customer advance / customer deposit
+- supplier advance / prepayment
+
+This is not a reason to block advances. The defect is the missing classification and accounting contract.
+
+Required implementation:
+
+1. Add an explicit transaction classification such as `settlement` or `advance` to customer receipts and supplier payments.
+2. When the entered amount exceeds the current due balance, show an in-app confirmation that the excess will be recorded as an advance.
+3. Split mixed transactions when needed: due settlement portion plus advance portion, or persist both amounts explicitly in one protected RPC result.
+4. Present due balance and advance balance separately in customer/supplier cards and ledgers.
+5. Keep advances available for later allocation to invoices or purchases through a documented, audited workflow.
+6. Add server-side validation and database constraints so clients cannot create an unclassified overpayment directly.
+7. Preserve the existing UAT `1` amounts as legacy anomalies for controlled reclassification or reversal; do not silently rewrite them.
+8. Add regression tests for zero-due advance, partial settlement, exact settlement, overpayment, later allocation, cancellation, and audit history.
+
+A migration is likely required because the current transaction rows do not carry an explicit classification. It must be additive and backward compatible, and it must not be applied to production without owner review.
 
 ### UAT-008 — negative production values
 
