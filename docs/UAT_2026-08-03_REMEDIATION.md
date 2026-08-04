@@ -13,7 +13,7 @@
 | ID | Area | Target outcome | Status |
 |---|---|---|---|
 | UAT-001 | Inventory | One canonical stock calculation across dashboard and inventory ledger | Root cause confirmed; implementation pending |
-| UAT-002 | Projects | One canonical approved actual-cost aggregate across every view/report | Investigating |
+| UAT-002 | Projects | One canonical approved actual-cost aggregate across every view/report | Root cause confirmed; implementation pending |
 | UAT-003 | Sales | Reject unit price `<= 0` in UI, service/RPC, and database | Fixed on `main` by PR #116; deployment/UAT verification pending |
 | UAT-004 | Customers | Classify excess receipt as explicit customer advance | Open |
 | UAT-005 | Suppliers | Classify excess payment as explicit supplier advance | Open |
@@ -49,6 +49,29 @@ Required implementation:
 6. Preserve unlinked legacy materials as a clearly labelled data-quality warning rather than silently estimating stock.
 
 No production data rewrite is required for this fix.
+
+### UAT-002 — project overview vs actual-cost ledger
+
+Root cause confirmed in code. The project list/card reads the denormalized field `project.actual_cost`, while the project workspace recalculates actual cost by summing `data.projectCosts` for the selected project and grouping those rows by cost type.
+
+This creates two independent sources for the same financial metric:
+
+- Project card / overview source: `projects.actual_cost`
+- Project workspace / actual-cost source: `project_costs` rows summed by `project_id`
+
+When the denormalized project column is stale or not refreshed after a new approved cost entry, the overview can show `0` while the ledger and reports show the real total such as `62,364.29`.
+
+Required implementation:
+
+1. Define one canonical approved actual-cost aggregate from `project_costs`.
+2. Use that aggregate for project cards, overview KPIs, project detail, reports, variance, profit, and margin.
+3. Treat `projects.actual_cost` only as a backward-compatible cache, or remove it from UI reads after compatibility verification.
+4. Ensure only approved/posted cost rows enter the canonical total; draft/rejected/cancelled rows must be excluded by the server contract.
+5. Refresh the canonical aggregate after every cost mutation, payroll posting, daily-labor settlement, purchase/invoice posting, expense posting, and reversal.
+6. Add regression coverage asserting all project surfaces return the same amount for the same project and cost state.
+7. Add a reconciliation query/report that flags any mismatch between the cache column and the canonical aggregate before release.
+
+No historical cost rows should be rewritten silently. Any cache backfill must be additive, auditable, and reviewed before production application.
 
 ### UAT-003 — negative sale price
 
