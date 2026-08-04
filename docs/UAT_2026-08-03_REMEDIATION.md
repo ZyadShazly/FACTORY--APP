@@ -12,20 +12,34 @@
 
 | ID | Area | Target outcome | Status |
 |---|---|---|---|
-| UAT-001 | Inventory | One canonical stock calculation across dashboard and inventory ledger | Open |
-| UAT-002 | Projects | One canonical approved actual-cost aggregate across every view/report | Open |
-| UAT-003 | Sales | Reject unit price `<= 0` in UI, service/RPC, and database | Open |
+| UAT-001 | Inventory | One canonical stock calculation across dashboard and inventory ledger | Investigating |
+| UAT-002 | Projects | One canonical approved actual-cost aggregate across every view/report | Investigating |
+| UAT-003 | Sales | Reject unit price `<= 0` in UI, service/RPC, and database | Fixed on `main` by PR #116; deployment/UAT verification pending |
 | UAT-004 | Customers | Classify excess receipt as explicit customer advance | Open |
 | UAT-005 | Suppliers | Classify excess payment as explicit supplier advance | Open |
 | UAT-006 | Currency | Persist document currency and conversion metadata; render consistently | Open |
-| UAT-007 | Reversal | Reliable in-app confirmation, idempotency, retry, and server verification | Open |
-| UAT-008 | Production | Reject negative quantity/scrap explicitly without coercion | Open |
+| UAT-007 | Reversal | Reliable in-app confirmation, idempotency, retry, and server verification | Partially fixed on `main`; native dialogs remain in production flows |
+| UAT-008 | Production | Reject negative quantity/scrap explicitly without coercion | Server rule already rejects negative quantity/waste; UI and deployed-version verification pending |
 | UAT-009 | Navigation | Deep-linkable URLs and refresh-safe context | Open |
 | UAT-010 | Materials | Unique normalized material identity/code with duplicate warnings | Open |
-| UAT-011 | Validation | Shared rules across UI, server, and database | Open |
-| UAT-012 | Accessibility | Accessible names/tooltips for icon actions | Open |
+| UAT-011 | Validation | Shared rules across UI, server, and database | In progress through defect-by-defect reconciliation |
+| UAT-012 | Accessibility | Accessible names/tooltips for icon actions | Partially fixed on `main`; full action audit pending |
 | UAT-013 | Messaging | Operation-scoped transient status messages | Open |
 | UAT-014 | Project reports | Complete the feature or hide it from production navigation | Open |
+
+## Evidence reconciled against `main`
+
+### UAT-003 — negative sale price
+
+PR #116 introduced protected sales/rental lifecycle handling, rejects new negative/incomplete/inconsistent transactions, preserves the existing legacy `-1` sale for controlled cancellation, and added regression coverage. This item must still be re-tested on the preview/live deployment before closure.
+
+### UAT-008 — negative production values
+
+`create_production_order_secure` already rejects `target_quantity <= 0` and rejects negative `target_waste_percentage` on the server. The current React workspace explicitly rejects non-positive quantity, but a dedicated UI check/message for negative waste and deployment verification are still required.
+
+### UAT-007 — reversal/cancellation
+
+Protected RPC-backed cancellation exists for sales, rentals, and production orders, but several flows still use `window.prompt` / `window.confirm`. The remaining work is to replace browser-native dialogs with in-app, busy-safe, retry-aware confirmation while preserving the server-side reversal contract.
 
 ## Verification gate
 
