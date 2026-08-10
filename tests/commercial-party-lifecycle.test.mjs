@@ -33,7 +33,7 @@ test("commercial party UI archives, restores, and excludes archived parties from
   assert.match(ui, /const archivedCustomers = data\.customers\.filter\(\(customer\) => customer\.archived_at\)/);
   assert.match(ui, /ArchiveSection title="الموردون المؤرشفون"/);
   assert.match(ui, /ArchiveSection title="العملاء المؤرشفون"/);
-  assert.match(ui, /archived_at: new Date\(\)\.toISOString\(\)/);
-  assert.match(ui, /archived_at: null/);
+  assert.match(ui, /set_commercial_party_archived/);
+  assert.match(ui, /reasonRequired=\{archiveAction\?\.archive\}/);
   assert.doesNotMatch(ui, /deleteRow\("(?:customers|suppliers)"/);
 });

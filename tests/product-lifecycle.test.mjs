@@ -26,7 +26,7 @@ test("archived products cannot enter new commercial or production work",()=>{
   assert.equal((migration.match(/create trigger require_active_product/g)||[]).length,3);
   assert.match(ui,/const activeProducts = data\.products\.filter\(\(product\) => !product\.archived_at\)/);
   assert.match(ui,/ArchiveSection title="المنتجات المؤرشفة"/);
-  assert.match(ui,/archived_at: new Date\(\)\.toISOString\(\)/);
+  assert.match(ui,/set_product_archived/);
   assert.doesNotMatch(ui,/deleteRow\("products"/);
   assert.match(production,/data\.products\|\|\[\]\)\.filter\(row=>!row\.archived_at\)/);
 });

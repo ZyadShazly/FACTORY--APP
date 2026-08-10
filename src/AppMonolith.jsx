@@ -416,6 +416,10 @@ export default function App() {
     }
     return fetchResult;
   }, []);
+  const refetchTables = useCallback(async (...keys) => {
+    const results = await Promise.all(keys.map((key) => refetchTable(key)));
+    return { data: results.map((result) => result?.data || []), error: results.find((result) => result?.error)?.error || null };
+  }, [refetchTable]);
 
   useEffect(() => {
     if (V22_DEMO) return;
@@ -671,13 +675,13 @@ export default function App() {
         {activeTab === "purchases" && <ProcurementWorkspace data={data} onNavigate={navigate} />}
         {activeTab === "expenses" && <ExpensesTab data={data} profileRole={role} refresh={() => refetchTable("expenses")} />}
         {activeTab === "materials" && <MaterialsTab data={data} canDelete={permissions.can_delete} insertRow={insertRow} deleteRow={deleteRow} updateRow={updateRow} onNavigate={navigate} />}
-        {activeTab === "products" && <ProductsTab data={data} canCreate={permissions.can_create_products} canEdit={permissions.can_edit_products} canArchive={permissions.can_delete && permissions.can_edit_products} hideProfitInfo={!permissions.view_financials} insertRow={insertRow} updateRow={updateRow} />}
+        {activeTab === "products" && <ProductsTab data={data} canCreate={permissions.can_create_products} canEdit={permissions.can_edit_products} canArchive={permissions.can_delete && permissions.can_edit_products} hideProfitInfo={!permissions.view_financials} refresh={() => refetchTable("products")} />}
         {activeTab === "production" && <ProductionTab data={data} profileRole={role} canViewFinancials={permissions.view_financials} />}
         {activeTab === "assets" && permissions.assets_view && <AssetsPage data={data} profile={profile} permissions={permissions} refresh={refetchTable} />}
         {activeTab === "sales" && <SalesTab data={data} refresh={() => refetchTable("sales")} canManage={isAdministrativeRole(role)} />}
         {activeTab === "rentals" && <RentalsTab data={data} refresh={() => refetchTable("rentals")} canManage={isAdministrativeRole(role)} />}
-        {activeTab === "suppliers" && <SuppliersTab data={data} insertRow={insertRow} updateRow={updateRow} refresh={() => refetchTable("supplierPayments")} canManage={isAdministrativeRole(role)} />}
-        {activeTab === "customers" && <CustomersTab data={data} insertRow={insertRow} updateRow={updateRow} refresh={() => refetchTable("customerReceipts")} canManage={isAdministrativeRole(role)} />}
+        {activeTab === "suppliers" && <SuppliersTab data={data} refresh={() => refetchTables("suppliers", "supplierPayments")} canManage={isAdministrativeRole(role)} />}
+        {activeTab === "customers" && <CustomersTab data={data} refresh={() => refetchTables("customers", "customerReceipts")} canManage={isAdministrativeRole(role)} />}
         {activeTab === "employees" && role !== "production" && <EmployeesTab data={data} profile={profile} refresh={refetchTable} />}
         {activeTab === "workCalendar" && permissions.payroll_calendar_view && <WorkCalendarTab data={data} profile={profile} permissions={permissions} refresh={refetchTable} />}
         {activeTab === "payroll" && permissions.payroll_view && data.payroll.some((row) => row.status === "draft" && row.calendar_stale) && <div className="module-state error compact"><AlertCircle size={20}/><div><strong>مسودة الراتب تحتاج إعادة حساب</strong><p>تغير تقويم العمل بعد إنشاء المسودة. تمنع قاعدة البيانات اعتمادها حتى إعادة الحساب أو استخدام صلاحية التجاوز الموثقة.</p></div></div>}
@@ -805,23 +809,24 @@ const InventoryTab=InventoryWorkspace;
 const MaterialsTab=MaterialsCatalogWorkspace;
 
 /* --------------------------------- Products --------------------------------- */
-function ProductsTab({ data, canCreate, canEdit, canArchive, hideProfitInfo, insertRow, updateRow }) {
+function ProductsTab({ data, canCreate, canEdit, canArchive, hideProfitInfo, refresh }) {
   const { workspace: inventoryWorkspace, error: inventoryError } = useInventoryWorkspace("products");
   const finishedBalances = useMemo(() => aggregateInventoryByProduct(inventoryWorkspace || {}), [inventoryWorkspace]);
-  const blank = { name: "", sku: "", laborCost: "", overheadCost: "", sellingPrice: "", itemType: "sale" };
+  const blank = { name: "", sku: "", laborCost: "", overheadCost: "", sellingPrice: "", itemType: "sale", commandId: "" };
   const [form, setForm] = useState(blank);
   const [bom, setBom] = useState([]);
   const [bomRow, setBomRow] = useState({ materialId: "", qty: "" });
   const [editingId, setEditingId] = useState(null);
   const [err, setErr] = useState("");
   const [search, setSearch] = useState("");
+  const [archiveAction, setArchiveAction] = useState(null);
 
   function addBomRow() { if (!bomRow.materialId || num(bomRow.qty) <= 0) return; setBom([...bom, { material_id: bomRow.materialId, qty: num(bomRow.qty) }]); setBomRow({ materialId: "", qty: "" }); }
   function removeBomRow(i) { setBom(bom.filter((_, idx) => idx !== i)); }
   function startEdit(p) {
     if (!canEdit) return;
     setEditingId(p.id);
-    setForm({ name: p.name, sku: p.sku || "", laborCost: String(p.labor_cost), overheadCost: String(p.overhead_cost), sellingPrice: String(p.selling_price), itemType: p.item_type || "sale" });
+    setForm({ name: p.name, sku: p.sku || "", laborCost: String(p.labor_cost), overheadCost: String(p.overhead_cost), sellingPrice: String(p.selling_price), itemType: p.item_type || "sale", commandId: "" });
     setBom(p.bom || []);
   }
   function cancelEdit() { setEditingId(null); setForm(blank); setBom([]); setErr(""); }
@@ -831,24 +836,39 @@ function ProductsTab({ data, canCreate, canEdit, canArchive, hideProfitInfo, ins
     if (!editingId && !canCreate) return setErr("ليس لديك صلاحية إضافة المنتجات");
     if (!form.name.trim()) return setErr("اكتب اسم المنتج");
     if (bom.length === 0) return setErr("أضف مكوّن واحد على الأقل لتركيبة المنتج");
+    const commandId = form.commandId || globalThis.crypto.randomUUID();
+    if (!form.commandId) setForm((current) => ({ ...current, commandId }));
     const payload = { name: form.name.trim(), sku: form.sku.trim(), bom, labor_cost: num(form.laborCost), overhead_cost: num(form.overheadCost), selling_price: num(form.sellingPrice), item_type: form.itemType };
-    const e = editingId ? await updateRow("products", editingId, payload) : await insertRow("products", payload);
-    if (e) return setErr(e);
+    const result = await runCriticalMutation({
+      scope: editingId ? "products:update" : "products:create",
+      mutate: () => supabase.rpc("save_product", { target_id: editingId, payload, command_id: commandId }),
+      verify: async () => {
+        const verification = editingId
+          ? await supabase.from("products").select("id").eq("id", editingId).single()
+          : await supabase.from("products").select("id").eq("command_id", commandId).single();
+        return verification.error ? verification : Boolean(verification.data?.id);
+      },
+      refetch: refresh,
+    });
+    if (result.error) return setErr(result.mutationSaved ? "تم إرسال المنتج، لكن تعذر التحقق. حدّث الصفحة قبل إعادة المحاولة." : result.error.message);
     setForm(blank); setBom([]); setEditingId(null); setErr("");
   }
   async function archiveProduct(product) {
-    const reason = window.prompt(`سبب أرشفة المنتج "${product.name}"؟`);
-    if (!reason?.trim()) return;
-    if (!window.confirm("سيُمنع المنتج من العمليات الجديدة مع الاحتفاظ بكل تاريخه. متابعة؟")) return;
-    const error = await updateRow("products", product.id, { archived_at: new Date().toISOString(), archived_reason: reason.trim() });
-    if (error) return setErr(error);
-    if (editingId === product.id) cancelEdit();
-    setErr("");
+    setArchiveAction({ row: product, archive: true, reason: "", busy: false, error: "" });
   }
   async function restoreProduct(product) {
-    if (!window.confirm(`استعادة المنتج "${product.name}" للعمليات الجديدة؟`)) return;
-    const error = await updateRow("products", product.id, { archived_at: null, archived_reason: null });
-    if (error) setErr(error); else setErr("");
+    setArchiveAction({ row: product, archive: false, reason: "", busy: false, error: "" });
+  }
+  async function confirmProductArchive() {
+    const action = archiveAction;
+    if (action.archive && !action.reason.trim()) return setArchiveAction((current) => ({ ...current, error: "سبب الأرشفة مطلوب" }));
+    setArchiveAction((current) => ({ ...current, busy: true, error: "" }));
+    const { error } = await supabase.rpc("set_product_archived", { target_id: action.row.id, archive: action.archive, reason: action.reason.trim() || null });
+    if (error) return setArchiveAction((current) => ({ ...current, busy: false, error: error.message }));
+    const refreshed = await refresh();
+    if (editingId === action.row.id) cancelEdit();
+    setArchiveAction(null);
+    if (refreshed?.error) setErr("تم حفظ حالة المنتج، لكن تعذر تحديث الشاشة."); else setErr("");
   }
 
   const activeProducts = data.products.filter((product) => !product.archived_at);
@@ -935,6 +955,7 @@ function ProductsTab({ data, canCreate, canEdit, canArchive, hideProfitInfo, ins
       <ArchiveSection title="المنتجات المؤرشفة" count={archivedProducts.length} helpText="محفوظة للتاريخ ولا تظهر في البيع أو الإيجار أو أوامر الإنتاج الجديدة.">
         {filteredArchived.length === 0 ? <Empty text="لا توجد منتجات مؤرشفة مطابقة" /> : <Table headers={["المنتج", "SKU", "النوع", "سبب الأرشفة", "تاريخ الأرشفة", ""]}>{filteredArchived.map((p) => <tr key={p.id}><Td>{p.name}</Td><Td>{p.sku || "—"}</Td><Td>{ITEM_TYPE_LABEL[p.item_type] || "للبيع"}</Td><Td>{p.archived_reason || "—"}</Td><Td>{p.archived_at ? new Date(p.archived_at).toLocaleDateString("ar-EG") : "—"}</Td><Td>{canArchive && <button aria-label={`استعادة ${p.name}`} onClick={() => restoreProduct(p)} style={{background:"none",border:"none",cursor:"pointer",color:C.green}}><RotateCcw size={15}/></button>}</Td></tr>)}</Table>}
       </ArchiveSection>
+      <ConfirmDialog open={Boolean(archiveAction)} title={archiveAction?.archive ? "أرشفة المنتج" : "استعادة المنتج"} description={archiveAction?.archive ? "سيُمنع المنتج من العمليات الجديدة مع الاحتفاظ بكل تاريخه." : "سيعود المنتج للظهور في العمليات الجديدة."} confirmLabel={archiveAction?.archive ? "أرشفة" : "استعادة"} danger={archiveAction?.archive} reasonRequired={archiveAction?.archive} reason={archiveAction?.reason || ""} busy={archiveAction?.busy} error={archiveAction?.error} onReasonChange={(reason) => setArchiveAction((current) => ({ ...current, reason, error: "" }))} onConfirm={confirmProductArchive} onCancel={() => setArchiveAction(null)} />
     </div>
   );
 }
@@ -1142,22 +1163,28 @@ function RentalsTab({ data, refresh, canManage }) {
 }
 
 /* -------------------------------- Suppliers --------------------------------- */
-function SuppliersTab({ data, insertRow, updateRow, refresh, canManage }) {
+function SuppliersTab({ data, refresh, canManage }) {
   const [name, setName] = useState(""); const [phone, setPhone] = useState("");
   const [editingId, setEditingId] = useState(null);
+  const [saveCommandId, setSaveCommandId] = useState("");
   const [payment, setPayment] = useState({ supplierId: "", amount: "", date: todayStr(), commandId: "" });
   const [err, setErr] = useState(""); const [expanded, setExpanded] = useState(null);
   const [search, setSearch] = useState("");
   const [pendingPayment, setPendingPayment] = useState(null); const [paymentBusy, setPaymentBusy] = useState(false);
+  const [archiveAction, setArchiveAction] = useState(null);
 
-  function startEdit(s) { setEditingId(s.id); setName(s.name); setPhone(s.phone || ""); }
-  function cancelEdit() { setEditingId(null); setName(""); setPhone(""); setErr(""); }
+  function startEdit(s) { setEditingId(s.id); setName(s.name); setPhone(s.phone || ""); setSaveCommandId(""); }
+  function cancelEdit() { setEditingId(null); setName(""); setPhone(""); setSaveCommandId(""); setErr(""); }
   async function submitSupplier() {
     if (!name.trim()) return setErr("اكتب اسم المورد");
-    const payload = { name: name.trim(), phone: phone.trim() };
-    const e = editingId ? await updateRow("suppliers", editingId, payload) : await insertRow("suppliers", payload);
-    if (e) return setErr(e);
-    setName(""); setPhone(""); setEditingId(null); setErr("");
+    const commandId = saveCommandId || globalThis.crypto.randomUUID();
+    if (!saveCommandId) setSaveCommandId(commandId);
+    const result = await runCriticalMutation({ scope: editingId ? "suppliers:update" : "suppliers:create", mutate: () => supabase.rpc("save_supplier", { target_id: editingId, supplier_name: name.trim(), supplier_phone: phone.trim() || null, command_id: commandId }), verify: async () => {
+      const verification = editingId ? await supabase.from("suppliers").select("id").eq("id", editingId).single() : await supabase.from("suppliers").select("id").eq("command_id", commandId).single();
+      return verification.error ? verification : Boolean(verification.data?.id);
+    }, refetch: refresh });
+    if (result.error) return setErr(result.mutationSaved ? "تم إرسال المورد، لكن تعذر التحقق. حدّث الصفحة قبل إعادة المحاولة." : result.error.message);
+    setName(""); setPhone(""); setEditingId(null); setSaveCommandId(""); setErr("");
   }
   async function commitPayment(payload = payment) {
     setPaymentBusy(true); setErr("");
@@ -1178,18 +1205,20 @@ function SuppliersTab({ data, insertRow, updateRow, refresh, canManage }) {
     await commitPayment();
   }
   async function archiveSupplier(supplier) {
-    const reason = window.prompt(`سبب أرشفة المورد "${supplier.name}"؟`);
-    if (!reason?.trim()) return;
-    if (!window.confirm("سيُمنع المورد من المعاملات الجديدة مع الاحتفاظ بكل تاريخه. متابعة؟")) return;
-    const e = await updateRow("suppliers", supplier.id, { archived_at: new Date().toISOString(), archived_reason: reason.trim() });
-    if (e) return setErr(e);
-    if (editingId === supplier.id) cancelEdit();
-    setErr("");
+    setArchiveAction({ row: supplier, archive: true, reason: "", busy: false, error: "" });
   }
   async function restoreSupplier(supplier) {
-    if (!window.confirm(`استعادة المورد "${supplier.name}" للمعاملات الجديدة؟`)) return;
-    const e = await updateRow("suppliers", supplier.id, { archived_at: null, archived_reason: null });
-    if (e) setErr(e); else setErr("");
+    setArchiveAction({ row: supplier, archive: false, reason: "", busy: false, error: "" });
+  }
+  async function confirmSupplierArchive() {
+    const action = archiveAction;
+    if (action.archive && !action.reason.trim()) return setArchiveAction((current) => ({ ...current, error: "سبب الأرشفة مطلوب" }));
+    setArchiveAction((current) => ({ ...current, busy: true, error: "" }));
+    const { error } = await supabase.rpc("set_commercial_party_archived", { party_type: "supplier", target_id: action.row.id, archive: action.archive, reason: action.reason.trim() || null });
+    if (error) return setArchiveAction((current) => ({ ...current, busy: false, error: error.message }));
+    await refresh();
+    if (editingId === action.row.id) cancelEdit();
+    setArchiveAction(null); setErr("");
   }
   const activeSuppliers = data.suppliers.filter((supplier) => !supplier.archived_at);
   const archivedSuppliers = data.suppliers.filter((supplier) => supplier.archived_at);
@@ -1250,6 +1279,7 @@ function SuppliersTab({ data, insertRow, updateRow, refresh, canManage }) {
         )}
       </ArchiveSection>
       <ConfirmDialog open={Boolean(pendingPayment)} title="تسجيل سلفة مورد" description={pendingPayment ? `المستحق ${formatMoney(pendingPayment.due)}، وسيُصنف المبلغ الزائد ${formatMoney(pendingPayment.advance)} كسلفة مورد متاحة للتخصيص لاحقًا.` : ""} confirmLabel="تسجيل الدفعة والسلفة" danger={false} busy={paymentBusy} onConfirm={() => pendingPayment && commitPayment(pendingPayment)} onCancel={() => !paymentBusy && setPendingPayment(null)} />
+      <ConfirmDialog open={Boolean(archiveAction)} title={archiveAction?.archive ? "أرشفة المورد" : "استعادة المورد"} description={archiveAction?.archive ? "سيُمنع المورد من المعاملات الجديدة مع الاحتفاظ بكل تاريخه." : "سيعود المورد للظهور في المعاملات الجديدة."} confirmLabel={archiveAction?.archive ? "أرشفة" : "استعادة"} danger={archiveAction?.archive} reasonRequired={archiveAction?.archive} reason={archiveAction?.reason || ""} busy={archiveAction?.busy} error={archiveAction?.error} onReasonChange={(reason) => setArchiveAction((current) => ({ ...current, reason, error: "" }))} onConfirm={confirmSupplierArchive} onCancel={() => setArchiveAction(null)} />
     </div>
   );
 }
@@ -1262,22 +1292,28 @@ function SupplierLedger({ supplierId, data }) {
 }
 
 /* -------------------------------- Customers --------------------------------- */
-function CustomersTab({ data, insertRow, updateRow, refresh, canManage }) {
+function CustomersTab({ data, refresh, canManage }) {
   const [name, setName] = useState(""); const [phone, setPhone] = useState("");
   const [editingId, setEditingId] = useState(null);
+  const [saveCommandId, setSaveCommandId] = useState("");
   const [receipt, setReceipt] = useState({ customerId: "", amount: "", date: todayStr(), commandId: "" });
   const [err, setErr] = useState(""); const [expanded, setExpanded] = useState(null);
   const [search, setSearch] = useState("");
   const [pendingReceipt, setPendingReceipt] = useState(null); const [receiptBusy, setReceiptBusy] = useState(false);
+  const [archiveAction, setArchiveAction] = useState(null);
 
-  function startEdit(c) { setEditingId(c.id); setName(c.name); setPhone(c.phone || ""); }
-  function cancelEdit() { setEditingId(null); setName(""); setPhone(""); setErr(""); }
+  function startEdit(c) { setEditingId(c.id); setName(c.name); setPhone(c.phone || ""); setSaveCommandId(""); }
+  function cancelEdit() { setEditingId(null); setName(""); setPhone(""); setSaveCommandId(""); setErr(""); }
   async function submitCustomer() {
     if (!name.trim()) return setErr("اكتب اسم العميل");
-    const payload = { name: name.trim(), phone: phone.trim() };
-    const e = editingId ? await updateRow("customers", editingId, payload) : await insertRow("customers", payload);
-    if (e) return setErr(e);
-    setName(""); setPhone(""); setEditingId(null); setErr("");
+    const commandId = saveCommandId || globalThis.crypto.randomUUID();
+    if (!saveCommandId) setSaveCommandId(commandId);
+    const result = await runCriticalMutation({ scope: editingId ? "customers:update" : "customers:create", mutate: () => supabase.rpc("save_customer", { target_id: editingId, customer_name: name.trim(), customer_phone: phone.trim() || null, command_id: commandId }), verify: async () => {
+      const verification = editingId ? await supabase.from("customers").select("id").eq("id", editingId).single() : await supabase.from("customers").select("id").eq("command_id", commandId).single();
+      return verification.error ? verification : Boolean(verification.data?.id);
+    }, refetch: refresh });
+    if (result.error) return setErr(result.mutationSaved ? "تم إرسال العميل، لكن تعذر التحقق. حدّث الصفحة قبل إعادة المحاولة." : result.error.message);
+    setName(""); setPhone(""); setEditingId(null); setSaveCommandId(""); setErr("");
   }
   async function commitReceipt(payload = receipt) {
     setReceiptBusy(true); setErr("");
@@ -1298,18 +1334,20 @@ function CustomersTab({ data, insertRow, updateRow, refresh, canManage }) {
     await commitReceipt();
   }
   async function archiveCustomer(customer) {
-    const reason = window.prompt(`سبب أرشفة العميل "${customer.name}"؟`);
-    if (!reason?.trim()) return;
-    if (!window.confirm("سيُمنع العميل من المعاملات الجديدة مع الاحتفاظ بكل تاريخه. متابعة؟")) return;
-    const e = await updateRow("customers", customer.id, { archived_at: new Date().toISOString(), archived_reason: reason.trim() });
-    if (e) return setErr(e);
-    if (editingId === customer.id) cancelEdit();
-    setErr("");
+    setArchiveAction({ row: customer, archive: true, reason: "", busy: false, error: "" });
   }
   async function restoreCustomer(customer) {
-    if (!window.confirm(`استعادة العميل "${customer.name}" للمعاملات الجديدة؟`)) return;
-    const e = await updateRow("customers", customer.id, { archived_at: null, archived_reason: null });
-    if (e) setErr(e); else setErr("");
+    setArchiveAction({ row: customer, archive: false, reason: "", busy: false, error: "" });
+  }
+  async function confirmCustomerArchive() {
+    const action = archiveAction;
+    if (action.archive && !action.reason.trim()) return setArchiveAction((current) => ({ ...current, error: "سبب الأرشفة مطلوب" }));
+    setArchiveAction((current) => ({ ...current, busy: true, error: "" }));
+    const { error } = await supabase.rpc("set_commercial_party_archived", { party_type: "customer", target_id: action.row.id, archive: action.archive, reason: action.reason.trim() || null });
+    if (error) return setArchiveAction((current) => ({ ...current, busy: false, error: error.message }));
+    await refresh();
+    if (editingId === action.row.id) cancelEdit();
+    setArchiveAction(null); setErr("");
   }
   const activeCustomers = data.customers.filter((customer) => !customer.archived_at);
   const archivedCustomers = data.customers.filter((customer) => customer.archived_at);
@@ -1370,6 +1408,7 @@ function CustomersTab({ data, insertRow, updateRow, refresh, canManage }) {
         )}
       </ArchiveSection>
       <ConfirmDialog open={Boolean(pendingReceipt)} title="تسجيل سلفة عميل" description={pendingReceipt ? `المستحق ${formatMoney(pendingReceipt.due)}، وسيُصنف المبلغ الزائد ${formatMoney(pendingReceipt.advance)} كسلفة عميل متاحة للتخصيص لاحقًا.` : ""} confirmLabel="تسجيل التحصيل والسلفة" busy={receiptBusy} onConfirm={() => pendingReceipt && commitReceipt(pendingReceipt)} onCancel={() => !receiptBusy && setPendingReceipt(null)} />
+      <ConfirmDialog open={Boolean(archiveAction)} title={archiveAction?.archive ? "أرشفة العميل" : "استعادة العميل"} description={archiveAction?.archive ? "سيُمنع العميل من المعاملات الجديدة مع الاحتفاظ بكل تاريخه." : "سيعود العميل للظهور في المعاملات الجديدة."} confirmLabel={archiveAction?.archive ? "أرشفة" : "استعادة"} danger={archiveAction?.archive} reasonRequired={archiveAction?.archive} reason={archiveAction?.reason || ""} busy={archiveAction?.busy} error={archiveAction?.error} onReasonChange={(reason) => setArchiveAction((current) => ({ ...current, reason, error: "" }))} onConfirm={confirmCustomerArchive} onCancel={() => setArchiveAction(null)} />
     </div>
   );
 }
