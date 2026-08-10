@@ -115,7 +115,7 @@ export function ProcurementWorkspace({data,onNavigate}){
   const[invoice,setInvoice]=useState({order_id:"",invoice_number:"",invoice_date:new Date().toISOString().slice(0,10)});
   const[sendReference,setSendReference]=useState(""),[orderName,setOrderName]=useState("");
 
-  const projects=data.projects||[],suppliers=data.suppliers||[],activeSuppliers=suppliers.filter(row=>!row.archived_at),materials=data.materials||[];
+  const projects=(data.projects||[]).filter(row=>row.lifecycle==="active"),suppliers=data.suppliers||[],activeSuppliers=suppliers.filter(row=>!row.archived_at),materials=data.materials||[];
   async function load({preserveFeedback=false}={}){
     setLoading(true);
     if(!preserveFeedback)setError("");
