@@ -5,6 +5,7 @@ import { supabase } from "../supabaseClient";
 import { ArchiveSection } from "../ui";
 import {
   Button,
+  ConfirmDialog,
   DataTable,
   EmptyState,
   ErrorState,
@@ -22,7 +23,7 @@ import {
   today,
 } from "./shared";
 import { calculateDailyLabor } from "./calculations";
-import { syncMutation } from "./mutations";
+import { runCriticalMutation } from "./mutations";
 
 const emptyShift = {
   worker_name: "",
@@ -42,6 +43,7 @@ const emptyShift = {
   deduction_reason: "",
   payment_status: "unpaid",
   notes: "",
+  command_id: "",
 };
 
 const PAYMENT_STATUS = { unpaid: "غير مدفوع", partially_paid: "مدفوع جزئيًا", paid: "مدفوع" };
@@ -119,17 +121,25 @@ export function DailyLaborForm({ projects, profile, canSeeMoney, onSaved, onCanc
       if (result?.error) setError(friendlyError(result.error));
       return;
     }
-    const mutationResult = await supabase.from("daily_labor").insert({
-      ...payload,
-      addition_reason: payload.addition_reason || null,
-      deduction_reason: payload.deduction_reason || null,
-      notes: payload.notes || null,
-      total_hours: calculation.totalHours,
-      total_amount: calculation.totalAmount,
-      review_status: "draft",
-      created_by: profile.id,
+    const commandId = form.command_id || globalThis.crypto.randomUUID();
+    if (!form.command_id) setForm((current) => ({ ...current, command_id: commandId }));
+    const result = await runCriticalMutation({
+      scope: "dailyLabor:create",
+      mutate: () => supabase.rpc("create_daily_labor_draft", {
+        payload: {
+          ...payload,
+          addition_reason: payload.addition_reason || null,
+          deduction_reason: payload.deduction_reason || null,
+          notes: payload.notes || null,
+        },
+        command_id: commandId,
+      }),
+      verify: async () => {
+        const verification = await supabase.from("daily_labor").select("id,review_status").eq("command_id", commandId).single();
+        return verification.error ? verification : verification.data?.review_status === "draft";
+      },
+      refetch: onSaved,
     });
-    const result = await syncMutation({ scope: "dailyLabor:create", mutationResult, refetch: onSaved });
     if (result.error) setError(friendlyError(result.error));
   }
 
@@ -172,6 +182,7 @@ export function DailyLaborTab({ data, profile, permissions, refresh }) {
   const [correctionAction, setCorrectionAction] = useState(null);
   const [correctionReason, setCorrectionReason] = useState("");
   const [correctionHistory, setCorrectionHistory] = useState([]);
+  const [pendingDelete, setPendingDelete] = useState(null);
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [project, setProject] = useState("");
@@ -295,11 +306,25 @@ export function DailyLaborTab({ data, profile, permissions, refresh }) {
   }
 
   async function remove(row) {
-    if (!window.confirm(`حذف مسودة وردية ${row.worker_name}؟`)) return;
+    setPendingDelete(row);
+  }
+
+  async function confirmDelete() {
     setError("");
-    const mutationResult = await supabase.from("daily_labor").delete().eq("id", row.id);
-    const result = await syncMutation({ scope: "dailyLabor:delete", mutationResult, refetch: () => refresh("dailyLabor") });
+    setBusy(true);
+    const targetId = pendingDelete.id;
+    const result = await runCriticalMutation({
+      scope: "dailyLabor:delete",
+      mutate: () => supabase.rpc("delete_daily_labor_draft", { target_shift: targetId }),
+      verify: async () => {
+        const verification = await supabase.from("daily_labor").select("id").eq("id", targetId).maybeSingle();
+        return verification.error ? verification : verification.data === null;
+      },
+      refetch: () => refresh("dailyLabor"),
+    });
+    setBusy(false);
     if (result.error) return setError(friendlyError(result.error));
+    setPendingDelete(null);
     setSuccess("تم حذف مسودة الوردية بنجاح");
   }
 
@@ -399,6 +424,8 @@ export function DailyLaborTab({ data, profile, permissions, refresh }) {
       <Field label="ملاحظات الدفع"><TextArea value={paymentNotes} onChange={(e) => setPaymentNotes(e.target.value)} placeholder="أي تفاصيل تساعد المراجعة لاحقًا..."/></Field>
       <div className="v22-actions modal-actions"><Button type="button" variant="ghost" onClick={() => setPaymentAction(null)}>رجوع</Button><Button disabled={busy}><Banknote size={14}/> تأكيد الدفع</Button></div>
     </form></div>}
+
+    <ConfirmDialog open={Boolean(pendingDelete)} title="حذف مسودة الوردية" description={`سيتم حذف مسودة وردية ${pendingDelete?.worker_name || "العامل"} فقط إذا لم تُراجع أو تُدفع أو تُرسل لتكلفة مشروع.`} confirmLabel="حذف المسودة" danger busy={busy} onCancel={() => setPendingDelete(null)} onConfirm={confirmDelete}/>
 
     <Toast message={success} onDismiss={() => setSuccess("")}/>
   </div>;

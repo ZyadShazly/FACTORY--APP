@@ -5,13 +5,14 @@ import { supabase } from "../supabaseClient";
 import { ArchiveSection, DetailsDrawer, HelpText, KpiCard, KpiGrid } from "../ui/foundation";
 import { Button, ConfirmDialog, DataTable, EmptyState, ErrorState, Field, Input, money, number, PageTitle, Panel, PermissionGuard, Select, TextArea, Toast } from "./shared";
 import { calculateNetSalary } from "./calculations";
-import { syncMutation } from "./mutations";
+import { runCriticalMutation } from "./mutations";
 
 const STATUS = { draft: "مسودة", rejected: "مرفوض", approved: "معتمد", paid: "مدفوع" };
 const initial = {
   employee_id: "", payroll_month: new Date().toISOString().slice(0, 7),
   overtime_hours: 0, overtime_rate: 0, deductions: 0, deduction_reason: "",
   bonuses: 0, bonus_reason: "", advances: 0, advance_reason: "", notes: "",
+  command_id: "",
 };
 const n = number;
 
@@ -75,6 +76,7 @@ export function PayrollReviewTab({ data, profile, permissions, refresh }) {
   const [reject, setReject] = useState(null);
   const [reason, setReason] = useState("");
   const [pendingPaid, setPendingPaid] = useState(null);
+  const [pendingDelete, setPendingDelete] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -112,19 +114,20 @@ export function PayrollReviewTab({ data, profile, permissions, refresh }) {
     if (validation) return setError(validation);
     if (!employee) return setError("اختر الموظف.");
     setBusy(true);
+    const commandId = form.command_id || globalThis.crypto.randomUUID();
+    if (!form.command_id) setForm((current) => ({ ...current, command_id: commandId }));
     const payload = {
-      employee_id: employee.id, payroll_month: `${form.payroll_month}-01`,
-      base_salary: n(employee.base_salary), housing_allowance: n(employee.housing_allowance),
-      transport_allowance: n(employee.transport_allowance), other_allowance: n(employee.other_allowance),
       overtime_hours: n(form.overtime_hours), overtime_rate: n(form.overtime_rate),
       deductions: n(form.deductions), deduction_reason: form.deduction_reason.trim() || null,
       bonuses: permissions.payroll_bonus_manage ? n(form.bonuses) : 0,
       bonus_reason: permissions.payroll_bonus_manage ? form.bonus_reason.trim() || null : null,
       advances: n(form.advances), advance_reason: form.advance_reason.trim() || null,
-      notes: form.notes.trim() || null, created_by: profile.id,
+      notes: form.notes.trim() || null,
     };
-    const mutationResult = await supabase.from("payroll").insert(payload);
-    const result = await syncMutation({ scope: "payroll:create", mutationResult, refetch: () => refresh("payroll") });
+    const result = await runCriticalMutation({ scope: "payroll:create", mutate: () => supabase.rpc("create_payroll_draft", { target_employee: employee.id, target_month: `${form.payroll_month}-01`, payload, command_id: commandId }), verify: async () => {
+      const verification = await supabase.from("payroll").select("id,status").eq("command_id", commandId).single();
+      return verification.error ? verification : verification.data?.status === "draft";
+    }, refetch: () => refresh("payroll") });
     setBusy(false);
     if (result.error) return setError(friendlyError(result.error));
     setShow(false);
@@ -182,11 +185,18 @@ export function PayrollReviewTab({ data, profile, permissions, refresh }) {
 
   async function remove(row) {
     if (!["draft", "rejected"].includes(row.status)) return setError("لا يمكن حذف راتب معتمد أو مدفوع.");
-    if (!window.confirm("حذف مسودة الراتب؟")) return;
-    const mutationResult = await supabase.from("payroll").delete().eq("id", row.id);
-    const result = await syncMutation({ scope: "payroll:delete", mutationResult, refetch: () => refresh("payroll") });
+    setPendingDelete(row);
+  }
+
+  async function confirmDelete() {
+    setBusy(true);
+    const result = await runCriticalMutation({ scope: "payroll:delete", mutate: () => supabase.rpc("delete_payroll_draft", { target_payroll: pendingDelete.id }), verify: async () => {
+      const verification = await supabase.from("payroll").select("id").eq("id", pendingDelete.id).maybeSingle();
+      return verification.error ? verification : verification.data === null;
+    }, refetch: () => refresh("payroll") });
+    setBusy(false);
     if (result.error) setError(friendlyError(result.error));
-    else setSuccess("تم حذف المسودة.");
+    else { setPendingDelete(null); setSuccess("تم حذف المسودة."); }
   }
 
   const totalNet = rows.reduce((sum, row) => sum + n(row.net_salary), 0);
@@ -229,6 +239,7 @@ export function PayrollReviewTab({ data, profile, permissions, refresh }) {
       <div className="v22-actions modal-actions"><Button type="button" variant="ghost" onClick={() => setReject(null)}>رجوع</Button><Button variant="danger" disabled={busy}>تأكيد الرفض</Button></div>
     </form></div>}
     <ConfirmDialog open={Boolean(pendingPaid)} title="تأكيد صرف الراتب" description={`سيتم تسجيل راتب ${data.employees.find((row) => row.id === pendingPaid?.employee_id)?.full_name || "الموظف"} بقيمة ${money(pendingPaid?.net_salary)} كمدفوع.`} confirmLabel="نعم، تم الصرف" onCancel={() => setPendingPaid(null)} onConfirm={async () => { const result = await paid(pendingPaid); if (!result.error && result.data?.ok !== false) setPendingPaid(null); }}/>
+    <ConfirmDialog open={Boolean(pendingDelete)} title="حذف مسودة الراتب" description="سيُحذف فقط إذا بقي المسير مسودة أو مرفوضًا ولم يُرحّل إلى التكلفة الفعلية. السجلات المعتمدة والمدفوعة لا تُحذف." confirmLabel="حذف المسودة" danger busy={busy} onCancel={() => setPendingDelete(null)} onConfirm={confirmDelete}/>
     <Toast message={success} onDismiss={() => setSuccess("")}/>
   </div>;
 }
