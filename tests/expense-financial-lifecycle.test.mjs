@@ -29,7 +29,8 @@ test('expense RPC is not anonymously executable', () => {
 });
 
 test('expense UI captures project and exposes protected financial actions', () => {
-  assert.match(ui, /project_id: form\.projectId \|\| null/);
+  assert.match(ui, /target_project: form\.projectId \|\| null/);
+  assert.match(ui, /post_expense/);
   assert.match(ui, /prepare_operational_source_actual_cost/);
   assert.match(ui, /cancel_expense/);
   assert.match(ui, /اختياري للمصروف العام/);

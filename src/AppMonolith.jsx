@@ -678,7 +678,7 @@ export default function App() {
         {activeTab === "projectFiles" && <ProjectFilesHub data={data} permissions={permissions} refresh={refetchTable} />}
         {activeTab === "inventory" && <InventoryTab canViewFinancials={permissions.view_financials} onNavigate={navigate} allowedPages={permissions.pages || []} />}
         {activeTab === "purchases" && <ProcurementWorkspace data={data} onNavigate={navigate} />}
-        {activeTab === "expenses" && <ExpensesTab data={data} insertRow={insertRow} profileRole={role} refresh={() => refetchTable("expenses")} />}
+        {activeTab === "expenses" && <ExpensesTab data={data} profileRole={role} refresh={() => refetchTable("expenses")} />}
         {activeTab === "materials" && <MaterialsTab data={data} canDelete={permissions.can_delete} insertRow={insertRow} deleteRow={deleteRow} updateRow={updateRow} onNavigate={navigate} />}
         {activeTab === "products" && <ProductsTab data={data} canCreate={permissions.can_create_products} canEdit={permissions.can_edit_products} canArchive={permissions.can_delete && permissions.can_edit_products} hideProfitInfo={!permissions.view_financials} insertRow={insertRow} updateRow={updateRow} />}
         {activeTab === "production" && <ProductionTab data={data} profileRole={role} canViewFinancials={permissions.view_financials} />}
@@ -1452,9 +1452,9 @@ function PurchasesTab({ data, insertRow, deleteRow, canDelete }) {
 }
 
 /* -------------------------------- Expenses --------------------------------- */
-function ExpensesTab({ data, insertRow, profileRole, refresh }) {
+function ExpensesTab({ data, profileRole, refresh }) {
   const categories = ["كهرباء", "إيجار", "رواتب", "نقل", "صيانة", "إنترنت", "تسويق", "أخرى"];
-  const [form, setForm] = useState({ category: categories[0], amount: "", date: todayStr(), notes: "", projectId: "" });
+  const [form, setForm] = useState({ category: categories[0], amount: "", date: todayStr(), notes: "", projectId: "", commandId: "" });
   const [err, setErr] = useState(""); const [ok, setOk] = useState("");
   const [busyId, setBusyId] = useState(null);
   const [cancellingExpense, setCancellingExpense] = useState(null);
@@ -1462,11 +1462,25 @@ function ExpensesTab({ data, insertRow, profileRole, refresh }) {
   async function submit() {
     setErr(""); setOk("");
     if (num(form.amount) <= 0) return setErr("أدخل مبلغ أكبر من صفر");
-    const { data: authData } = await supabase.auth.getUser();
-    const e = await insertRow("expenses", { category: form.category, amount: num(form.amount), expense_date: form.date, notes: form.notes.trim() || null, project_id: form.projectId || null, created_by: authData?.user?.id || null });
-    if (e) return setErr(e);
-    setOk("تم تسجيل المصروف بنجاح");
-    setForm({ category: categories[0], amount: "", date: todayStr(), notes: "", projectId: "" });
+    const commandId = form.commandId || globalThis.crypto.randomUUID();
+    if (!form.commandId) setForm((current) => ({ ...current, commandId }));
+    const result = await runCriticalMutation({
+      scope: "expenses:post",
+      mutate: () => supabase.rpc("post_expense", {
+        expense_category: form.category, expense_amount: num(form.amount), spent_on: form.date,
+        expense_notes: form.notes.trim() || null, target_project: form.projectId || null, command_id: commandId,
+      }),
+      verify: async () => {
+        const verification = await supabase.from("expenses").select("id,cancelled_at").eq("command_id", commandId).single();
+        return verification.error ? verification : !verification.data?.cancelled_at;
+      },
+      refetch: refresh,
+    });
+    if (result.error) return setErr(result.mutationSaved
+      ? "تم إرسال المصروف، لكن تعذر التحقق أو تحديث الشاشة. حدّث الصفحة دون إنشاء مصروف جديد."
+      : result.error.message);
+    setOk(result.refreshError ? "تم تسجيل المصروف، لكن تعذر تحديث الشاشة. حدّث الصفحة بأمان." : "تم تسجيل المصروف بنجاح");
+    setForm({ category: categories[0], amount: "", date: todayStr(), notes: "", projectId: "", commandId: "" });
   }
   async function runFinancialAction(name, row, reason = null) {
     setErr(""); setOk(""); setBusyId(row.id);
