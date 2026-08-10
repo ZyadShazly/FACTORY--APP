@@ -3,7 +3,7 @@ import { Archive, Calendar, Download, Eye, File, MapPin, Paperclip, Plus, Rotate
 import { supabase } from "../supabaseClient";
 import { Button, ConfirmDialog, EmptyState, ErrorState, Field, Input, money, number, PageTitle, Panel, PermissionGuard, Select, SuccessState, TextArea, Toast, today } from "./shared";
 import { buildProjectFilePath, FILE_CATEGORIES, isSupportedProjectFile, PROJECT_FILES_ACCEPT, PROJECT_FILES_BUCKET, PROJECT_FILES_TABLE } from "./fileTypes";
-import { syncMutation } from "./mutations";
+import { runCriticalMutation, syncMutation } from "./mutations";
 import { PROJECT_EXECUTION_STAGES, PROJECT_LIFECYCLES } from "./projectDomain";
 import { ProjectWorkspace } from "./projectWorkspace";
 import { ArchiveSection, KpiCard, KpiGrid } from "../ui";
@@ -135,17 +135,22 @@ export function FileUploader({ project, files, permissions, profile, refresh }) 
         return setError(`فشل رفع الملف إلى التخزين: ${uploadResult.error.message}`);
       }
 
-      const createdAt = new Date().toISOString();
-      const fileRecord = {
-        project_id: projectId, file_name: file.name, file_path: filePath,
-        file_type: file.type || ext || "application/octet-stream", file_size: file.size,
-        category, description: description.trim() || null, uploaded_by: profile.id, created_at: createdAt,
-      };
-      const insertResult = await supabase.from(PROJECT_FILES_TABLE).insert(fileRecord).select("*").single();
+      const insertResult = await runCriticalMutation({
+        scope: "projectFiles:register",
+        mutate: () => supabase.rpc("register_project_file_upload", {
+          target_project: projectId, file_path: filePath, file_name: file.name,
+          file_type: file.type || ext || "application/octet-stream", file_size: file.size,
+          file_category: category, file_description: description.trim() || null,
+        }),
+        verify: async () => {
+          const verification = await supabase.from(PROJECT_FILES_TABLE).select("id").eq("file_path", filePath).maybeSingle();
+          return verification.error ? verification : Boolean(verification.data);
+        },
+      });
       console.info("[ProjectFiles] insertResult", insertResult);
-      if (insertResult.error || !insertResult.data) {
-        console.error("[ProjectFiles] database insert failed", insertResult.error, fileRecord);
-        const rollbackResult = await supabase.storage.from(bucketName).remove([filePath]);
+      if (insertResult.error || !insertResult.mutationResult?.data) {
+        console.error("[ProjectFiles] database insert failed", insertResult.error);
+        const rollbackResult = await supabase.rpc("discard_unregistered_upload", { bucket_name: bucketName, file_path: filePath });
         if (rollbackResult.error) console.error("[ProjectFiles] storage rollback failed", rollbackResult.error);
         return setError(`تم إلغاء الرفع لأن حفظ بيانات الملف فشل: ${insertResult.error?.message || "لم يرجع السجل المحفوظ"}`);
       }
