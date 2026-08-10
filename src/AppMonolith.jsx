@@ -1040,6 +1040,7 @@ function RentalsTab({ data, refresh, canManage }) {
   const [form, setForm] = useState({ productId: "", customerId: "", qty: "", rentalFee: "", startDate: todayStr(), expectedReturn: "", commandId: "" });
   const [err, setErr] = useState(""); const [ok, setOk] = useState("");
   const [cancelAction, setCancelAction] = useState(null);
+  const [returnAction, setReturnAction] = useState(null);
 
   async function submit() {
     setErr(""); setOk("");
@@ -1072,12 +1073,31 @@ function RentalsTab({ data, refresh, canManage }) {
     setOk(result.refreshError ? "تم تسجيل الإيجار وخصم المخزون، لكن تعذر تحديث الشاشة. حدّث الصفحة بأمان." : "تم تسجيل الإيجار وخصم الكمية من مخزون المنتجات التامة");
     setForm({ productId: "", customerId: "", qty: "", rentalFee: "", startDate: todayStr(), expectedReturn: "", commandId: "" });
   }
-  async function markReturned(r) {
+  async function confirmReturnRental() {
+    const { row, returnDate } = returnAction;
+    if (!returnDate) return setReturnAction((current) => ({ ...current, error: "تاريخ الاسترجاع مطلوب." }));
+    if (returnDate < row.start_date || returnDate > todayStr()) return setReturnAction((current) => ({ ...current, error: "تاريخ الاسترجاع يجب أن يكون بين تاريخ بداية الإيجار واليوم." }));
+    setReturnAction((current) => ({ ...current, busy: true, error: "" }));
     setErr(""); setOk("");
-    const mutationResult = await supabase.rpc("mark_rental_returned", { target_rental_id: r.id, target_return_date: todayStr() });
-    const result = await syncMutation({ scope: "rentals:return", mutationResult, refetch: () => Promise.all([refresh(), reloadInventory()]) });
-    if (result.error) return setErr(result.error.message);
-    setOk("تم تسجيل إرجاع الصنف بنجاح");
+    const result = await runCriticalMutation({
+      scope: "rentals:return",
+      mutate: () => supabase.rpc("mark_rental_returned", { target_rental_id: row.id, target_return_date: returnDate }),
+      verify: async () => {
+        const verification = await supabase.from("rentals").select("status,return_date").eq("id", row.id).single();
+        return verification.error ? verification : verification.data?.status === "returned";
+      },
+      refetch: () => Promise.all([refresh(), reloadInventory()]),
+    });
+    if (result.error) return setReturnAction((current) => ({
+      ...current, busy: false,
+      error: result.mutationSaved
+        ? "وصل تسجيل الاسترجاع للخادم، لكن تعذر التحقق. حدّث الشاشة قبل إعادة المحاولة."
+        : result.error.message,
+    }));
+    setReturnAction(null);
+    setOk(result.refreshError
+      ? "تم تسجيل الاسترجاع وإعادة الكمية للمخزون، لكن تعذر تحديث الشاشة. حدّث الصفحة دون إعادة العملية."
+      : "تم تسجيل الاسترجاع وإعادة الكمية للمخزون بنجاح.");
   }
 
   const rentalProducts = data.products.filter((p) => !p.archived_at && (p.item_type || "sale") !== "sale");
@@ -1126,7 +1146,7 @@ function RentalsTab({ data, refresh, canManage }) {
                   <Td>{p?.name || "—"}</Td><Td>{c?.name || "—"}</Td><Td>{r.qty}</Td>
                   <Td>{formatMoney(r.rental_fee)}</Td><Td>{r.start_date}</Td><Td>{r.expected_return_date || "—"}</Td>
                   <Td style={{ color: C.brass, fontWeight: 700 }}>مؤجر حاليًا</Td>
-                  <Td><div style={{display:"flex",gap:8,alignItems:"center"}}><Btn variant="ghost" onClick={() => markReturned(r)} style={{ fontSize: 12, padding: "5px 10px" }}>تسجيل الاسترجاع</Btn>{canManage && <button aria-label="إلغاء الإيجار" title="إلغاء الإيجار وعكس أثره" onClick={() => setCancelAction({row:r,reason:"",busy:false,error:""})} style={{background:"none",border:"none",cursor:"pointer",color:C.red}}><X size={15}/></button>}</div></Td>
+                  <Td><div style={{display:"flex",gap:8,alignItems:"center"}}><Btn variant="ghost" onClick={() => setReturnAction({row:r,returnDate:todayStr(),busy:false,error:""})} style={{ fontSize: 12, padding: "5px 10px" }}>تسجيل الاسترجاع</Btn>{canManage && <button aria-label="إلغاء الإيجار" title="إلغاء الإيجار وعكس أثره" onClick={() => setCancelAction({row:r,reason:"",busy:false,error:""})} style={{background:"none",border:"none",cursor:"pointer",color:C.red}}><X size={15}/></button>}</div></Td>
                 </tr>
               );
             })}
@@ -1136,6 +1156,9 @@ function RentalsTab({ data, refresh, canManage }) {
       <ArchiveSection title="سجل الإيجارات المكتملة والملغاة" count={rentalHistory.length} helpText="الإرجاعات والإلغاءات نهائية ومحفوظة للمراجعة، ولا تزاحم الإيجارات النشطة.">
         {rentalHistory.length === 0 ? <Empty text="لا يوجد سجل إيجارات سابق" /> : <Table headers={["الصنف", "العميل", "الكمية", "القيمة", "الحالة", "التاريخ النهائي", "السبب"]}>{[...rentalHistory].reverse().map((r) => <tr key={r.id}><Td>{data.products.find((p) => p.id === r.product_id)?.name || "—"}</Td><Td>{data.customers.find((c) => c.id === r.customer_id)?.name || "—"}</Td><Td>{r.qty}</Td><Td>{formatMoney(r.rental_fee)}</Td><Td style={{color:r.status === "returned" ? C.green : C.red,fontWeight:700}}>{r.status === "returned" ? "تم الاسترجاع" : "ملغي"}</Td><Td>{r.status === "returned" ? r.return_date || "—" : r.cancelled_at ? new Date(r.cancelled_at).toLocaleString("ar-EG") : "—"}</Td><Td>{r.cancellation_reason || "—"}</Td></tr>)}</Table>}
       </ArchiveSection>
+      <ConfirmDialog open={Boolean(returnAction)} title="تسجيل استرجاع الإيجار" description="سيُغلق الإيجار وتعود الكمية إلى المخزون المتاح. لا يمكن التراجع عن الاسترجاع من هذه الشاشة." confirmLabel="تأكيد الاسترجاع" busy={returnAction?.busy} error={returnAction?.error} onConfirm={confirmReturnRental} onCancel={()=>setReturnAction(null)}>
+        <Field label="تاريخ الاسترجاع"><Input type="date" min={returnAction?.row?.start_date || undefined} max={todayStr()} value={returnAction?.returnDate || ""} onChange={(event)=>setReturnAction((current)=>({...current,returnDate:event.target.value,error:""}))}/></Field>
+      </ConfirmDialog>
       <ConfirmDialog open={Boolean(cancelAction)} title="إلغاء عملية الإيجار" description="سيبقى السجل محفوظًا وستعود الكمية للمتاح. الطلب المكرر لن يطبق الإلغاء مرتين." confirmLabel="إلغاء وعكس" danger reasonRequired reason={cancelAction?.reason||""} busy={cancelAction?.busy} error={cancelAction?.error} onReasonChange={(reason)=>setCancelAction((current)=>({...current,reason,error:""}))} onConfirm={confirmCancelRental} onCancel={()=>setCancelAction(null)}/>
     </div>
   );

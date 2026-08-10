@@ -342,7 +342,7 @@ begin
   if not found then raise exception using errcode='P0002',message='Rental not found'; end if;
   if saved.status='returned' then return to_jsonb(saved); end if;
   if saved.status<>'active' then raise exception using errcode='23514',message='Only an active rental can be returned'; end if;
-  if target_return_date is null or target_return_date<saved.start_date then raise exception using errcode='22023',message='Return date cannot be before rental start'; end if;
+  if target_return_date is null or target_return_date<saved.start_date or target_return_date>current_date then raise exception using errcode='22023',message='Return date must be between rental start and today'; end if;
   perform private.reverse_commercial_inventory('rental',saved.id,'rental_return','Rental returned');
   update public.rentals set status='returned',return_date=target_return_date,returned_at=statement_timestamp(),returned_by=actor where id=target_rental_id returning * into saved;
   return to_jsonb(saved);

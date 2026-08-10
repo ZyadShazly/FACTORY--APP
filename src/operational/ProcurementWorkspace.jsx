@@ -112,6 +112,7 @@ export function ProcurementWorkspace({data,onNavigate}){
   const[quote,setQuote]=useState({request_id:"",supplier_id:"",unit_price:"",currency:currencyCode,base_currency:currencyCode,exchange_rate:"1",rate_date:new Date().toISOString().slice(0,10)});
   const[draftOrder,setDraftOrder]=useState({quote_id:"",display_name:""});
   const[receipt,setReceipt]=useState({order_id:"",warehouse_id:"",delivery_ref:""});
+  const[receiptLines,setReceiptLines]=useState({});
   const[invoice,setInvoice]=useState({order_id:"",invoice_number:"",invoice_date:new Date().toISOString().slice(0,10)});
   const[sendReference,setSendReference]=useState(""),[orderName,setOrderName]=useState("");
 
@@ -163,7 +164,19 @@ export function ProcurementWorkspace({data,onNavigate}){
     if(!receipt.order_id||!receipt.warehouse_id)return setError("اختر أمر الشراء والمخزن المستلم.");
     const items=ws.order_items.filter(item=>item.purchase_order_id===receipt.order_id&&Number(item.received_quantity)<Number(item.quantity));
     if(!items.length)return setError("لا توجد كميات متبقية للاستلام.");
-    await call("confirm_goods_receipt_to_inventory",{payload:{purchase_order_id:receipt.order_id,supplier_delivery_reference:receipt.delivery_ref,notes:null,items:items.map(item=>({purchase_order_item_id:item.id,quantity_received:Number(item.quantity)-Number(item.received_quantity),accepted_quantity:Number(item.quantity)-Number(item.received_quantity),condition:"accepted"}))},target_warehouse:receipt.warehouse_id,target_location:null},"تم تأكيد الاستلام وترحيل الكميات للمخزون.");
+    const lines=[];
+    for(const item of items){
+      const remaining=Number(item.quantity)-Number(item.received_quantity),values=receiptLines[item.id]||{};
+      const accepted=Number(values.accepted||0),rejected=Number(values.rejected||0);
+      if(!Number.isFinite(accepted)||!Number.isFinite(rejected)||accepted<0||rejected<0)return setError("كميات الاستلام يجب أن تكون أرقامًا غير سالبة.");
+      if(accepted>remaining)return setError(`الكمية المقبولة لبند ${item.description} تتجاوز المتبقي (${remaining}).`);
+      if(accepted+rejected<=0)continue;
+      lines.push({purchase_order_item_id:item.id,quantity_received:accepted+rejected,accepted_quantity:accepted,condition:rejected>0?(accepted>0?"partially_rejected":"rejected"):"accepted",notes:values.notes?.trim()||null});
+    }
+    if(!lines.length)return setError("أدخل كمية مستلمة في بند واحد على الأقل.");
+    if(!lines.some(line=>line.accepted_quantity>0))return setError("لا يمكن ترحيل إذن بلا كمية مقبولة للمخزون. سجّل الاستلام عند وجود كمية مقبولة واحدة على الأقل.");
+    const saved=await call("confirm_goods_receipt_to_inventory",{payload:{purchase_order_id:receipt.order_id,supplier_delivery_reference:receipt.delivery_ref,notes:null,items:lines},target_warehouse:receipt.warehouse_id,target_location:null},"تم تأكيد الاستلام وترحيل الكميات المقبولة للمخزون.");
+    if(saved){setReceipt(current=>({...current,order_id:"",delivery_ref:""}));setReceiptLines({})}
   }
   async function approveInvoice(){
     const order=ws.orders.find(item=>item.id===invoice.order_id),items=ws.order_items.filter(item=>item.purchase_order_id===invoice.order_id);
@@ -182,6 +195,15 @@ export function ProcurementWorkspace({data,onNavigate}){
   const receivedQuotes=ws.quotes.filter(row=>row.status==="received");
   const receivableOrders=ws.orders.filter(row=>["approved","sent","partially_received"].includes(row.status));
   const invoiceableOrders=ws.orders.filter(row=>["partially_received","fully_received"].includes(row.status));
+  const selectedReceiptItems=ws.order_items.filter(item=>item.purchase_order_id===receipt.order_id&&Number(item.received_quantity)<Number(item.quantity));
+
+  function chooseReceiptOrder(orderId){
+    setReceipt(current=>({...current,order_id:orderId}));
+    const lines={};
+    ws.order_items.filter(item=>item.purchase_order_id===orderId&&Number(item.received_quantity)<Number(item.quantity)).forEach(item=>{lines[item.id]={accepted:String(Number(item.quantity)-Number(item.received_quantity)),rejected:"0",notes:""}});
+    setReceiptLines(lines);
+  }
+  function updateReceiptLine(itemId,key,value){setReceiptLines(current=>({...current,[itemId]:{...(current[itemId]||{}),[key]:value}}))}
 
   const requestCard=row=><div key={row.id} style={cardStyle}><DocumentIdentity row={row} serialKey="request_number"/><span>{projectName(row.project_id)}</span><Status value={row.status}/><span style={actionsStyle}><Button tone="ghost" onClick={()=>openDocument("request",row)}>معاينة التفاصيل</Button>{row.status==="draft"&&<Button onClick={()=>call("submit_purchase_request",{target_id:row.id},"تم إرسال الطلب للاعتماد.")}>إرسال للاعتماد</Button>}</span></div>;
   const orderCard=row=><div key={row.id} style={cardStyle}><DocumentIdentity row={row} serialKey="order_number"/><span>{supplierName(row.supplier_id)} · {formatDocumentMoney(row.total_amount,row.currency)}</span><Status value={row.status}/><Button onClick={()=>openDocument("order",row)}>معاينة المستند</Button></div>;
@@ -236,11 +258,11 @@ export function ProcurementWorkspace({data,onNavigate}){
       </>}
       {tab==="receipts"&&<>
         {ws.capabilities.receive&&<Panel title="استلام أمر شراء وترحيله للمخزون"><div style={formStyle}>
-          <Field label="أمر الشراء"><select style={inputStyle} value={receipt.order_id} onChange={event=>setReceipt({...receipt,order_id:event.target.value})}><option value="">اختر</option>{receivableOrders.map(row=><option key={row.id} value={row.id}>{recordName(row,"order_number")} · {row.order_number}</option>)}</select></Field>
+          <Field label="أمر الشراء"><select style={inputStyle} value={receipt.order_id} onChange={event=>chooseReceiptOrder(event.target.value)}><option value="">اختر</option>{receivableOrders.map(row=><option key={row.id} value={row.id}>{recordName(row,"order_number")} · {row.order_number}</option>)}</select></Field>
           <Field label="المخزن"><select style={inputStyle} value={receipt.warehouse_id} onChange={event=>setReceipt({...receipt,warehouse_id:event.target.value})}><option value="">اختر</option>{inventory.warehouses.map(row=><option key={row.id} value={row.id}>{row.name}</option>)}</select></Field>
           <Field label="مرجع التسليم"><input style={inputStyle} value={receipt.delivery_ref} onChange={event=>setReceipt({...receipt,delivery_ref:event.target.value})}/></Field>
           <Button onClick={receiveOrder}>استلام وترحيل</Button>
-        </div></Panel>}
+        </div>{selectedReceiptItems.length>0&&<div className="procurement-receipt-lines"><HelpText title="كميات الشحنة الفعلية">عدّل المقبول عند الاستلام الجزئي، وسجّل التالف أو المرفوض منفصلًا. يُرحّل المقبول فقط إلى المخزون.</HelpText><ResponsiveTable headers={["البند","المتبقي","المقبول","المرفوض/التالف","ملاحظة الفحص"]}>{selectedReceiptItems.map(item=>{const remaining=Number(item.quantity)-Number(item.received_quantity),line=receiptLines[item.id]||{};return <tr key={item.id}><td>{item.description}</td><td>{remaining} {item.unit}</td><td><input aria-label={`الكمية المقبولة ${item.description}`} type="number" min="0" max={remaining} step="any" style={inputStyle} value={line.accepted??""} onChange={event=>updateReceiptLine(item.id,"accepted",event.target.value)}/></td><td><input aria-label={`الكمية المرفوضة ${item.description}`} type="number" min="0" step="any" style={inputStyle} value={line.rejected??"0"} onChange={event=>updateReceiptLine(item.id,"rejected",event.target.value)}/></td><td><input aria-label={`ملاحظة فحص ${item.description}`} style={inputStyle} value={line.notes??""} onChange={event=>updateReceiptLine(item.id,"notes",event.target.value)}/></td></tr>})}</ResponsiveTable></div>}</Panel>}
         <Panel title="إيصالات الاستلام"><div className="procurement-record-list">{ws.receipts.map(row=><div key={row.id} style={cardStyle}><DocumentIdentity row={row} serialKey="receipt_number"/><Status value={row.status}/><Button onClick={()=>openDocument("receipt",row)}>معاينة وطباعة</Button></div>)}{!ws.receipts.length&&<Empty title="لا توجد إيصالات استلام"/>}</div></Panel>
       </>}
       {tab==="invoices"&&<>

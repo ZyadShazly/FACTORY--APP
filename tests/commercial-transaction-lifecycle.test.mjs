@@ -42,6 +42,8 @@ test("UI excludes cancelled transactions from balances and stock and keeps audit
   assert.match(ui,/ArchiveSection title="سجل الإيجارات المكتملة والملغاة"/);
   assert.match(ui,/supabase\.rpc\("cancel_sale"/);
   assert.match(ui,/supabase\.rpc\("mark_rental_returned"/);
+  assert.match(ui,/title="تسجيل استرجاع الإيجار"/);
+  assert.match(ui,/scope: "rentals:return"[\s\S]*runCriticalMutation/);
   assert.match(ui,/supabase\.rpc\("cancel_rental"/);
   assert.doesNotMatch(ui,/deleteRow\("(?:sales|rentals)"/);
 });

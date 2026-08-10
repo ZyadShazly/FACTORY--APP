@@ -147,6 +147,13 @@ function patchPayroll() {
   const path = "src/v22/payroll.jsx";
   let source = read(path);
 
+  // The active payroll workflow now lives in PayrollReviewTab. This file only
+  // owns employee management, so the legacy payroll patches are no longer needed.
+  if (!source.includes("export function PayrollTab")) {
+    write(path, source);
+    return;
+  }
+
   if (!source.includes('employee_dependency_summary')) {
     source = replaceRequired(
       source,

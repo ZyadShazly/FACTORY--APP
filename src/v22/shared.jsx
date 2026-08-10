@@ -66,7 +66,7 @@ export function Toast({ type = "success", message, onDismiss }) {
   </div>;
 }
 
-export function ConfirmDialog({ open, title, description, confirmLabel = "تأكيد", danger = false, busy = false, reasonRequired = false, reason = "", onReasonChange, error = "", onConfirm, onCancel }) {
+export function ConfirmDialog({ open, title, description, confirmLabel = "تأكيد", danger = false, busy = false, reasonRequired = false, reason = "", onReasonChange, error = "", onConfirm, onCancel, children }) {
   const titleId = React.useId();
   const descriptionId = React.useId();
   const reasonRef = React.useRef(null);
@@ -82,6 +82,7 @@ export function ConfirmDialog({ open, title, description, confirmLabel = "تأك
     <div className="v22-modal" role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={descriptionId} onMouseDown={(e) => e.stopPropagation()}>
       <button className="v22-icon-button close" disabled={busy} onClick={onCancel} aria-label="إغلاق"><X size={18} /></button>
       <h3 id={titleId}>{title}</h3><p id={descriptionId}>{description}</p>
+      {children}
       {reasonRequired && <Field label="السبب الإجباري"><TextArea ref={reasonRef} value={reason} disabled={busy} onChange={(event)=>onReasonChange?.(event.target.value)} /></Field>}
       <ErrorState error={error}/>
       <div className="v22-actions"><Button variant="ghost" disabled={busy} onClick={onCancel}>إلغاء</Button><Button variant={danger ? "danger" : "primary"} disabled={busy || (reasonRequired && !reason.trim())} onClick={onConfirm}>{busy ? "جارِ الحفظ..." : confirmLabel}</Button></div>

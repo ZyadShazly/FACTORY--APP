@@ -100,7 +100,7 @@ export function ProductionWorkspace({data,profileRole,canViewFinancials=true}){
   }
 
   async function operationEvent(operation,event,reason=null){
-    await call(operation.id,"record_production_operation_event",{
+    return await call(operation.id,"record_production_operation_event",{
       target_operation:operation.id,target_event:event,event_reason:reason,
       good_quantity:null,bad_quantity:null,rework_qty:null
     },{

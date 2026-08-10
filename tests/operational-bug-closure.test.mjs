@@ -85,11 +85,13 @@ test("asset assignment supports partial return continuation and stable sharing p
 
 test("employee lifecycle is checked and finalized payroll stays immutable", () => {
   const payroll = source("src/v22/payroll.jsx");
+  const payrollReview = source("src/v22/PayrollReviewTab.jsx");
   assert.doesNotMatch(payroll, /from\("employees"\)\.delete\(\)/);
   assert.match(payroll, /supabase\.rpc\("set_employee_status"/);
   assert.match(payroll, /supabase\.rpc\("delete_employee_if_unused"/);
-  assert.match(payroll, /row\.status !== "draft"/);
-  assert.match(payroll, /p\.status === "draft"/);
+  assert.match(payrollReview, /!\["draft", "rejected"\]\.includes\(row\.status\)/);
+  assert.match(payrollReview, /\["draft", "rejected"\]\.includes\(row\.status\)/);
+  assert.doesNotMatch(payroll, /export function PayrollTab/);
 });
 
 test("database migration provides defense in depth", () => {
