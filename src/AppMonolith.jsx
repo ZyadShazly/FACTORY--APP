@@ -34,6 +34,7 @@ import { InventoryWorkspace } from "./operational/InventoryWorkspace";
 import { MaterialsCatalogWorkspace } from "./operational/MaterialsCatalogWorkspace";
 import { ProductionWorkspace } from "./operational/ProductionWorkspace";
 import { ProcurementWorkspace } from "./operational/ProcurementWorkspace";
+import { CommercialAdvancesPanel } from "./operational/CommercialAdvancesPanel";
 import { ArchiveSection } from "./ui/foundation";
 import { canonicalMaterialAlerts } from "./domain/inventoryBalances";
 import { readWorkspaceLocation, workspaceUrl } from "./app/urlNavigation";
@@ -1112,7 +1113,7 @@ function RentalsTab({ data, insertRow, refresh, canManage }) {
 function SuppliersTab({ data, insertRow, updateRow, refresh, canManage }) {
   const [name, setName] = useState(""); const [phone, setPhone] = useState("");
   const [editingId, setEditingId] = useState(null);
-  const [payment, setPayment] = useState({ supplierId: "", amount: "", date: todayStr() });
+  const [payment, setPayment] = useState({ supplierId: "", amount: "", date: todayStr(), commandId: "" });
   const [err, setErr] = useState(""); const [expanded, setExpanded] = useState(null);
   const [search, setSearch] = useState("");
   const [pendingPayment, setPendingPayment] = useState(null); const [paymentBusy, setPaymentBusy] = useState(false);
@@ -1128,12 +1129,14 @@ function SuppliersTab({ data, insertRow, updateRow, refresh, canManage }) {
   }
   async function commitPayment(payload = payment) {
     setPaymentBusy(true); setErr("");
-    const result = await supabase.rpc("record_supplier_payment", { target_supplier: payload.supplierId, payment_amount: num(payload.amount), paid_on: payload.date, payment_note: null });
+    const commandId = payload.commandId || globalThis.crypto.randomUUID();
+    if (!payload.commandId) { setPayment((current) => ({ ...current, commandId })); setPendingPayment((current) => current ? ({ ...current, commandId }) : current); }
+    const result = await supabase.rpc("record_supplier_payment", { target_supplier: payload.supplierId, payment_amount: num(payload.amount), paid_on: payload.date, payment_note: null, command_id: commandId });
     if (result.error) { setPaymentBusy(false); return setErr(result.error.message); }
     const refreshed = await refresh();
     setPaymentBusy(false); setPendingPayment(null);
     if (refreshed?.error) return setErr("تم حفظ الدفعة، لكن تعذر تحديث الشاشة. حدّث الصفحة بأمان؛ لا تعِد تسجيل الدفعة.");
-    setPayment({ supplierId: "", amount: "", date: todayStr() });
+    setPayment({ supplierId: "", amount: "", date: todayStr(), commandId: "" });
   }
   async function addPayment() {
     if (!payment.supplierId) return setErr("اختر المورد");
@@ -1179,9 +1182,9 @@ function SuppliersTab({ data, insertRow, updateRow, refresh, canManage }) {
       <Card style={{ marginBottom: 18 }}>
         <div style={{ fontWeight: 700, marginBottom: 12 }}>تسجيل دفعة لمورد</div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <Field label="المورد"><Select value={payment.supplierId} onChange={(e) => setPayment({ ...payment, supplierId: e.target.value })}><option value="">اختر المورد</option>{activeSuppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</Select></Field>
-          <Field label="المبلغ"><Input type="number" value={payment.amount} onChange={(e) => setPayment({ ...payment, amount: e.target.value })} /></Field>
-          <Field label="التاريخ"><Input type="date" value={payment.date} onChange={(e) => setPayment({ ...payment, date: e.target.value })} /></Field>
+          <Field label="المورد"><Select value={payment.supplierId} onChange={(e) => setPayment({ ...payment, supplierId: e.target.value, commandId:"" })}><option value="">اختر المورد</option>{activeSuppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</Select></Field>
+          <Field label="المبلغ"><Input type="number" value={payment.amount} onChange={(e) => setPayment({ ...payment, amount: e.target.value, commandId:"" })} /></Field>
+          <Field label="التاريخ"><Input type="date" value={payment.date} onChange={(e) => setPayment({ ...payment, date: e.target.value, commandId:"" })} /></Field>
         </div>
         <div style={{ marginTop: 12 }}><Btn disabled={paymentBusy} onClick={addPayment}><Wallet size={15} /> {paymentBusy ? "جارِ التسجيل..." : "تسجيل الدفعة"}</Btn></div>
         {err && <Banner>{err}</Banner>}
@@ -1201,7 +1204,7 @@ function SuppliersTab({ data, insertRow, updateRow, refresh, canManage }) {
                     <button onClick={() => setExpanded(expanded === s.id ? null : s.id)} style={{ background: "none", border: "none", color: C.brass, cursor: "pointer", fontSize: 12.5 }}>{expanded === s.id ? "إخفاء الحركات" : "عرض الحركات"}</button>
                   </Td>
                 </tr>
-                {expanded === s.id && <tr><Td colSpan={7} style={{ background: C.panelAlt }}><SupplierLedger supplierId={s.id} data={data} /></Td></tr>}
+                {expanded === s.id && <tr><Td colSpan={7} style={{ background: C.panelAlt }}><SupplierLedger supplierId={s.id} data={data} /><CommercialAdvancesPanel partyType="supplier" partyId={s.id} canReverse={canManage} onChanged={refresh}/></Td></tr>}
               </React.Fragment>
             ); })}
           </Table>
@@ -1230,7 +1233,7 @@ function SupplierLedger({ supplierId, data }) {
 function CustomersTab({ data, insertRow, updateRow, refresh, canManage }) {
   const [name, setName] = useState(""); const [phone, setPhone] = useState("");
   const [editingId, setEditingId] = useState(null);
-  const [receipt, setReceipt] = useState({ customerId: "", amount: "", date: todayStr() });
+  const [receipt, setReceipt] = useState({ customerId: "", amount: "", date: todayStr(), commandId: "" });
   const [err, setErr] = useState(""); const [expanded, setExpanded] = useState(null);
   const [search, setSearch] = useState("");
   const [pendingReceipt, setPendingReceipt] = useState(null); const [receiptBusy, setReceiptBusy] = useState(false);
@@ -1246,12 +1249,14 @@ function CustomersTab({ data, insertRow, updateRow, refresh, canManage }) {
   }
   async function commitReceipt(payload = receipt) {
     setReceiptBusy(true); setErr("");
-    const result = await supabase.rpc("record_customer_receipt", { target_customer: payload.customerId, receipt_amount: num(payload.amount), received_on: payload.date, receipt_note: null });
+    const commandId = payload.commandId || globalThis.crypto.randomUUID();
+    if (!payload.commandId) { setReceipt((current) => ({ ...current, commandId })); setPendingReceipt((current) => current ? ({ ...current, commandId }) : current); }
+    const result = await supabase.rpc("record_customer_receipt", { target_customer: payload.customerId, receipt_amount: num(payload.amount), received_on: payload.date, receipt_note: null, command_id: commandId });
     if (result.error) { setReceiptBusy(false); return setErr(result.error.message); }
     const refreshed = await refresh();
     setReceiptBusy(false); setPendingReceipt(null);
     if (refreshed?.error) return setErr("تم حفظ التحصيل، لكن تعذر تحديث الشاشة. حدّث الصفحة بأمان؛ لا تعِد تسجيل التحصيل.");
-    setReceipt({ customerId: "", amount: "", date: todayStr() });
+    setReceipt({ customerId: "", amount: "", date: todayStr(), commandId: "" });
   }
   async function addReceipt() {
     if (!receipt.customerId) return setErr("اختر العميل");
@@ -1297,9 +1302,9 @@ function CustomersTab({ data, insertRow, updateRow, refresh, canManage }) {
       <Card style={{ marginBottom: 18 }}>
         <div style={{ fontWeight: 700, marginBottom: 12 }}>تسجيل تحصيل من عميل</div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <Field label="العميل"><Select value={receipt.customerId} onChange={(e) => setReceipt({ ...receipt, customerId: e.target.value })}><option value="">اختر العميل</option>{activeCustomers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</Select></Field>
-          <Field label="المبلغ"><Input type="number" value={receipt.amount} onChange={(e) => setReceipt({ ...receipt, amount: e.target.value })} /></Field>
-          <Field label="التاريخ"><Input type="date" value={receipt.date} onChange={(e) => setReceipt({ ...receipt, date: e.target.value })} /></Field>
+          <Field label="العميل"><Select value={receipt.customerId} onChange={(e) => setReceipt({ ...receipt, customerId: e.target.value, commandId:"" })}><option value="">اختر العميل</option>{activeCustomers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</Select></Field>
+          <Field label="المبلغ"><Input type="number" value={receipt.amount} onChange={(e) => setReceipt({ ...receipt, amount: e.target.value, commandId:"" })} /></Field>
+          <Field label="التاريخ"><Input type="date" value={receipt.date} onChange={(e) => setReceipt({ ...receipt, date: e.target.value, commandId:"" })} /></Field>
         </div>
         <div style={{ marginTop: 12 }}><Btn disabled={receiptBusy} onClick={addReceipt}><Wallet size={15} /> {receiptBusy ? "جارِ التسجيل..." : "تسجيل التحصيل"}</Btn></div>
         {err && <Banner>{err}</Banner>}
@@ -1319,7 +1324,7 @@ function CustomersTab({ data, insertRow, updateRow, refresh, canManage }) {
                     <button onClick={() => setExpanded(expanded === c.id ? null : c.id)} style={{ background: "none", border: "none", color: C.brass, cursor: "pointer", fontSize: 12.5 }}>{expanded === c.id ? "إخفاء الحركات" : "عرض الحركات"}</button>
                   </Td>
                 </tr>
-                {expanded === c.id && <tr><Td colSpan={7} style={{ background: C.panelAlt }}><CustomerLedger customerId={c.id} data={data} /></Td></tr>}
+                {expanded === c.id && <tr><Td colSpan={7} style={{ background: C.panelAlt }}><CustomerLedger customerId={c.id} data={data} /><CommercialAdvancesPanel partyType="customer" partyId={c.id} canReverse={canManage} onChanged={refresh}/></Td></tr>}
               </React.Fragment>
             ); })}
           </Table>
