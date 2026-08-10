@@ -85,7 +85,8 @@ function AuthGate`,
   }
 
   return (`;
-  if (!source.includes("options: { data: { full_name: fullName.trim(), role } }")) {
+  if (!source.includes("options: { data: { full_name: fullName.trim(), role } }")
+      && !source.includes("phone: normalizeAccountPhone(identifier), password")) {
     if (!submitPattern.test(source)) throw new Error("Missing AuthGate submit function");
     source = source.replace(submitPattern, replacement);
   }

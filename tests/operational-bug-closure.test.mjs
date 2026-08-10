@@ -59,13 +59,14 @@ test("operational patch is idempotent across LF and CRLF checkouts", () => {
   }
 });
 
-test("authentication failures are localized and network errors are caught", () => {
+test("managed authentication failures are localized and network errors are caught", () => {
   const app = source("src/AppMonolith.jsx");
   assert.match(app, /function authErrorMessage\(error\)/);
   assert.match(app, /تعذر الاتصال بالخادم/);
   assert.match(app, /catch \(error\) \{\s*setErr\(authErrorMessage\(error\)\)/);
-  assert.match(app, /options: \{ data: \{ full_name: fullName\.trim\(\), role \} \}/);
-  assert.match(app, /supabase\.rpc\("complete_my_profile"\)/);
+  assert.match(app, /phone: normalizeAccountPhone\(identifier\), password/);
+  assert.match(app, /action: "change_password"/);
+  assert.doesNotMatch(app, /supabase\.auth\.signUp\(/);
 });
 
 test("missing profiles self-recover after confirmed login", () => {

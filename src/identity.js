@@ -6,7 +6,7 @@ export const SYSTEM_ROLES = Object.freeze({
 });
 
 export const PROTECTED_ROLES = Object.freeze(["owner", "manager"]);
-export const SELF_SIGNUP_ROLES = Object.freeze(["accountant", "production"]);
+export const MANAGER_ASSIGNABLE_ROLES = Object.freeze(["accountant", "production"]);
 export const PRODUCTION_ALLOWED_PAGES = Object.freeze(["projects", "projectFiles", "inventory", "materials", "products", "production", "assets"]);
 
 export function isAdministrativeRole(role) {
@@ -27,8 +27,14 @@ export function identityProtectionReason(actor, target) {
 
 export function canAssignRole(actorRole, role) {
   if (actorRole === "owner") return Object.hasOwn(SYSTEM_ROLES, role);
-  if (actorRole === "manager") return SELF_SIGNUP_ROLES.includes(role);
+  if (actorRole === "manager") return MANAGER_ASSIGNABLE_ROLES.includes(role);
   return false;
+}
+
+export function normalizeAccountPhone(value) {
+  const compact = String(value || "").trim().replace(/[^0-9+]/g, "");
+  const international = compact.startsWith("00") ? `+${compact.slice(2)}` : compact;
+  return /^\+[1-9][0-9]{7,14}$/.test(international) ? international : "";
 }
 
 export function canAdministerTarget(actor, target) {

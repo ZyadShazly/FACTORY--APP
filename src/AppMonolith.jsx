@@ -19,7 +19,7 @@ import { demoData, demoProfile } from "./v22/demoData";
 import { runCriticalMutation, syncMutation } from "./v22/mutations";
 import { dataTableKeysForRole, resolveAllowedTab, TABLES } from "./realtime";
 import { buildNavigationGroups, loadNavigationState, NAV_GROUPS, NAV_GROUP_STORAGE_KEY } from "./navigation";
-import { canAdministerTarget, canAssignRole, identityProtectionReason, isAdministrativeRole, PRODUCTION_ALLOWED_PAGES, SELF_SIGNUP_ROLES, SYSTEM_ROLES } from "./identity";
+import { canAssignRole, identityProtectionReason, isAdministrativeRole, MANAGER_ASSIGNABLE_ROLES, normalizeAccountPhone, PRODUCTION_ALLOWED_PAGES, SYSTEM_ROLES } from "./identity";
 import { withTimeout } from "./bootstrap";
 import { createTableFetcher, EMPTY_DATA } from "./app/dataBootstrap";
 import { buildRealtimeChannelPlan, nextRealtimeState } from "./app/realtimeBootstrap";
@@ -65,7 +65,6 @@ const fmt = (n) => (isFinite(n) ? n : 0).toLocaleString("en-US", { minimumFracti
 const todayStr = () => new Date().toISOString().slice(0, 10);
 
 const ROLES = SYSTEM_ROLES;
-const SIGNUP_ROLES = SELF_SIGNUP_ROLES;
 const NAV_BY_ROLE = {
   manager: ["dashboard", "projects", "projectFiles", "inventory", "purchases", "expenses", "materials", "products", "production", "sales", "rentals", "suppliers", "customers", "employees", "payroll", "dailyLabor", "reports", "auditLog", "team"],
   accountant: ["projects", "projectFiles", "inventory", "purchases", "expenses", "materials", "products", "production", "sales", "rentals", "suppliers", "customers", "employees", "payroll", "dailyLabor"],
@@ -252,50 +251,32 @@ function SearchBox({ value, onChange, placeholder }) {
   );
 }
 
-/* ----------------------------- شاشة الدخول والتسجيل ----------------------------- */
+/* ----------------------------- شاشة الدخول ----------------------------- */
 function authErrorMessage(error) {
   const message = String(error?.message || error || "").toLowerCase();
-  if (message.includes("invalid login credentials")) return "بيانات الدخول غير صحيحة. راجع الإيميل وكلمة السر.";
-  if (message.includes("email not confirmed")) return "لازم تأكد الإيميل الأول، وبعدها سجّل دخول.";
-  if (message.includes("user already registered")) return "الحساب موجود بالفعل. استخدم تسجيل الدخول.";
+  if (message.includes("invalid login credentials")) return "بيانات الدخول غير صحيحة. راجع رقم الهاتف أو البريد وكلمة السر.";
   if (message.includes("password") && message.includes("least")) return "كلمة السر أقصر من الحد المطلوب.";
   if (message.includes("failed to fetch") || message.includes("network") || message.includes("timeout")) return "تعذر الاتصال بالخادم. راجع الإنترنت وحاول مرة أخرى.";
   return error?.message || "تعذر إتمام العملية. حاول مرة أخرى.";
 }
 
 function AuthGate({ notice = "" }) {
-  const [mode, setMode] = useState("login");
-  const [fullName, setFullName] = useState("");
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState(SIGNUP_ROLES[0]);
   const [err, setErr] = useState("");
-  const [info, setInfo] = useState("");
   const [busy, setBusy] = useState(false);
 
   async function submit() {
-    setErr(""); setInfo("");
-    if (!email.trim() || !password) return setErr("اكتب الإيميل وكلمة السر");
+    setErr("");
+    if (!identifier.trim() || !password) return setErr("اكتب رقم الهاتف أو البريد وكلمة السر");
+    const login = identifier.includes("@")
+      ? { email: identifier.trim().toLowerCase(), password }
+      : { phone: normalizeAccountPhone(identifier), password };
+    if ("phone" in login && !login.phone) return setErr("اكتب رقم الهاتف بالصيغة الدولية، مثال: +9665XXXXXXXX");
     setBusy(true);
     try {
-      if (mode === "login") {
-        const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
-        if (error) setErr(authErrorMessage(error));
-      } else {
-        if (!fullName.trim()) return setErr("اكتب اسمك");
-        const { data: signData, error } = await supabase.auth.signUp({
-          email: email.trim(),
-          password,
-          options: { data: { full_name: fullName.trim(), role } },
-        });
-        if (error) return setErr(authErrorMessage(error));
-        if (signData?.session) {
-          const profileResult = await supabase.rpc("complete_my_profile");
-          if (profileResult.error) setErr(authErrorMessage(profileResult.error));
-        } else {
-          setInfo("تم إنشاء الحساب. افتح الإيميل وأكّد الحساب ثم سجّل دخول.");
-        }
-      }
+      const { error } = await supabase.auth.signInWithPassword(login);
+      if (error) setErr(authErrorMessage(error));
     } catch (error) {
       setErr(authErrorMessage(error));
     } finally {
@@ -309,46 +290,62 @@ function AuthGate({ notice = "" }) {
         <img src="/logo.png" alt="NEXTEP" style={{ width: 300, maxWidth: "82vw", height: 110, objectFit: "contain", display: "block" }} />
       </div>
       <Card style={{ width: 340 }}>
-        <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-          <button onClick={() => setMode("login")} style={{ flex: 1, padding: "8px", borderRadius: 8, border: "none", cursor: "pointer", background: mode === "login" ? C.wood : "transparent", color: mode === "login" ? "#fff" : C.muted, fontWeight: 700 }}>تسجيل الدخول</button>
-          <button onClick={() => setMode("signup")} style={{ flex: 1, padding: "8px", borderRadius: 8, border: "none", cursor: "pointer", background: mode === "signup" ? C.wood : "transparent", color: mode === "signup" ? "#fff" : C.muted, fontWeight: 700 }}>حساب جديد</button>
-        </div>
+        <h2 style={{ margin: "0 0 16px", textAlign: "center" }}>تسجيل الدخول</h2>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {mode === "signup" && (
-            <Field label="الاسم">
-              <Input value={fullName} onChange={(e) => setFullName(e.target.value)} />
-            </Field>
-          )}
-          <Field label="الإيميل">
-            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+          <Field label="رقم الهاتف أو البريد">
+            <Input value={identifier} onChange={(e) => setIdentifier(e.target.value)} placeholder="+9665XXXXXXXX" autoComplete="username" />
           </Field>
           <Field label="كلمة السر">
-            <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+            <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />
           </Field>
-          {mode === "signup" && (
-            <Field label="صفتك في المصنع">
-              <Select value={role} onChange={(e) => setRole(e.target.value)}>
-                {SIGNUP_ROLES.map((k) => <option key={k} value={k}>{ROLES[k].label}</option>)}
-              </Select>
-            </Field>
-          )}
         </div>
 
         <div style={{ marginTop: 16 }}>
           <Btn onClick={submit} disabled={busy} style={{ width: "100%", justifyContent: "center" }}>
-            {busy ? "..." : mode === "login" ? "دخول" : "إنشاء الحساب"}
+            {busy ? "..." : "دخول"}
           </Btn>
         </div>
         {err && <Banner type="error">{err}</Banner>}
         {notice && <Banner type="error">{notice}</Banner>}
-        {info && <Banner type="success">{info}</Banner>}
       </Card>
       <div style={{ fontSize: 11.5, color: C.muted, marginTop: 16, maxWidth: 340, textAlign: "center" }}>
-        كل من يسجّل حساب جديد يظهر لباقي المستخدمين تلقائيًا، والبيانات مشتركة بين الجميع.
+        الحسابات ينشئها مالك النظام أو مدير النظام فقط. تواصل مع المسؤول إذا لم يكن لديك حساب.
       </div>
     </div>
   );
+}
+
+function PasswordChangeGate({ profile, onComplete, onSignOut }) {
+  const [password, setPassword] = useState("");
+  const [confirmation, setConfirmation] = useState("");
+  const [message, setMessage] = useState({ type: "", text: "" });
+  const [busy, setBusy] = useState(false);
+
+  async function submit() {
+    setMessage({ type: "", text: "" });
+    if (password.length < 10) return setMessage({ type: "error", text: "كلمة السر الجديدة يجب ألا تقل عن 10 أحرف." });
+    if (password !== confirmation) return setMessage({ type: "error", text: "تأكيد كلمة السر غير مطابق." });
+    setBusy(true);
+    const completionResult = await supabase.functions.invoke("admin-manage-user", { body: { action: "change_password", new_password: password } });
+    if (completionResult.error || !completionResult.data?.ok) {
+      setBusy(false);
+      return setMessage({ type: "error", text: completionResult.data?.error || authErrorMessage(completionResult.error) });
+    }
+    await onComplete();
+    setBusy(false);
+  }
+
+  return <div dir="rtl" style={{ fontFamily: "Tajawal, sans-serif", background: C.bg, minHeight: "100vh", display: "grid", placeItems: "center", color: C.text, padding: 24 }}>
+    <Card style={{ width: 390, maxWidth: "100%" }}>
+      <h2 style={{ marginTop: 0 }}>تغيير كلمة السر المؤقتة</h2>
+      <p style={{ color: C.muted }}>مرحبًا {profile.full_name}. يلزم اختيار كلمة سر خاصة بك قبل فتح النظام.</p>
+      <Field label="كلمة السر الجديدة"><Input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="new-password" /></Field>
+      <Field label="تأكيد كلمة السر"><Input type="password" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} autoComplete="new-password" /></Field>
+      <div style={{ display: "flex", gap: 8, marginTop: 16 }}><Btn disabled={busy} onClick={submit}>{busy ? "جارِ الحفظ..." : "حفظ وفتح النظام"}</Btn><Btn variant="ghost" onClick={onSignOut}>تسجيل الخروج</Btn></div>
+      {message.text && <Banner type={message.type}>{message.text}</Banner>}
+    </Card>
+  </div>;
 }
 
 /* --------------------------------- التطبيق --------------------------------- */
@@ -595,6 +592,7 @@ export default function App() {
   if (bootstrapStatus === "missing-profile") return <BootstrapFailure missingProfile message={bootstrapError} session={session} onRetry={retryBootstrap} onSignOut={() => signOut()}/>;
   if (!session) return <AuthGate notice={authNotice} />;
   if (!profile) return <BootstrapFailure message="تعذر تحديد حالة الحساب." session={session} onRetry={retryBootstrap} onSignOut={() => signOut()}/>;
+  if (profile.must_change_password) return <PasswordChangeGate profile={profile} onComplete={() => fetchProfile(session.user.id)} onSignOut={() => signOut()} />;
   if (!data) return <BootstrapLoading text="جارِ تحميل بيانات مساحة العمل..." />;
 
   const role = profile.role;
@@ -1493,16 +1491,19 @@ const PERMISSION_SECTIONS = [
 
 function TeamTab({ profiles, employees, refresh, currentProfile }) {
   const [pending, setPending] = useState({});
+  const [newAccount, setNewAccount] = useState({ fullName: "", phone: "", temporaryPassword: "", role: MANAGER_ASSIGNABLE_ROLES[0] });
   const [message, setMessage] = useState({ type: "", text: "" });
   const [openSections, setOpenSections] = useState({});
+  const [creatingAccount, setCreatingAccount] = useState(false);
   const [savingUserId, setSavingUserId] = useState(null);
-  const [deletingUserId, setDeletingUserId] = useState(null);
   const [linkingUserId, setLinkingUserId] = useState(null);
+  const [updatingPhoneUserId, setUpdatingPhoneUserId] = useState(null);
   const [linkReasons, setLinkReasons] = useState({});
+  const [phoneReasons, setPhoneReasons] = useState({});
 
   useEffect(() => {
     const initial = {};
-    for (const profile of profiles || []) initial[profile.id] = { role: profile.role, status: profile.status || "active", employee_id: profile.employee_id || "", ...permissionsForProfile(profile) };
+    for (const profile of profiles || []) initial[profile.id] = { role: profile.role, status: profile.status || "active", employee_id: profile.employee_id || "", phone: profile.phone || "", ...permissionsForProfile(profile) };
     setPending(initial);
     console.info("[permissions] currentState", initial);
   }, [profiles]);
@@ -1558,6 +1559,31 @@ function TeamTab({ profiles, employees, refresh, currentProfile }) {
     };
   }
 
+  async function createManagedAccount() {
+    const phone = normalizeAccountPhone(newAccount.phone);
+    if (!newAccount.fullName.trim()) return setMessage({ type: "error", text: "اكتب اسم مستخدم الحساب." });
+    if (!phone) return setMessage({ type: "error", text: "اكتب رقم الهاتف بالصيغة الدولية، مثال: +9665XXXXXXXX." });
+    if (newAccount.temporaryPassword.length < 10) return setMessage({ type: "error", text: "كلمة السر المؤقتة يجب ألا تقل عن 10 أحرف." });
+    if (!canAssignRole(currentProfile.role, newAccount.role)) return setMessage({ type: "error", text: "لا يسمح دورك بإنشاء هذا النوع من الحسابات." });
+    setMessage({ type: "", text: "" });
+    setCreatingAccount(true);
+    const result = await supabase.functions.invoke("admin-manage-user", { body: {
+      action: "create",
+      full_name: newAccount.fullName.trim(),
+      phone,
+      temporary_password: newAccount.temporaryPassword,
+      role: newAccount.role,
+    } });
+    if (result.error || !result.data?.ok) {
+      setCreatingAccount(false);
+      return setMessage({ type: "error", text: result.data?.error || result.error?.message || "تعذر إنشاء الحساب المُدار." });
+    }
+    await load();
+    setNewAccount({ fullName: "", phone: "", temporaryPassword: "", role: MANAGER_ASSIGNABLE_ROLES[0] });
+    setCreatingAccount(false);
+    setMessage({ type: "success", text: "تم إنشاء الحساب. سلّم كلمة السر المؤقتة للمستخدم عبر قناة آمنة؛ سيُطلب تغييرها عند أول دخول." });
+  }
+
   async function savePermissions(userId) {
     const current = pending[userId];
     if (!current) return;
@@ -1583,21 +1609,22 @@ function TeamTab({ profiles, employees, refresh, currentProfile }) {
     setMessage({ type: "success", text: "تم حفظ الدور والصلاحيات بأمان." });
   }
 
-  async function deleteProfile(profile) {
-    const protectionReason = identityProtectionReason(currentProfile, profile);
-    if (protectionReason) return setMessage({ type: "error", text: protectionReason });
-    if (!window.confirm(`حذف حساب ${profile.full_name || profile.email || "المستخدم"} من النظام؟`)) return;
+  async function updateManagedPhone(profileId) {
+    const phone = normalizeAccountPhone(pending[profileId]?.phone);
+    const reason = (phoneReasons[profileId] || "").trim();
+    if (!phone) return setMessage({ type: "error", text: "اكتب رقم الهاتف بالصيغة الدولية." });
+    if (!reason) return setMessage({ type: "error", text: "اكتب سبب تغيير رقم الدخول لسجل التدقيق." });
     setMessage({ type: "", text: "" });
-    setDeletingUserId(profile.id);
-    const mutationResult = await supabase.rpc("admin_delete_profile", { target_user_id: profile.id });
-    console.info("[profiles:delete] mutationResult", mutationResult);
-    if (mutationResult.error || !mutationResult.data?.ok) {
-      setDeletingUserId(null);
-      return setMessage({ type: "error", text: mutationResult.error?.message || mutationResult.data?.error || "تعذر حذف الحساب." });
+    setUpdatingPhoneUserId(profileId);
+    const result = await supabase.functions.invoke("admin-manage-user", { body: { action: "update_phone", user_id: profileId, phone, reason } });
+    if (result.error || !result.data?.ok) {
+      setUpdatingPhoneUserId(null);
+      return setMessage({ type: "error", text: result.data?.error || result.error?.message || "تعذر تغيير رقم الدخول." });
     }
     await load();
-    setDeletingUserId(null);
-    setMessage({ type: "success", text: "تم حذف الحساب من النظام بأمان." });
+    setPhoneReasons((previous) => ({ ...previous, [profileId]: "" }));
+    setUpdatingPhoneUserId(null);
+    setMessage({ type: "success", text: "تم تغيير رقم الدخول وتسجيل العملية في سجل التدقيق." });
   }
 
   async function saveEmployeeLink(profileId) {
@@ -1627,6 +1654,16 @@ function TeamTab({ profiles, employees, refresh, currentProfile }) {
   return <div>
     <SectionTitle eyebrow="الهوية والوصول" title="الفريق والصلاحيات" icon={<ShieldCheck size={14} />} description="إدارة الأدوار والصلاحيات وفق تسلسل إداري محمي ومسجل بالكامل." />
     {message.text && <Banner type={message.type}>{message.text}</Banner>}
+    <Card className="managed-account-create">
+      <div><strong>إنشاء حساب مُدار</strong><p>لا يوجد تسجيل ذاتي. أنشئ الحساب برقم دولي وكلمة سر مؤقتة؛ ولا تُحفظ كلمة السر داخل قاعدة بيانات التطبيق.</p></div>
+      <div className="team-controls">
+        <Field label="الاسم"><Input value={newAccount.fullName} onChange={(event) => setNewAccount((current) => ({ ...current, fullName: event.target.value }))} /></Field>
+        <Field label="رقم الهاتف"><Input value={newAccount.phone} onChange={(event) => setNewAccount((current) => ({ ...current, phone: event.target.value }))} placeholder="+9665XXXXXXXX" /></Field>
+        <Field label="كلمة السر المؤقتة"><Input type="password" value={newAccount.temporaryPassword} onChange={(event) => setNewAccount((current) => ({ ...current, temporaryPassword: event.target.value }))} autoComplete="new-password" /></Field>
+        <Field label="الدور"><Select value={newAccount.role} onChange={(event) => setNewAccount((current) => ({ ...current, role: event.target.value }))}>{Object.entries(ROLES).filter(([roleKey]) => canAssignRole(currentProfile.role, roleKey)).map(([roleKey, role]) => <option key={roleKey} value={roleKey}>{role.label}</option>)}</Select></Field>
+      </div>
+      <Btn disabled={creatingAccount} onClick={createManagedAccount}>{creatingAccount ? "جارِ إنشاء الحساب..." : "إنشاء الحساب"}</Btn>
+    </Card>
     <div className="permissions-toolbar">
       <Btn variant="ghost" onClick={() => setOpenSections(Object.fromEntries(PERMISSION_SECTIONS.map((section) => [section.id, true])))}>فتح الكل</Btn>
       <Btn variant="ghost" onClick={() => setOpenSections({})}>إغلاق الكل</Btn>
@@ -1634,13 +1671,13 @@ function TeamTab({ profiles, employees, refresh, currentProfile }) {
     </div>
     <div className="team-grid">
       {profiles.map((profile) => {
-        const current = pending[profile.id] || { role: profile.role, status: profile.status || "active", employee_id: profile.employee_id || "", ...permissionsForProfile(profile) };
+        const current = pending[profile.id] || { role: profile.role, status: profile.status || "active", employee_id: profile.employee_id || "", phone: profile.phone || "", ...permissionsForProfile(profile) };
         const protectionReason = identityProtectionReason(currentProfile, profile);
         const protectedFields = Boolean(protectionReason);
         const automaticAccess = isAdministrativeRole(current.role);
         return <Card className={`team-card role-${current.role}`} key={profile.id}>
           <div className="team-card-head">
-            <div className="team-identity"><div className="team-avatar">{(profile.full_name || profile.email || "؟").trim().charAt(0)}</div><div><strong>{profile.full_name || "بدون اسم"}</strong><span>{profile.email || `${profile.id.slice(0, 8)}…`}</span></div></div>
+            <div className="team-identity"><div className="team-avatar">{(profile.full_name || profile.email || "؟").trim().charAt(0)}</div><div><strong>{profile.full_name || "بدون اسم"}</strong><span>{profile.phone || profile.email || `${profile.id.slice(0, 8)}…`}{profile.must_change_password ? " — كلمة سر مؤقتة" : ""}</span></div></div>
             <span className={`role-badge ${current.role}`}>{ROLES[current.role]?.label || current.role}</span>
           </div>
           <div className="team-controls">
@@ -1658,6 +1695,12 @@ function TeamTab({ profiles, employees, refresh, currentProfile }) {
           {protectionReason && <div className="protected-note"><ShieldCheck size={17} /><span><strong>حقول محمية</strong>{protectionReason}</span></div>}
           {current.role === "owner" && <div className="automatic-access-note"><ShieldCheck size={18} /><span><strong>صلاحيات مالك النظام تلقائية</strong>يمتلك جميع صلاحيات النظام من الدور مباشرة ولا يعتمد على Checkboxes مخزنة.</span></div>}
           {current.role === "manager" && <div className="automatic-access-note manager"><ShieldCheck size={18} /><span><strong>صلاحيات تشغيلية كاملة</strong>مدير النظام لا يعتمد على Checkboxes، ولا يمكن لمدير آخر إدارته أو تعديل Audit Log.</span></div>}
+          {!protectedFields && profile.phone && <div className="identity-link-box">
+            <strong>رقم تسجيل الدخول</strong><p>تغيير الرقم يحدّث حساب المصادقة والملف معًا، ويحتاج سببًا موثقًا.</p>
+            <Field label="رقم الهاتف"><Input value={current.phone || ""} onChange={(event) => patchUser(profile.id, { phone: event.target.value })} /></Field>
+            <Field label="سبب التغيير"><Input value={phoneReasons[profile.id] || ""} onChange={(event) => setPhoneReasons((previous) => ({ ...previous, [profile.id]: event.target.value }))} /></Field>
+            <Btn variant="ghost" disabled={updatingPhoneUserId === profile.id || normalizeAccountPhone(current.phone) === profile.phone} onClick={() => updateManagedPhone(profile.id)}>{updatingPhoneUserId === profile.id ? "جارِ التحديث..." : "تحديث رقم الدخول"}</Btn>
+          </div>}
           {currentProfile.role === "owner" && <div className="identity-link-box">
             <strong>ربط الحساب بموظف</strong>
             <p>هذا هو الرابط المعياري المستخدم في تأكيد هوية مستلم العهدة، ولا يعتمد على الاسم أو الهاتف.</p>
@@ -1700,7 +1743,6 @@ function TeamTab({ profiles, employees, refresh, currentProfile }) {
           </div>}
           <div className="team-card-actions">
             <Btn disabled={protectedFields || savingUserId === profile.id} onClick={() => savePermissions(profile.id)}>{savingUserId === profile.id ? "جارِ الحفظ..." : "حفظ الدور والصلاحيات"}</Btn>
-            {canAdministerTarget(currentProfile, profile) && <Btn variant="danger" disabled={deletingUserId === profile.id} onClick={() => deleteProfile(profile)}><Trash2 size={15}/>{deletingUserId === profile.id ? "جارِ الحذف..." : "حذف الحساب"}</Btn>}
           </div>
         </Card>;
       })}
