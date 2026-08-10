@@ -1,6 +1,7 @@
 import React,{useState}from"react";
 import{supabase}from"../supabaseClient";
 import{Button,Notice,Panel,friendlyError,money}from"./ui";
+import{ConfirmDialog}from"../v22/shared";
 
 const fieldStyle={width:"100%",padding:10,border:"1px solid var(--color-border)",borderRadius:9,background:"var(--color-surface)",color:"inherit"};
 const grid={display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:10,alignItems:"end"};
@@ -12,6 +13,7 @@ export function WarehouseManagementPanel({workspace,onChanged,canViewFinancials=
   const[location,setLocation]=useState({id:null,warehouse:"",code:"",name:""});
   const[detail,setDetail]=useState(null);
   const[archiveReason,setArchiveReason]=useState("");
+  const[confirmingArchive,setConfirmingArchive]=useState(false);
   const[busy,setBusy]=useState(false);
   const[error,setError]=useState("");
   const[ok,setOk]=useState("");
@@ -23,7 +25,8 @@ export function WarehouseManagementPanel({workspace,onChanged,canViewFinancials=
   async function saveWarehouse(){if(!form.code.trim()||!form.name.trim())return setError("اكتب كود المخزن واسمه");const data=await rpc("save_inventory_warehouse",{target_id:form.id,warehouse_code:form.code,warehouse_name:form.name});if(!data)return;setOk(form.id?"تم تحديث بيانات المخزن مع الحفاظ على تاريخه.":"تم إنشاء المخزن.");setForm({id:null,code:"",name:""});await onChanged()}
   async function saveLocation(){if(!location.warehouse||!location.code.trim()||!location.name.trim())return setError("اختر المخزن واكتب كود الموقع واسمه");const data=await rpc("save_inventory_location",{target_id:location.id,target_warehouse:location.warehouse,location_code:location.code,location_name:location.name});if(!data)return;setOk(location.id?"تم تحديث موقع التخزين.":"تمت إضافة موقع التخزين.");setLocation({id:null,warehouse:"",code:"",name:""});await onChanged();if(detail)await openDetail(detail.warehouse.id)}
   async function openDetail(id){const data=await rpc("get_inventory_warehouse_detail",{target_warehouse:id});if(data)setDetail(data)}
-  async function archive(){if(!detail?.warehouse?.id)return;if(!archiveReason.trim())return setError("سبب الأرشفة مطلوب");if(!window.confirm("سيتم إيقاف المخزن وكل مواقعه عن العمليات الجديدة مع الحفاظ على تاريخه. متابعة؟"))return;const data=await rpc("archive_inventory_warehouse",{target_warehouse:detail.warehouse.id,reason:archiveReason.trim()});if(!data)return;setOk("تمت أرشفة المخزن مع الحفاظ على الحركات والأرصدة التاريخية.");setArchiveReason("");setDetail(null);await onChanged()}
+  async function archive(){if(!detail?.warehouse?.id)return;if(!archiveReason.trim())return setError("سبب الأرشفة مطلوب");setConfirmingArchive(true)}
+  async function confirmArchive(){const data=await rpc("archive_inventory_warehouse",{target_warehouse:detail.warehouse.id,reason:archiveReason.trim()});if(!data)return;setOk("تمت أرشفة المخزن مع الحفاظ على الحركات والأرصدة التاريخية.");setArchiveReason("");setConfirmingArchive(false);setDetail(null);await onChanged()}
 
   return <Panel title="إدارة المخازن ومواقع التخزين">
     {error&&<Notice type="error">{error}</Notice>}{ok&&<Notice>{ok}</Notice>}
@@ -53,5 +56,6 @@ export function WarehouseManagementPanel({workspace,onChanged,canViewFinancials=
       <h4>الأرصدة</h4>{detail.balances.map(b=><div key={b.inventory_item_id} style={{display:"flex",justifyContent:"space-between",gap:8,padding:"7px 0",borderBottom:"1px solid var(--color-border)"}}><span>{b.item_name}</span><strong>{money(b.quantity_on_hand)} {b.unit}</strong></div>)}{!detail.balances.length&&<p>لا توجد أرصدة مسجلة.</p>}
       {detail.warehouse.active&&<><Notice type={Number(detail.summary.quantity_on_hand)!==0||Number(detail.summary.open_count_sessions)>0?"error":"info"}>{Number(detail.summary.quantity_on_hand)!==0?"لا يمكن الأرشفة قبل تحويل أو تسوية كل الأرصدة إلى صفر.":Number(detail.summary.open_count_sessions)>0?"لا يمكن الأرشفة مع وجود جلسة جرد مفتوحة.":"المخزن قابل للأرشفة، وسيظل تاريخه وحركاته محفوظين."}</Notice><div style={grid}><Field label="سبب الأرشفة" value={archiveReason} onChange={e=>setArchiveReason(e.target.value)}/><Button disabled={busy||Number(detail.summary.quantity_on_hand)!==0||Number(detail.summary.open_count_sessions)>0} onClick={archive}>أرشفة المخزن</Button></div></>}
     </div>}
+    <ConfirmDialog open={confirmingArchive} title="أرشفة المخزن" description="سيتم إيقاف المخزن وكل مواقعه عن العمليات الجديدة مع الحفاظ على الأرصدة الصفرية والحركات التاريخية وسجل السبب." confirmLabel="أرشفة المخزن" danger busy={busy} onConfirm={confirmArchive} onCancel={()=>setConfirmingArchive(false)}/>
   </Panel>;
 }

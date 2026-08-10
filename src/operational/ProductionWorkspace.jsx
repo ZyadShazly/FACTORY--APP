@@ -40,6 +40,7 @@ export function ProductionWorkspace({data,profileRole,canViewFinancials=true}){
   const[busy,setBusy]=useState("");
   const[loading,setLoading]=useState(true);
   const[cancelAction,setCancelAction]=useState(null);
+  const[operationAction,setOperationAction]=useState(null);
 
   async function load(){
     setLoading(true);setError("");
@@ -109,10 +110,7 @@ export function ProductionWorkspace({data,profileRole,canViewFinancials=true}){
   }
 
   async function pauseOperation(operation){
-    const reason=window.prompt("اكتب سبب إيقاف خطوة التشغيل مؤقتًا.");
-    if(reason===null)return;
-    if(!reason.trim())return setError("سبب الإيقاف المؤقت مطلوب.");
-    await operationEvent(operation,"pause",reason.trim());
+    setOperationAction({type:"pause",operation,reason:""});
   }
 
   function openFinish(operation,order){
@@ -133,25 +131,27 @@ export function ProductionWorkspace({data,profileRole,canViewFinancials=true}){
   }
 
   async function reviewQuality(operation,approve){
-    let reason=null;
     if(!approve){
-      reason=window.prompt("اكتب سبب رفض مراجعة الجودة وما المطلوب تصحيحه.");
-      if(reason===null)return;
-      if(!reason.trim())return setError("سبب رفض الجودة مطلوب.");
+      setOperationAction({type:"quality",operation,reason:""});
+      return;
     }
     await call(operation.id,"review_production_operation_quality",{
-      target_operation:operation.id,approve,review_reason:reason?.trim()||null
-    },approve?"تم اعتماد جودة خطوة التشغيل.":"تم رفض الجودة مع حفظ السبب.");
+      target_operation:operation.id,approve,review_reason:null
+    },"تم اعتماد جودة خطوة التشغيل.");
   }
 
   async function skipOperation(operation){
-    const reason=window.prompt("اكتب سبب تجاوز خطوة التشغيل. سيبقى القرار محفوظًا في التدقيق.");
-    if(reason===null)return;
-    if(!reason.trim())return setError("سبب تجاوز الخطوة مطلوب.");
-    await call(operation.id,"update_production_operation_status",{
-      target_operation:operation.id,target_status:"skipped",
-      actual_minutes:null,operation_note:reason.trim()
-    },"تم تجاوز الخطوة بقرار إداري موثق.");
+    setOperationAction({type:"skip",operation,reason:""});
+  }
+
+  async function confirmOperationAction(){
+    if(!operationAction?.reason.trim())return;
+    const{type,operation,reason}=operationAction;
+    let result;
+    if(type==="pause")result=await operationEvent(operation,"pause",reason.trim());
+    else if(type==="quality")result=await call(operation.id,"review_production_operation_quality",{target_operation:operation.id,approve:false,review_reason:reason.trim()},"تم رفض الجودة مع حفظ السبب.");
+    else result=await call(operation.id,"update_production_operation_status",{target_operation:operation.id,target_status:"skipped",actual_minutes:null,operation_note:reason.trim()},"تم تجاوز الخطوة بقرار إداري موثق.");
+    if(result!==false)setOperationAction(null);
   }
 
   async function confirmCancelOrder(){
@@ -324,6 +324,7 @@ export function ProductionWorkspace({data,profileRole,canViewFinancials=true}){
     </DetailsDrawer>
 
     <ConfirmDialog open={Boolean(cancelAction)} title={cancelAction?`إلغاء ${orderReference(cancelAction.order)}`:"إلغاء أمر الإنتاج"} description="ستُعكس حركات صرف المخزون المؤهلة دون حذف التاريخ. العملية محمية من التطبيق المكرر." confirmLabel="إلغاء وعكس الحركات" danger reasonRequired reason={cancelAction?.reason||""} busy={cancelAction?.busy} error={cancelAction?.error} onReasonChange={reason=>setCancelAction(current=>({...current,reason,error:""}))} onConfirm={confirmCancelOrder} onCancel={()=>setCancelAction(null)}/>
+    <ConfirmDialog open={Boolean(operationAction)} title={operationAction?.type==="pause"?"إيقاف خطوة التشغيل مؤقتًا":operationAction?.type==="quality"?"رفض مراجعة الجودة":"تجاوز خطوة التشغيل"} description={operationAction?.type==="pause"?"سيتوقف عداد تنفيذ الخطوة ويُحفظ السبب في سجلها.":operationAction?.type==="quality"?"اكتب ما يجب تصحيحه قبل إعادة المراجعة.":"سيبقى قرار التجاوز وسببه محفوظين في سجل التدقيق."} confirmLabel={operationAction?.type==="pause"?"إيقاف مؤقت":operationAction?.type==="quality"?"رفض الجودة":"تجاوز الخطوة"} danger reasonRequired reason={operationAction?.reason||""} busy={busy===operationAction?.operation.id} onReasonChange={reason=>setOperationAction(current=>({...current,reason}))} onConfirm={confirmOperationAction} onCancel={()=>setOperationAction(null)}/>
 
     <DetailsDrawer open={Boolean(finishing)} title="إنهاء خطوة التشغيل" description="راجع الكميات قبل الإرسال للجودة." onClose={()=>setFinishing(null)} className="production-finish-drawer">
       {finishing&&<div className="production-finish-form">
