@@ -194,7 +194,7 @@ export function ProcurementWorkspace({data,onNavigate}){
   const approvedRequests=ws.requests.filter(row=>row.status==="approved");
   const receivedQuotes=ws.quotes.filter(row=>row.status==="received");
   const receivableOrders=ws.orders.filter(row=>["approved","sent","partially_received"].includes(row.status));
-  const invoiceableOrders=ws.orders.filter(row=>["partially_received","fully_received"].includes(row.status));
+  const invoiceableOrders=ws.orders.filter(row=>row.status==="fully_received");
   const selectedReceiptItems=ws.order_items.filter(item=>item.purchase_order_id===receipt.order_id&&Number(item.received_quantity)<Number(item.quantity));
 
   function chooseReceiptOrder(orderId){
@@ -266,8 +266,8 @@ export function ProcurementWorkspace({data,onNavigate}){
         <Panel title="إيصالات الاستلام"><div className="procurement-record-list">{ws.receipts.map(row=><div key={row.id} style={cardStyle}><DocumentIdentity row={row} serialKey="receipt_number"/><Status value={row.status}/><Button onClick={()=>openDocument("receipt",row)}>معاينة وطباعة</Button></div>)}{!ws.receipts.length&&<Empty title="لا توجد إيصالات استلام"/>}</div></Panel>
       </>}
       {tab==="invoices"&&<>
-        {ws.capabilities.invoice&&<Panel title="مراجعة واعتماد فاتورة المورد"><div style={formStyle}>
-          <Field label="أمر الشراء المستلم"><select style={inputStyle} value={invoice.order_id} onChange={event=>setInvoice({...invoice,order_id:event.target.value})}><option value="">اختر</option>{invoiceableOrders.map(row=><option key={row.id} value={row.id}>{recordName(row,"order_number")} · {row.order_number}</option>)}</select></Field>
+        {ws.capabilities.invoice&&<Panel title="مراجعة واعتماد فاتورة المورد"><HelpText title="شرط المطابقة">تُعتمد الفاتورة بعد اكتمال استلام كل بنود الأمر. يمنع الخادم فوترة كمية غير مستلمة أو تكرار فاتورة المورد.</HelpText><div style={formStyle}>
+          <Field label="أمر الشراء المستلم بالكامل"><select style={inputStyle} value={invoice.order_id} onChange={event=>setInvoice({...invoice,order_id:event.target.value})}><option value="">اختر</option>{invoiceableOrders.map(row=><option key={row.id} value={row.id}>{recordName(row,"order_number")} · {row.order_number}</option>)}</select></Field>
           <Field label="رقم الفاتورة"><input style={inputStyle} value={invoice.invoice_number} onChange={event=>setInvoice({...invoice,invoice_number:event.target.value})}/></Field>
           <Field label="تاريخ الفاتورة"><input type="date" style={inputStyle} value={invoice.invoice_date} onChange={event=>setInvoice({...invoice,invoice_date:event.target.value})}/></Field>
           <Button onClick={approveInvoice}>اعتماد الفاتورة</Button>

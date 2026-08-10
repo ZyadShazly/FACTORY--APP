@@ -165,7 +165,8 @@ function avgProductionUnitCost(productId, data) {
   return q > 0 ? c / q : 0;
 }
 function supplierPurchaseTotal(supplierId, data) {
-  return data.materialPurchases.filter((p) => p.supplier_id === supplierId).reduce((s, p) => s + p.qty * p.unit_cost, 0);
+  return data.materialPurchases.filter((p) => p.supplier_id === supplierId).reduce((s, p) => s + p.qty * p.unit_cost, 0)
+    + (data.supplierInvoices || []).filter((invoice) => invoice.supplier_id === supplierId && ["approved", "paid"].includes(invoice.status)).reduce((sum, invoice) => sum + num(invoice.total_amount), 0);
 }
 function supplierPaymentTotal(supplierId, data) {
   return supplierBalances(supplierId, data).cashPaid;
@@ -1174,6 +1175,16 @@ function SuppliersTab({ data, refresh, canManage }) {
   const [search, setSearch] = useState("");
   const [pendingPayment, setPendingPayment] = useState(null); const [paymentBusy, setPaymentBusy] = useState(false);
   const [archiveAction, setArchiveAction] = useState(null);
+  const [supplierInvoices, setSupplierInvoices] = useState([]);
+  const supplierData = useMemo(() => ({ ...data, supplierInvoices }), [data, supplierInvoices]);
+
+  const loadSupplierInvoices = useCallback(async () => {
+    const result = await supabase.rpc("get_supplier_invoices_visible");
+    if (result.error) { setErr(result.error.message); return result; }
+    setSupplierInvoices(result.data || []); return result;
+  }, []);
+  useEffect(() => { void loadSupplierInvoices(); }, [loadSupplierInvoices]);
+  async function refreshSupplierData() { const [base, invoices] = await Promise.all([refresh(), loadSupplierInvoices()]); return { error: base?.error || invoices?.error || null }; }
 
   function startEdit(s) { setEditingId(s.id); setName(s.name); setPhone(s.phone || ""); setSaveCommandId(""); }
   function cancelEdit() { setEditingId(null); setName(""); setPhone(""); setSaveCommandId(""); setErr(""); }
@@ -1184,7 +1195,7 @@ function SuppliersTab({ data, refresh, canManage }) {
     const result = await runCriticalMutation({ scope: editingId ? "suppliers:update" : "suppliers:create", mutate: () => supabase.rpc("save_supplier", { target_id: editingId, supplier_name: name.trim(), supplier_phone: phone.trim() || null, command_id: commandId }), verify: async () => {
       const verification = editingId ? await supabase.from("suppliers").select("id").eq("id", editingId).single() : await supabase.from("suppliers").select("id").eq("command_id", commandId).single();
       return verification.error ? verification : Boolean(verification.data?.id);
-    }, refetch: refresh });
+    }, refetch: refreshSupplierData });
     if (result.error) return setErr(result.mutationSaved ? "تم إرسال المورد، لكن تعذر التحقق. حدّث الصفحة قبل إعادة المحاولة." : result.error.message);
     setName(""); setPhone(""); setEditingId(null); setSaveCommandId(""); setErr("");
   }
@@ -1194,7 +1205,7 @@ function SuppliersTab({ data, refresh, canManage }) {
     if (!payload.commandId) { setPayment((current) => ({ ...current, commandId })); setPendingPayment((current) => current ? ({ ...current, commandId }) : current); }
     const result = await supabase.rpc("record_supplier_payment", { target_supplier: payload.supplierId, payment_amount: num(payload.amount), paid_on: payload.date, payment_note: null, command_id: commandId });
     if (result.error) { setPaymentBusy(false); return setErr(result.error.message); }
-    const refreshed = await refresh();
+    const refreshed = await refreshSupplierData();
     setPaymentBusy(false); setPendingPayment(null);
     if (refreshed?.error) return setErr("تم حفظ الدفعة، لكن تعذر تحديث الشاشة. حدّث الصفحة بأمان؛ لا تعِد تسجيل الدفعة.");
     setPayment({ supplierId: "", amount: "", date: todayStr(), commandId: "" });
@@ -1202,7 +1213,7 @@ function SuppliersTab({ data, refresh, canManage }) {
   async function addPayment() {
     if (!payment.supplierId) return setErr("اختر المورد");
     if (num(payment.amount) <= 0) return setErr("أدخل مبلغ أكبر من صفر");
-    const due = supplierBalances(payment.supplierId, data).due;
+    const due = supplierBalances(payment.supplierId, supplierData).due;
     if (num(payment.amount) > due) return setPendingPayment({ ...payment, due, advance: num(payment.amount) - due });
     await commitPayment();
   }
@@ -1218,7 +1229,7 @@ function SuppliersTab({ data, refresh, canManage }) {
     setArchiveAction((current) => ({ ...current, busy: true, error: "" }));
     const { error } = await supabase.rpc("set_commercial_party_archived", { party_type: "supplier", target_id: action.row.id, archive: action.archive, reason: action.reason.trim() || null });
     if (error) return setArchiveAction((current) => ({ ...current, busy: false, error: error.message }));
-    await refresh();
+    await refreshSupplierData();
     if (editingId === action.row.id) cancelEdit();
     setArchiveAction(null); setErr("");
   }
@@ -1256,10 +1267,10 @@ function SuppliersTab({ data, refresh, canManage }) {
         <SearchBox value={search} onChange={setSearch} placeholder="ابحث باسم المورد..." />
         {filtered.length === 0 ? <Empty text="لا توجد نتائج" /> : (
           <Table headers={["المورد", "الهاتف", "إجمالي المشتريات", "إجمالي المدفوع", "المستحق", "السلفة", ""]}>
-            {filtered.map((s) => { const balances = supplierBalances(s.id, data); const bal = balances.due; return (
+            {filtered.map((s) => { const balances = supplierBalances(s.id, supplierData); const bal = balances.due; return (
               <React.Fragment key={s.id}>
                 <tr>
-                  <Td>{s.name}</Td><Td>{s.phone || "—"}</Td><Td>{formatMoney(supplierPurchaseTotal(s.id, data))}</Td><Td>{formatMoney(supplierPaymentTotal(s.id, data))}</Td>
+                  <Td>{s.name}</Td><Td>{s.phone || "—"}</Td><Td>{formatMoney(supplierPurchaseTotal(s.id, supplierData))}</Td><Td>{formatMoney(supplierPaymentTotal(s.id, supplierData))}</Td>
                   <Td style={{ fontWeight: 700, color: bal > 0 ? C.red : C.green }}>{formatMoney(bal)}</Td><Td style={{fontWeight:700,color:C.green}}>{formatMoney(balances.advance)}{balances.legacyUnclassified>0&&<small style={{display:"block",color:C.red}}>يوجد {balances.legacyUnclassified} حركة قديمة غير مصنفة</small>}</Td>
                   <Td style={{ display: "flex", gap: 10, alignItems: "center" }}>
                     <button aria-label={`تعديل ${s.name}`} title="تعديل المورد" onClick={() => startEdit(s)} style={{ background: "none", border: "none", cursor: "pointer", color: C.brass }}><Pencil size={15} /></button>
@@ -1267,7 +1278,7 @@ function SuppliersTab({ data, refresh, canManage }) {
                     <button onClick={() => setExpanded(expanded === s.id ? null : s.id)} style={{ background: "none", border: "none", color: C.brass, cursor: "pointer", fontSize: 12.5 }}>{expanded === s.id ? "إخفاء الحركات" : "عرض الحركات"}</button>
                   </Td>
                 </tr>
-                {expanded === s.id && <tr><Td colSpan={7} style={{ background: C.panelAlt }}><SupplierLedger supplierId={s.id} data={data} /><CommercialAdvancesPanel partyType="supplier" partyId={s.id} canReverse={canManage} onChanged={refresh}/></Td></tr>}
+                {expanded === s.id && <tr><Td colSpan={7} style={{ background: C.panelAlt }}><SupplierLedger supplierId={s.id} data={supplierData} /><CommercialAdvancesPanel partyType="supplier" partyId={s.id} canReverse={canManage} onChanged={refreshSupplierData}/></Td></tr>}
               </React.Fragment>
             ); })}
           </Table>
@@ -1287,8 +1298,9 @@ function SuppliersTab({ data, refresh, canManage }) {
 }
 function SupplierLedger({ supplierId, data }) {
   const purchases = data.materialPurchases.filter((p) => p.supplier_id === supplierId).map((p) => ({ date: p.purchase_date, type: "شراء", amount: p.qty * p.unit_cost, note: data.materials.find((m) => m.id === p.material_id)?.name }));
+  const invoices = (data.supplierInvoices || []).filter((invoice) => invoice.supplier_id === supplierId && ["approved", "paid"].includes(invoice.status)).map((invoice) => ({ date: invoice.invoice_date, type: "فاتورة مورد", amount: invoice.total_amount, note: invoice.invoice_number }));
   const payments = data.supplierPayments.filter((p) => p.supplier_id === supplierId).map((p) => ({ date: p.payment_date, type: transactionClassLabel(p), amount: -p.amount, note: p.note }));
-  const rows = [...purchases, ...payments].sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+  const rows = [...purchases, ...invoices, ...payments].sort((a, b) => (a.date || "").localeCompare(b.date || ""));
   if (rows.length === 0) return <div style={{ color: C.muted, fontSize: 13 }}>لا توجد حركات مسجلة</div>;
   return <Table headers={["التاريخ", "النوع", "البيان", "المبلغ"]}>{rows.map((r, i) => <tr key={i}><Td>{r.date}</Td><Td style={{ color: r.type === "شراء" ? C.red : C.green }}>{r.type}</Td><Td>{r.note || "—"}</Td><Td>{formatMoney(Math.abs(r.amount))}</Td></tr>)}</Table>;
 }
@@ -1462,17 +1474,18 @@ function ExpensesTab({ data, profileRole, refresh }) {
       : { target_expense_id: row.id, reason };
     const { error } = await supabase.rpc(name, args);
     setBusyId(null);
-    if (error) return setErr(error.message);
+    if (error) { setErr(error.message); return false; }
     await refresh();
     setOk(name === "cancel_expense" ? "تم إلغاء المصروف مع الحفاظ على سجله" : "تم إرسال المصروف لمراجعة التكلفة الفعلية");
+    return true;
   }
   async function cancel(row) {
     setCancelReason(""); setCancellingExpense(row);
   }
   async function confirmExpenseCancellation() {
     if (!cancelReason.trim()) return setErr("سبب الإلغاء مطلوب");
-    await runFinancialAction("cancel_expense", cancellingExpense, cancelReason.trim());
-    setCancellingExpense(null); setCancelReason("");
+    const saved = await runFinancialAction("cancel_expense", cancellingExpense, cancelReason.trim());
+    if (saved) { setCancellingExpense(null); setCancelReason(""); }
   }
   const activeExpenses = data.expenses.filter((expense) => !expense.cancelled_at);
   const total = activeExpenses.reduce((sum, e) => sum + num(e.amount), 0);
@@ -1495,7 +1508,7 @@ function ExpensesTab({ data, profileRole, refresh }) {
     <Card>{data.expenses.length === 0 ? <Empty text="لا توجد مصروفات مسجلة" /> : <Table headers={["التاريخ","البند","المشروع","الحالة","الملاحظات","المبلغ","الإجراءات"]}>{[...data.expenses].reverse().map((e) => {
       const project = data.projects.find((p) => p.id === e.project_id);
       const status = e.cancelled_at ? "ملغي" : ({not_posted:"غير مرحّل",submitted:"قيد المراجعة",posted:"مرحّل",rejected:"مرفوض",reversed:"معكوس"}[e.cost_posting_status] || e.cost_posting_status);
-      const canCancel = ["owner","manager"].includes(profileRole) && !e.cancelled_at;
+      const canCancel = !e.cancelled_at && (profileRole === "owner" || (profileRole === "manager" && e.cost_posting_status !== "posted"));
       return <tr key={e.id} style={{opacity:e.cancelled_at?0.65:1}}><Td>{e.expense_date}</Td><Td>{e.category}</Td><Td>{project ? `${project.project_code} · ${project.project_name}` : "عام"}</Td><Td>{status}</Td><Td>{e.cancellation_reason || e.notes || "—"}</Td><Td style={{fontWeight:700,color:C.red}}>{formatMoney(e.amount)}</Td><Td><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{e.project_id && e.cost_posting_status === "not_posted" && !e.cancelled_at && <Btn disabled={busyId===e.id} onClick={() => runFinancialAction("prepare_operational_source_actual_cost", e)}>إرسال للتكلفة</Btn>}{canCancel && <Btn variant="danger" disabled={busyId===e.id} onClick={() => cancel(e)}>إلغاء</Btn>}</div></Td></tr>;
     })}</Table>}</Card>
   </div>;

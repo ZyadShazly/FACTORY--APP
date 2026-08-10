@@ -36,3 +36,9 @@ test('expense UI captures project and exposes protected financial actions', () =
   assert.match(ui, /اختياري للمصروف العام/);
   assert.doesNotMatch(ui, /deleteRow\("expenses"/);
 });
+
+test('expense cancellation keeps failed server decisions visible and respects owner-only reversal', () => {
+  assert.match(ui, /if \(error\) \{ setErr\(error\.message\); return false; \}/);
+  assert.match(ui, /if \(saved\) \{ setCancellingExpense\(null\)/);
+  assert.match(ui, /profileRole === "owner" \|\| \(profileRole === "manager" && e\.cost_posting_status !== "posted"\)/);
+});

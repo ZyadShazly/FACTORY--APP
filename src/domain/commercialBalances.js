@@ -26,7 +26,8 @@ export function customerBalances(customerId, data) {
 }
 
 export function supplierBalances(supplierId, data) {
-  const charges = (data.materialPurchases || []).filter((row) => row.supplier_id === supplierId).reduce((sum, row) => sum + Number(row.qty || 0) * Number(row.unit_cost || 0), 0);
+  const charges = (data.materialPurchases || []).filter((row) => row.supplier_id === supplierId).reduce((sum, row) => sum + Number(row.qty || 0) * Number(row.unit_cost || 0), 0)
+    + (data.supplierInvoices || []).filter((row) => row.supplier_id === supplierId && ["approved", "paid"].includes(row.status)).reduce((sum, row) => sum + Number(row.total_amount || 0), 0);
   const rows = (data.supplierPayments || []).filter((row) => row.supplier_id === supplierId);
   const settled = rows.reduce((sum, row) => sum + settledAmount(row), 0);
   return {
