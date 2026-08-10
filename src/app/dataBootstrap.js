@@ -3,7 +3,7 @@ export const EMPTY_DATA = Object.freeze({
   sales: [], rentals: [], suppliers: [], supplierPayments: [], customers: [], customerReceipts: [], expenses: [],
   profiles: [], projects: [], projectFiles: [], projectActivities: [], projectMilestones: [], projectMembers: [], projectRealtimeSignal: [], employees: [], payroll: [], dailyLabor: [], projectCosts: [], auditLog: [],
   departments: [], workSchedules: [], workScheduleDays: [], holidayCalendar: [], holidayScopes: [],
-  assetCategories: [], assetLocations: [], assets: [], assetAssignments: [], assetAssignmentItems: [], assetReturnEvents: [], assetReturnItems: [], assetSettlements: [], assetMovements: [], assetAttachments: [], assetAlerts: [],
+  assetCategories: [], assetLocations: [], assets: [], assetAssignments: [], assetAssignmentItems: [], assetReturnEvents: [], assetReturnItems: [], assetSettlements: [], assetMaintenanceOrders: [], assetMovements: [], assetAttachments: [], assetAlerts: [],
 });
 
 function tableLabel(pageLabels, key, table) {

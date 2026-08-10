@@ -44,9 +44,18 @@ Working branch: `product/continue-implementation-20260810`.
 - Added an Owner-only, read-only reconciliation RPC for historical project budget, template and Actual Cost currency mismatches.
 - Preserved every historical row; no currency value or financial amount was rewritten.
 
+### Asset maintenance operations — current batch
+
+- Replaced the static maintenance-status tab with an audited open/complete/cancel workflow.
+- Removed an asset from available stock only when it is fully returned and available, then restored availability exactly once on completion or cancellation through immutable ledger movements.
+- Captured maintenance type, provider, expected date, estimated/actual cost, outcome and cancellation reason.
+- Blocked direct transitions into or out of `under_maintenance`; the protected workflow is now the canonical path.
+- Kept completed and cancelled orders as collapsed history and added bootstrap/Realtime coverage.
+- Did not add advanced maintenance scheduling, spare-parts management, fleet, depreciation or automatic project-cost policy.
+
 ## Verification snapshot
 
-- Full regression after the base-currency batch: 471 passed, 0 failed, 2 optional integrations skipped (473 total).
+- Full regression after the asset-maintenance batch: 477 passed, 0 failed, 2 optional integrations skipped (479 total).
 - Production build passed after every batch.
 - `git diff --check` passed.
 - New migrations were added to the repository only; none were applied to Production.
