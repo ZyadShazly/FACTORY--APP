@@ -174,8 +174,8 @@ export function ProcurementWorkspace({data,onNavigate}){
       lines.push({purchase_order_item_id:item.id,quantity_received:accepted+rejected,accepted_quantity:accepted,condition:rejected>0?(accepted>0?"partially_rejected":"rejected"):"accepted",notes:values.notes?.trim()||null});
     }
     if(!lines.length)return setError("أدخل كمية مستلمة في بند واحد على الأقل.");
-    if(!lines.some(line=>line.accepted_quantity>0))return setError("لا يمكن ترحيل إذن بلا كمية مقبولة للمخزون. سجّل الاستلام عند وجود كمية مقبولة واحدة على الأقل.");
-    const saved=await call("confirm_goods_receipt_to_inventory",{payload:{purchase_order_id:receipt.order_id,supplier_delivery_reference:receipt.delivery_ref,notes:null,items:lines},target_warehouse:receipt.warehouse_id,target_location:null},"تم تأكيد الاستلام وترحيل الكميات المقبولة للمخزون.");
+    const hasAccepted=lines.some(line=>line.accepted_quantity>0);
+    const saved=await call("confirm_goods_receipt_to_inventory",{payload:{purchase_order_id:receipt.order_id,supplier_delivery_reference:receipt.delivery_ref,notes:null,items:lines},target_warehouse:receipt.warehouse_id,target_location:null},hasAccepted?"تم تأكيد الاستلام وترحيل الكميات المقبولة للمخزون.":"تم تسجيل الشحنة المرفوضة دون إضافة رصيد للمخزون.");
     if(saved){setReceipt(current=>({...current,order_id:"",delivery_ref:""}));setReceiptLines({})}
   }
   async function approveInvoice(){
