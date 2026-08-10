@@ -142,10 +142,10 @@ test("indexes are named once and internal helpers are not API executable", () =>
   }
 });
 
-test("workspace is RTL, modular, responsive, and marks future modules honestly", () => {
-  for(const label of ["نظرة عامة","مراحل التنفيذ","الفريق","الملفات","الخامات والمشتريات","الإنتاج","العمالة","المصروفات","العِدّة","الميزانية","التكلفة الفعلية","التقارير","سجل النشاط"]) assert.match(workspace,new RegExp(label));
+test("workspace is RTL, modular, responsive, and exposes only implemented modules", () => {
+  for(const label of ["نظرة عامة","مراحل التنفيذ","الفريق","الملفات","الخامات والمشتريات","الإنتاج","العمالة","المصروفات","العِدّة","الميزانية","التكلفة الفعلية","سجل النشاط"]) assert.match(workspace,new RegExp(label));
   assert.match(workspace,/dir="rtl"/);
-  assert.match(workspace,/قريبًا — لم تُنشأ بيانات تقديرية أو مالية وهمية/);
+  assert.doesNotMatch(workspace,/ComingSoon|قريبًا —|\["reports"/);
   assert.match(css,/@media\(max-width:760px\)/);
   assert.match(css,/@media\(max-width:430px\)/);
   assert.match(css,/overflow-x:auto/);
