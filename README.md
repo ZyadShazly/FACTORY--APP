@@ -36,7 +36,7 @@ VITE_SUPABASE_ANON_KEY=...
 حاليًا هو:
 
 ```text
-202607290003_explicit_inventory_item_type.sql
+202608103600_action_center_scope_alignment.sql
 ```
 
 لا تفترض أن غياب رقم ملف محلي من سجل Supabase يعني أن الـmigration غير مطبقة.
@@ -93,4 +93,3 @@ SUPABASE_SECURITY_TEST_SERVICE_ROLE_KEY=...
 
 لا تضبط هذه القيم على Production. بدونها يُتخطى اختبار التكامل الحي وتستمر
 اختبارات العقد المحلية.
-

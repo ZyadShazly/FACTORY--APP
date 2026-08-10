@@ -211,10 +211,15 @@ objects are unrelated to this migration and remain outside this sprint.
 
 ## Known limitations
 
-- Actual-versus-Estimated comparison is not implemented.
-- No Employee Cash Custody, Purchase Request, Cost Center, Petty Cash, Supplier
-  Invoice, GL, AR, AP, MRP, or Factory Labor allocation module is implemented.
+- Actual-versus-Estimated is implemented from approved project budgets and the
+  canonical Actual Cost ledger, including category variance and reversal-safe
+  history.
+- Supplier invoicing, procurement receipt, payroll, external-labor settlement,
+  expenses and production material/output flows feed their protected
+  operational ledgers. This product does not claim a separate general-ledger
+  accounting policy beyond those existing contracts.
 - Template editing uses the protected create-from-approved flow; a future
   template administration screen may add richer maintenance.
-- Live integration and Advisor validation require applying migration `003` to a
-  non-production Supabase environment. This migration is not auto-applied.
+- Live integration and Advisor validation require applying the pending
+  repository migration chain to a local, disposable or staging Supabase
+  environment. Migrations are not auto-applied and Production is unchanged.

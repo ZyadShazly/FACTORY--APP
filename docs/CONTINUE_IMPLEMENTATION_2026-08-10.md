@@ -53,9 +53,32 @@ Working branch: `product/continue-implementation-20260810`.
 - Kept completed and cancelled orders as collapsed history and added bootstrap/Realtime coverage.
 - Did not add advanced maintenance scheduling, spare-parts management, fleet, depreciation or automatic project-cost policy.
 
+## Subsequent completion batches
+
+- Commercial inventory posting, rental partial returns and customer receipt
+  allocation now use canonical, reversible inventory and balance lifecycles.
+- Expenses, supplier invoices/payments and procurement partial or fully rejected
+  receipts now use protected, audited commands without fabricating stock.
+- Finished-goods dashboard totals, production quality receipts and production
+  completion audit quantities now share the canonical accepted-output source.
+- Customer, supplier, product, material, employee, workforce-draft, attachment
+  and asset master-data mutations are protected and history-preserving.
+- Project workspace actions, project selection boundaries and operational
+  navigation no longer contain inert controls or browser-native prompt flows.
+- External-labor exports reconcile gross, deductions, additions and net paid.
+- Operational reporting now exposes protected period activity, balances and
+  unallocated advances instead of static or duplicated totals.
+- Production bootstrap, search, notifications and workspaces are scoped to
+  assigned operational records and do not expose financial reference data.
+- Currency mutation is visible only to Owner; Manager retains the separate
+  protected account-recovery operation.
+- A successful mutation followed by a failed screen refresh is rendered as a
+  warning, not as a misleading success state.
+
 ## Verification snapshot
 
-- Full regression after the asset-maintenance batch: 477 passed, 0 failed, 2 optional integrations skipped (479 total).
+- Full regression after the complete implementation pass: 527 passed, 0 failed,
+  2 optional integrations skipped (529 total).
 - Production build passed after every batch.
 - `git diff --check` passed.
 - New migrations were added to the repository only; none were applied to Production.

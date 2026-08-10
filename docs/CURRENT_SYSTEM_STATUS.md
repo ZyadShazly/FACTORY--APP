@@ -1,5 +1,38 @@
 # NEXTEP ERP — Current System Status
 
+## 2026-08-10 Continue Implementation overlay
+
+This overlay supersedes the implementation and remaining-work claims in the
+2026-08-02 snapshot below. The older body is retained as historical baseline
+evidence, not as the current work queue.
+
+| Item | Current state |
+| --- | --- |
+| Working branch | `product/continue-implementation-20260810` |
+| UAT PR | #119 remains Draft; it is not merged by this work |
+| Latest repository migration | `202608103600_action_center_scope_alignment.sql` |
+| Regression | 527 passed, 0 failed, 2 optional integrations skipped (529 total) |
+| Production build | Passed |
+| Production changes | No Production migration or data mutation performed |
+
+The current implementation closes the confirmed daily-operational gaps in
+Projects, Inventory, Procurement, Production, Customers, Suppliers, Sales,
+Rentals, Expenses, Payroll, External Labor, Assets, Reporting, Dashboard,
+navigation, notifications, protected master-data writes, audit/history and
+financial/inventory reconciliation. In particular, it replaces destructive or
+direct write paths with protected, audited lifecycles; uses canonical inventory
+and balance sources; completes partial/rejected receipt and rental return flows;
+and restricts Production-facing data to its operational scope.
+
+The two open repository issues remain release-verification containers rather
+than missing implementation: #118 tracks the UAT closeout evidence and #35
+tracks the broader pilot/release acceptance. Their non-production migration
+validation and allow/deny Role Matrix requirements remain mandatory Final
+Release Gates. They are deliberately not claimed complete in this phase.
+
+The sections below describe the earlier 2026-08-02 baseline and may name gaps
+that the overlay above has since closed.
+
 > **Authority:** current operational baseline and execution-plan index
 >
 > **Snapshot date:** 2026-08-02
