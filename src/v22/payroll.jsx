@@ -5,11 +5,11 @@ import { supabase } from "../supabaseClient";
 import { ArchiveSection, DependencySummary, KpiCard, KpiGrid, SearchFilterBar } from "../ui";
 import { Button, ConfirmDialog, DataTable, EmptyState, ErrorState, Field, Input, money, number, PageTitle, Panel, PermissionGuard, Select, StatCard, TextArea, Toast } from "./shared";
 import { calculateNetSalary } from "./calculations";
-import { syncMutation } from "./mutations";
+import { runCriticalMutation, syncMutation } from "./mutations";
 
 const EMPLOYEE_STATUS = { active: "نشط", suspended: "موقوف", resigned: "مستقيل", terminated: "منتهي الخدمة" };
 const PAYROLL_STATUS = { draft: "مسودة", approved: "معتمد", paid: "مدفوع" };
-const emptyEmployee = { full_name: "", phone: "", job_title: "", department: "", department_id: "", base_salary: 0, housing_allowance: 0, transport_allowance: 0, other_allowance: 0, hire_date: "", status: "active" };
+const emptyEmployee = { full_name: "", phone: "", job_title: "", department: "", department_id: "", base_salary: 0, housing_allowance: 0, transport_allowance: 0, other_allowance: 0, hire_date: "", status: "active", command_id: "" };
 const DEPENDENCY_LABELS = {
   payroll: "مسيرات رواتب",
   login_accounts: "حسابات دخول",
@@ -81,9 +81,14 @@ export function EmployeesTab({ data, profile, refresh }) {
     const phone = normalizePhone(form.phone);
     if (!phone) return setError("اكتب رقم واتساب الموظف بصيغة دولية، مثال: +9665XXXXXXXX أو +201XXXXXXXXX");
     setBusy(true);
-    const payload = { ...form, phone, base_salary: number(form.base_salary), housing_allowance: number(form.housing_allowance), transport_allowance: number(form.transport_allowance), other_allowance: number(form.other_allowance), hire_date: form.hire_date || null, department_id: form.department_id || null, created_by: profile.id };
-    const mutationResult = await supabase.from("employees").insert(payload);
-    const result = await syncMutation({ scope: "employees:create", mutationResult, refetch: () => refresh("employees") });
+    const commandId = form.command_id || globalThis.crypto.randomUUID();
+    if (!form.command_id) setForm((current) => ({ ...current, command_id: commandId }));
+    const payload = { ...form, phone, base_salary: number(form.base_salary), housing_allowance: number(form.housing_allowance), transport_allowance: number(form.transport_allowance), other_allowance: number(form.other_allowance), hire_date: form.hire_date || null, department_id: form.department_id || null };
+    delete payload.command_id;
+    const result = await runCriticalMutation({ scope: "employees:create", mutate: () => supabase.rpc("create_employee_record", { payload, command_id: commandId }), verify: async () => {
+      const verification = await supabase.from("employees").select("id,status").eq("command_id", commandId).single();
+      return verification.error ? verification : verification.data?.status === "active";
+    }, refetch: () => refresh("employees") });
     setBusy(false);
     if (result.error) return setError(friendlyEmployeeError(result.error));
     setShowForm(false); setForm(emptyEmployee); setSuccess("تمت إضافة الموظف ورقم واتساب بنجاح");
