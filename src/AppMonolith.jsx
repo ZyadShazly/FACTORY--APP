@@ -703,16 +703,22 @@ function Dashboard({ data, navigate, permissions }) {
     const lowProducts = productAlerts.low;
     const postedSales = data.sales.filter((sale) => sale.status !== "cancelled");
     const revenue = postedSales.reduce((sum, sale) => sum + num(sale.total), 0);
+    const saleIssueCosts = new Map();
+    (inventoryWorkspace?.movements || []).filter((movement) => movement.movement_type === "sale_issue" && movement.sale_id).forEach((movement) => {
+      saleIssueCosts.set(movement.sale_id, (saleIssueCosts.get(movement.sale_id) || 0) + Math.abs(num(movement.quantity_delta)) * num(movement.unit_cost));
+    });
     const cogs = postedSales.reduce((sum, sale) => {
+      if (saleIssueCosts.has(sale.id)) return sum + saleIssueCosts.get(sale.id);
       const product = data.products.find((row) => row.id === sale.product_id);
       return sum + (product ? num(sale.qty) * (avgProductionUnitCost(product.id, data) || productUnitCost(product, data)) : 0);
     }, 0);
+    const todayProductionReceipts = (inventoryWorkspace?.movements || []).filter((movement) => movement.movement_type === "production_receipt" && String(movement.posted_at || "").slice(0, 10) === today);
     return {
       activeProjects: activeProjects.length,
       delayedProjects: delayedProjects.length,
       averageProgress,
       ordersThisMonth: data.productionOrders.filter((order) => (order.order_date || "").slice(0, 7) === monthKey).length,
-      todayProduction: data.productionOrders.filter((order) => order.status === "completed" && String(order.completed_at || "").slice(0, 10) === today).reduce((sum, order) => sum + num(order.qty), 0),
+      todayProduction: todayProductionReceipts.reduce((sum, movement) => sum + num(movement.quantity_delta), 0),
       lowMaterials, unlinkedMaterials: materialAlerts.unlinked,
       lowProducts, unlinkedProducts: productAlerts.unlinked,
       todaySales: postedSales.filter((sale) => sale.sale_date === today).reduce((sum, sale) => sum + num(sale.total), 0),
@@ -748,7 +754,7 @@ function Dashboard({ data, navigate, permissions }) {
 
       {permissions.view_financials && <DashboardSection title="المالية" description="السيولة والربحية والتحصيلات" action={quickAction("reports", "فتح التقارير")}>
         <DashboardMetric label="مبيعات اليوم" value={formatMoney(stats.todaySales)} tone="success" />
-        <DashboardMetric label="صافي الربح التقديري" value={formatMoney(stats.profit)} tone={stats.profit >= 0 ? "success" : "danger"} />
+        <DashboardMetric label="مجمل ربح المبيعات" value={formatMoney(stats.profit)} tone={stats.profit >= 0 ? "success" : "danger"} />
         <DashboardMetric label="مستحق من العملاء" value={formatMoney(stats.receivables)} tone="gold" />
       </DashboardSection>}
 

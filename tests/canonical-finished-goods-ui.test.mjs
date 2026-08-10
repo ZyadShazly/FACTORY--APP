@@ -30,8 +30,9 @@ test("commercial lifecycle refreshes both documents and inventory", () => {
   assert.match(ui, /scope: "rentals:return"[\s\S]*reloadInventory/);
 });
 
-test("dashboard counts canonical project lifecycle and completed output only", () => {
+test("dashboard counts canonical project lifecycle and ledger-posted output only", () => {
   assert.match(ui, /!\["completed", "closed", "cancelled"\]\.includes\(project\.lifecycle\)/);
   assert.match(ui, /project\.effective_progress_percentage \?\? project\.progress/);
-  assert.match(ui, /order\.status === "completed" && String\(order\.completed_at/);
+  assert.match(ui, /movement\.movement_type === "production_receipt" && String\(movement\.posted_at/);
+  assert.match(ui, /todayProductionReceipts\.reduce/);
 });
