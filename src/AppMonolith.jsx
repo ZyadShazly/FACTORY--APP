@@ -407,7 +407,7 @@ export default function App() {
   const refetchTable = useCallback(async (key) => {
     if (V22_DEMO) return;
     const table = TABLES[key];
-    const fetchResult = await fetchTableRows(key, table);
+    const fetchResult = await fetchTableRows(key, table, profile?.role);
     if (!fetchResult.error) {
       setData((prev) => ({ ...(prev || EMPTY_DATA), [key]: fetchResult.data || [] }));
       setDataWarnings((current) => current.filter((item) => item !== key));
@@ -415,7 +415,7 @@ export default function App() {
       setDataWarnings((current) => current.includes(key) ? current : [...current, key]);
     }
     return fetchResult;
-  }, []);
+  }, [profile?.role]);
   const refetchTables = useCallback(async (...keys) => {
     const results = await Promise.all(keys.map((key) => refetchTable(key)));
     return { data: results.map((result) => result?.data || []), error: results.find((result) => result?.error)?.error || null };
@@ -438,7 +438,7 @@ export default function App() {
     (async () => {
       const results = await Promise.all(
         activeTableEntries.map(async ([key, table]) => {
-          const fetchResult = await fetchTableRows(key, table);
+          const fetchResult = await fetchTableRows(key, table, profile.role);
           return { key, fetchResult };
         })
       );
@@ -866,7 +866,7 @@ function ProductsTab({ data, canCreate, canEdit, canArchive, hideProfitInfo, ref
 
   return (
     <div>
-      <SectionTitle eyebrow="تكلفة المنتج" title="المنتجات وتركيبة التكلفة" icon={<Layers size={14} />} />
+      <SectionTitle eyebrow={hideProfitInfo?"دليل التصنيع":"تكلفة المنتج"} title={hideProfitInfo?"المنتجات وتركيبة التصنيع":"المنتجات وتركيبة التكلفة"} icon={<Layers size={14} />} />
       {inventoryError && <Banner>{inventoryError}</Banner>}
       {(canCreate || (editingId && canEdit)) && <Card style={{ marginBottom: 18 }}>
         <div style={{ fontWeight: 700, marginBottom: 12 }}>{editingId ? "تعديل منتج" : "منتج جديد"}</div>
@@ -912,7 +912,7 @@ function ProductsTab({ data, canCreate, canEdit, canArchive, hideProfitInfo, ref
       <Card>
         <SearchBox value={search} onChange={setSearch} placeholder="ابحث باسم المنتج..." />
         {filtered.length === 0 ? <Empty text="لا توجد نتائج" /> : (
-          <Table headers={["المنتج", "النوع", "تكلفة الخامات", "عمالة", "تكاليف غير مباشرة", "إجمالي التكلفة/وحدة", ...(hideProfitInfo ? [] : ["سعر البيع", "الهامش"]), "المخزون التام", ""]}>
+          <Table headers={["المنتج", "النوع", ...(hideProfitInfo ? [] : ["تكلفة الخامات", "عمالة", "تكاليف غير مباشرة", "إجمالي التكلفة/وحدة", "سعر البيع", "الهامش"]), "المخزون التام", ""]}>
             {filtered.map((p) => {
               const matCost = bomUnitCost(p, data);
               const unitCost = productUnitCost(p, data);
@@ -921,9 +921,9 @@ function ProductsTab({ data, canCreate, canEdit, canArchive, hideProfitInfo, ref
                 <tr key={p.id}>
                   <Td>{p.name}</Td>
                   <Td>{ITEM_TYPE_LABEL[p.item_type] || "للبيع"}</Td>
-                  <Td>{formatMoney(matCost)}</Td><Td>{formatMoney(p.labor_cost)}</Td><Td>{formatMoney(p.overhead_cost)}</Td>
-                  <Td style={{ fontWeight: 700, color: C.brass }}>{formatMoney(unitCost)}</Td>
                   {!hideProfitInfo && (<>
+                    <Td>{formatMoney(matCost)}</Td><Td>{formatMoney(p.labor_cost)}</Td><Td>{formatMoney(p.overhead_cost)}</Td>
+                    <Td style={{ fontWeight: 700, color: C.brass }}>{formatMoney(unitCost)}</Td>
                     <Td>{formatMoney(p.selling_price)}</Td>
                     <Td style={{ color: margin == null ? C.muted : margin >= 0 ? C.green : C.red }}>{margin == null ? "—" : `${margin.toFixed(1)}%`}</Td>
                   </>)}

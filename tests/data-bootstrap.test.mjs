@@ -76,6 +76,15 @@ test("protected business datasets route through their visible RPCs", async () =>
   assert.ok(calls.some((call) => call[0] === "timeout" && call[1]?.includes("المشاريع")));
 });
 
+test("production material, product, and order bootstrap uses sanitized references", async () => {
+  const { fetchTableRows, calls } = harness();
+  for (const key of ["materials", "products", "productionOrders"]) {
+    await fetchTableRows(key, key, "production");
+  }
+  assert.equal(calls.filter((call) => call[0] === "rpc" && call[1] === "get_production_reference_data").length, 3);
+  assert.equal(calls.some((call) => call[0] === "from" && ["materials", "products", "productionOrders"].includes(call[1])), false);
+});
+
 test("audit log falls back to legacy rows when actor relation is unavailable", async () => {
   const relationError = { code: "PGRST200" };
   const { fetchTableRows, calls, logs } = harness({

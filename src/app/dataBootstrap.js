@@ -21,12 +21,14 @@ export function createTableFetcher({
   if (typeof withTimeout !== "function") throw new Error("withTimeout is required");
   if (!projectFilesTable) throw new Error("projectFilesTable is required");
 
-  return async function fetchTableRows(key, table) {
+  return async function fetchTableRows(key, table, role = null) {
     let fetchResult;
     try {
       const timeoutLabel = `انتهت مهلة تحميل ${tableLabel(pageLabels, key, table)}`;
 
-      if (key === "projects") {
+      if (role === "production" && ["materials", "products", "productionOrders"].includes(key)) {
+        fetchResult = await withTimeout(supabase.rpc("get_production_reference_data", { dataset: key }), undefined, timeoutLabel);
+      } else if (key === "projects") {
         fetchResult = await withTimeout(supabase.rpc("get_projects_visible"), undefined, timeoutLabel);
       } else if (key === "productionOrders") {
         fetchResult = await withTimeout(supabase.rpc("get_production_orders_visible"), undefined, timeoutLabel);
