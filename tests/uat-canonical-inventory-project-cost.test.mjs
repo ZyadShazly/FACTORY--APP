@@ -40,6 +40,6 @@ test("UAT-002 uses approved entries and treats the project column as cache", () 
 });
 
 test("UAT-014 hides the placeholder project report tab", () => {
-  assert.match(projects, /TABS\.filter\(\(\[id\]\)=>id!=="reports"\)/);
+  assert.doesNotMatch(projects, /\["reports"/);
   assert.doesNotMatch(projects, /tab === "reports" && <ComingSoon/);
 });

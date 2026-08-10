@@ -217,13 +217,16 @@ function SectionTitle({ eyebrow, title, icon, description }) {
 }
 function Banner({ type = "error", children }) {
   const isErr = type === "error";
+  const isWarning = type === "warning";
+  const tone = isErr ? C.red : isWarning ? "var(--color-warning)" : C.green;
   return (
-    <div style={{ display: "flex", alignItems: "flex-start", gap: 8, background: isErr ? "var(--color-danger-soft)" : "var(--color-success-soft)", border: `1px solid ${isErr ? C.red : C.green}`, color: isErr ? C.red : C.green, borderRadius: 8, padding: "10px 12px", fontSize: 13, marginTop: 10 }}>
-      {isErr ? <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} /> : <CheckCircle2 size={16} style={{ flexShrink: 0, marginTop: 2 }} />}
+    <div style={{ display: "flex", alignItems: "flex-start", gap: 8, background: isErr ? "var(--color-danger-soft)" : isWarning ? "var(--color-warning-soft)" : "var(--color-success-soft)", border: `1px solid ${tone}`, color: tone, borderRadius: 8, padding: "10px 12px", fontSize: 13, marginTop: 10 }}>
+      {isErr || isWarning ? <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} /> : <CheckCircle2 size={16} style={{ flexShrink: 0, marginTop: 2 }} />}
       <span>{children}</span>
     </div>
   );
 }
+const operationFeedbackType = (message) => String(message || "").includes("لكن تعذر تحديث الشاشة") ? "warning" : "success";
 function Table({ headers, children }) {
   return (
     <div className="legacy-table-wrap" style={{ overflowX: "auto" }}>
@@ -1021,7 +1024,7 @@ function SalesTab({ data, refresh, canManage }) {
         </div>
         <div style={{ marginTop: 12 }}><Btn onClick={submit}><Plus size={15} /> تسجيل البيع</Btn></div>
         {err && <Banner type="error">{err}</Banner>}
-        {ok && <Banner type="success">{ok}</Banner>}
+        {ok && <Banner type={operationFeedbackType(ok)}>{ok}</Banner>}
       </Card>
       <Card>
         {postedSales.length === 0 ? <Empty text="لا توجد مبيعات مسجلة بعد" /> : (
@@ -1140,7 +1143,7 @@ function RentalsTab({ data, refresh, canManage }) {
         </div>
         <div style={{ marginTop: 12 }}><Btn onClick={submit}><Plus size={15} /> تسجيل الإيجار</Btn></div>
         {err && <Banner type="error">{err}</Banner>}
-        {ok && <Banner type="success">{ok}</Banner>}
+        {ok && <Banner type={operationFeedbackType(ok)}>{ok}</Banner>}
       </Card>
       <Card>
         {activeRentals.length === 0 ? <Empty text="لا توجد عمليات إيجار نشطة" /> : (
@@ -1509,7 +1512,7 @@ function ExpensesTab({ data, profileRole, refresh }) {
         <Field label="ملاحظات"><Input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></Field>
       </div>
       <div style={{ marginTop: 12 }}><Btn onClick={submit}><Plus size={15}/> تسجيل المصروف</Btn></div>
-      {err && <Banner type="error">{err}</Banner>}{ok && <Banner type="success">{ok}</Banner>}
+      {err && <Banner type="error">{err}</Banner>}{ok && <Banner type={operationFeedbackType(ok)}>{ok}</Banner>}
     </Card>
     <Card>{data.expenses.length === 0 ? <Empty text="لا توجد مصروفات مسجلة" /> : <Table headers={["التاريخ","البند","المشروع","الحالة","الملاحظات","المبلغ","الإجراءات"]}>{[...data.expenses].reverse().map((e) => {
       const project = data.projects.find((p) => p.id === e.project_id);

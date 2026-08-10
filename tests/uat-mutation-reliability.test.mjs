@@ -14,7 +14,8 @@ test("operation feedback is transient and distinguishes warning state",()=>{
   const shared=fs.readFileSync("src/v22/shared.jsx","utf8");
   const app=fs.readFileSync("src/AppMonolith.jsx","utf8");
   assert.match(shared,/window\.setTimeout\(onDismiss/);
-  assert.match(app,/type: "warning", message: "تم الحفظ، لكن تعذر تحديث الشاشة/);
+  assert.match(app,/operationFeedbackType = \(message\).*"warning" : "success"/);
+  assert.match(app,/Banner type=\{operationFeedbackType\(ok\)\}/);
 });
 
 test("critical mutations verify final server state and bound refresh", async()=>{
