@@ -4,6 +4,7 @@ import fs from "node:fs";
 import { aggregateInventoryByMaterial, canonicalMaterialAlerts } from "../src/domain/inventoryBalances.js";
 
 const app = fs.readFileSync("src/AppMonolith.jsx", "utf8");
+const inventoryHook = fs.readFileSync("src/operational/useInventoryWorkspace.js", "utf8");
 const projects = fs.readFileSync("src/v22/projectWorkspace.jsx", "utf8");
 const actualCost = fs.readFileSync("src/v22/projectActualCost.jsx", "utf8");
 const migration = fs.readFileSync("supabase/migrations/202608101100_uat_canonical_project_actual_cost.sql", "utf8");
@@ -23,7 +24,8 @@ test("UAT-001 aggregates the protected ledger across warehouses", () => {
   assert.equal(alerts.low[0].quantityOnHand, 11);
   assert.deepEqual(alerts.low[0].warehouseNames, ["A", "B"]);
   assert.equal(alerts.unlinked[0].id, "m2");
-  assert.match(app, /supabase\.rpc\("get_inventory_workspace"\)/);
+  assert.match(app, /useInventoryWorkspace\("dashboard"\)/);
+  assert.match(inventoryHook, /supabase\.rpc\("get_inventory_workspace"\)/);
   assert.doesNotMatch(app, /function materialStock/);
 });
 

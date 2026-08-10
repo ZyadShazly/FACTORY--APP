@@ -35,8 +35,9 @@ import { MaterialsCatalogWorkspace } from "./operational/MaterialsCatalogWorkspa
 import { ProductionWorkspace } from "./operational/ProductionWorkspace";
 import { ProcurementWorkspace } from "./operational/ProcurementWorkspace";
 import { CommercialAdvancesPanel } from "./operational/CommercialAdvancesPanel";
+import { useInventoryWorkspace } from "./operational/useInventoryWorkspace";
 import { ArchiveSection } from "./ui/foundation";
-import { canonicalMaterialAlerts } from "./domain/inventoryBalances";
+import { aggregateInventoryByProduct, canonicalFinishedProductAlerts, canonicalMaterialAlerts } from "./domain/inventoryBalances";
 import { readWorkspaceLocation, workspaceUrl } from "./app/urlNavigation";
 import { customerBalances, supplierBalances, transactionClassLabel } from "./domain/commercialBalances";
 import { configureCurrency, formatMoney } from "./userExperience";
@@ -157,18 +158,8 @@ function bomUnitCost(product, data) {
 function productUnitCost(product, data) {
   return bomUnitCost(product, data) + num(product.labor_cost) + num(product.overhead_cost);
 }
-function producedQty(productId, data) {
-  return data.productionOrders.filter((o) => o.product_id === productId && o.status === "completed").reduce((s, o) => s + o.qty, 0);
-}
-function soldQty(productId, data) {
-  return data.sales.filter((s) => s.product_id === productId && s.status !== "cancelled").reduce((s, o) => s + o.qty, 0);
-}
-function activeRentedQty(productId, data) {
-  return data.rentals.filter((r) => r.product_id === productId && r.status === "active").reduce((s, r) => s + r.qty, 0);
-}
-function finishedStock(productId, data) { return producedQty(productId, data) - soldQty(productId, data) - activeRentedQty(productId, data); }
 function avgProductionUnitCost(productId, data) {
-  const os = data.productionOrders.filter((o) => o.product_id === productId);
+  const os = data.productionOrders.filter((o) => o.product_id === productId && o.status === "completed");
   const q = os.reduce((s, o) => s + o.qty, 0);
   const c = os.reduce((s, o) => s + o.total_cost, 0);
   return q > 0 ? c / q : 0;
@@ -714,32 +705,18 @@ function DashboardSection({ title, description, action, children, className = ""
 }
 
 function Dashboard({ data, navigate, permissions }) {
-  const [inventoryWorkspace, setInventoryWorkspace] = useState(null);
-  const [inventoryError, setInventoryError] = useState("");
-  const [inventoryUpdatedAt, setInventoryUpdatedAt] = useState(null);
-  useEffect(() => {
-    let active = true;
-    const loadInventory = () => supabase.rpc("get_inventory_workspace").then(({ data: workspace, error }) => {
-      if (!active) return;
-      if (error) setInventoryError("تعذر تحميل رصيد دفتر المخزون؛ لم يتم عرض تقدير بديل.");
-      else { setInventoryWorkspace(workspace || {}); setInventoryError(""); setInventoryUpdatedAt(new Date()); }
-    });
-    void loadInventory();
-    const channel = supabase.channel("dashboard-inventory-ledger")
-      .on("postgres_changes", { event:"*", schema:"public", table:"inventory_movements" }, loadInventory)
-      .subscribe();
-    return () => { active = false; void supabase.removeChannel(channel); };
-  }, [data.materials, data.materialPurchases, data.productionOrders]);
+  const { workspace: inventoryWorkspace, error: inventoryError, updatedAt: inventoryUpdatedAt } = useInventoryWorkspace("dashboard");
 
   const stats = useMemo(() => {
     const today = todayStr();
     const monthKey = today.slice(0, 7);
-    const activeProjects = data.projects.filter((project) => !["delivered", "cancelled"].includes(project.status));
+    const activeProjects = data.projects.filter((project) => !["completed", "closed", "cancelled"].includes(project.lifecycle));
     const delayedProjects = activeProjects.filter((project) => project.delivery_date && project.delivery_date < today);
-    const averageProgress = activeProjects.length ? activeProjects.reduce((sum, project) => sum + num(project.progress), 0) / activeProjects.length : 0;
+    const averageProgress = activeProjects.length ? activeProjects.reduce((sum, project) => sum + num(project.effective_progress_percentage ?? project.progress), 0) / activeProjects.length : 0;
     const materialAlerts = inventoryWorkspace ? canonicalMaterialAlerts(inventoryWorkspace) : { low: [], unlinked: [] };
     const lowMaterials = materialAlerts.low;
-    const lowProducts = data.products.filter((product) => !product.archived_at).map((product) => ({ ...product, stock: finishedStock(product.id, data) })).filter((product) => product.stock <= 5).sort((a, b) => a.stock - b.stock);
+    const productAlerts = inventoryWorkspace ? canonicalFinishedProductAlerts(inventoryWorkspace, data.products) : { low: [], unlinked: [] };
+    const lowProducts = productAlerts.low;
     const postedSales = data.sales.filter((sale) => sale.status !== "cancelled");
     const revenue = postedSales.reduce((sum, sale) => sum + num(sale.total), 0);
     const cogs = postedSales.reduce((sum, sale) => {
@@ -751,9 +728,9 @@ function Dashboard({ data, navigate, permissions }) {
       delayedProjects: delayedProjects.length,
       averageProgress,
       ordersThisMonth: data.productionOrders.filter((order) => (order.order_date || "").slice(0, 7) === monthKey).length,
-      todayProduction: data.productionOrders.filter((order) => order.order_date === today).reduce((sum, order) => sum + num(order.qty), 0),
+      todayProduction: data.productionOrders.filter((order) => order.status === "completed" && String(order.completed_at || "").slice(0, 10) === today).reduce((sum, order) => sum + num(order.qty), 0),
       lowMaterials, unlinkedMaterials: materialAlerts.unlinked,
-      lowProducts,
+      lowProducts, unlinkedProducts: productAlerts.unlinked,
       todaySales: postedSales.filter((sale) => sale.sale_date === today).reduce((sum, sale) => sum + num(sale.total), 0),
       profit: revenue - cogs,
       receivables: data.customers.reduce((sum, customer) => sum + customerBalance(customer.id, data), 0),
@@ -781,7 +758,7 @@ function Dashboard({ data, navigate, permissions }) {
       <DashboardSection title="التشغيل والإنتاج" description="حركة الإنتاج وحالة المخزون" action={quickAction("production", "فتح الإنتاج")}>
         <DashboardMetric label="إنتاج اليوم" value={`${fmt(stats.todayProduction)} وحدة`} tone="info" />
         <DashboardMetric label="أوامر هذا الشهر" value={stats.ordersThisMonth} />
-        <DashboardMetric label="أصناف منخفضة" value={stats.lowMaterials.length + stats.lowProducts.length} tone={(stats.lowMaterials.length + stats.lowProducts.length) ? "warning" : "success"} />
+        <DashboardMetric label="تنبيهات مخزون" value={stats.lowMaterials.length + stats.unlinkedMaterials.length + stats.lowProducts.length + stats.unlinkedProducts.length} tone={(stats.lowMaterials.length + stats.unlinkedMaterials.length + stats.lowProducts.length + stats.unlinkedProducts.length) ? "warning" : "success"} />
         {canGo("assets") && <DashboardMetric label="عهد أصول نشطة" value={stats.activeAssetAssignments} tone={stats.activeAssetAssignments ? "info" : "success"} />}
       </DashboardSection>
 
@@ -803,9 +780,10 @@ function Dashboard({ data, navigate, permissions }) {
           {stats.lowMaterials.slice(0, 3).map((item) => <div className="dashboard-alert" key={`material-${item.id}`}><AlertCircle size={17} /><span><strong>{item.name}</strong> — الرصيد {fmt(item.quantityOnHand)} {item.unit} عبر {item.warehouseNames.length} مخزن</span></div>)}
           {stats.unlinkedMaterials.slice(0, 3).map((item) => <div className="dashboard-alert" key={`unlinked-material-${item.id}`}><AlertCircle size={17} /><span><strong>{item.name}</strong> — جودة بيانات: المادة غير مربوطة بصنف مخزون، ولا يوجد تقدير رصيد.</span></div>)}
           {inventoryError && <div className="dashboard-alert"><AlertCircle size={17}/><span>{inventoryError}</span></div>}
-          {stats.lowProducts.slice(0, 3).map((item) => <div className="dashboard-alert" key={`product-${item.id}`}><AlertCircle size={17} /><span><strong>{item.name}</strong> — المتاح {fmt(item.stock)} وحدة</span></div>)}
+          {stats.lowProducts.slice(0, 3).map((item) => <div className="dashboard-alert" key={`product-${item.id}`}><AlertCircle size={17} /><span><strong>{item.name}</strong> — المتاح {fmt(item.quantityOnHand)} {item.unit}</span></div>)}
+          {stats.unlinkedProducts.slice(0, 3).map((item) => <div className="dashboard-alert" key={`unlinked-product-${item.id}`}><AlertCircle size={17} /><span><strong>{item.name}</strong> — المنتج غير مربوط بصنف مخزون تام، ولا يوجد تقدير رصيد.</span></div>)}
           {stats.assetAlertCount > 0 && <div className="dashboard-alert"><AlertCircle size={17}/><span><strong>تنبيهات الأصول والعِدّة</strong> — {stats.assetAlertCount} عنصر يحتاج متابعة</span></div>}
-          {!inventoryError && !stats.unlinkedMaterials.length && !stats.lowMaterials.length && !stats.lowProducts.length && !stats.assetAlertCount && <div className="dashboard-clear"><CheckCircle2 size={18} /> لا توجد تنبيهات مخزون أو أصول حرجة حاليًا.</div>}
+          {!inventoryError && !stats.unlinkedMaterials.length && !stats.unlinkedProducts.length && !stats.lowMaterials.length && !stats.lowProducts.length && !stats.assetAlertCount && <div className="dashboard-clear"><CheckCircle2 size={18} /> لا توجد تنبيهات مخزون أو أصول حرجة حاليًا.</div>}
         </div>
       </DashboardSection>
 
@@ -828,6 +806,8 @@ const MaterialsTab=MaterialsCatalogWorkspace;
 
 /* --------------------------------- Products --------------------------------- */
 function ProductsTab({ data, canCreate, canEdit, canArchive, hideProfitInfo, insertRow, updateRow }) {
+  const { workspace: inventoryWorkspace, error: inventoryError } = useInventoryWorkspace("products");
+  const finishedBalances = useMemo(() => aggregateInventoryByProduct(inventoryWorkspace || {}), [inventoryWorkspace]);
   const blank = { name: "", sku: "", laborCost: "", overheadCost: "", sellingPrice: "", itemType: "sale" };
   const [form, setForm] = useState(blank);
   const [bom, setBom] = useState([]);
@@ -881,6 +861,7 @@ function ProductsTab({ data, canCreate, canEdit, canArchive, hideProfitInfo, ins
   return (
     <div>
       <SectionTitle eyebrow="تكلفة المنتج" title="المنتجات وتركيبة التكلفة" icon={<Layers size={14} />} />
+      {inventoryError && <Banner>{inventoryError}</Banner>}
       {(canCreate || (editingId && canEdit)) && <Card style={{ marginBottom: 18 }}>
         <div style={{ fontWeight: 700, marginBottom: 12 }}>{editingId ? "تعديل منتج" : "منتج جديد"}</div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
@@ -940,7 +921,7 @@ function ProductsTab({ data, canCreate, canEdit, canArchive, hideProfitInfo, ins
                     <Td>{formatMoney(p.selling_price)}</Td>
                     <Td style={{ color: margin == null ? C.muted : margin >= 0 ? C.green : C.red }}>{margin == null ? "—" : `${margin.toFixed(1)}%`}</Td>
                   </>)}
-                  <Td>{finishedStock(p.id, data)}</Td>
+                  <Td>{finishedBalances.has(p.id) ? fmt(finishedBalances.get(p.id).quantityOnHand) : "—"}</Td>
                   <Td style={{ display: "flex", gap: 10 }}>
                     {canEdit && <button aria-label={`تعديل ${p.name}`} title="تعديل المنتج" onClick={() => startEdit(p)} style={{ background: "none", border: "none", cursor: "pointer", color: C.brass }}><Pencil size={15} /></button>}
                     {canArchive && <button aria-label={`أرشفة ${p.name}`} onClick={() => archiveProduct(p)} style={{ background: "none", border: "none", cursor: "pointer", color: C.red }}><Archive size={15} /></button>}
@@ -963,6 +944,8 @@ const ProductionTab=ProductionWorkspace;
 
 /* ----------------------------------- Sales ---------------------------------- */
 function SalesTab({ data, refresh, canManage }) {
+  const { workspace: inventoryWorkspace, error: inventoryError, reload: reloadInventory } = useInventoryWorkspace("sales");
+  const finishedBalances = useMemo(() => aggregateInventoryByProduct(inventoryWorkspace || {}), [inventoryWorkspace]);
   const [form, setForm] = useState({ productId: "", customerId: "", qty: "", unitPrice: "", date: todayStr(), commandId: "" });
   const [err, setErr] = useState(""); const [ok, setOk] = useState("");
   const [cancelAction, setCancelAction] = useState(null);
@@ -974,8 +957,8 @@ function SalesTab({ data, refresh, canManage }) {
     if (!form.customerId) return setErr("اختر العميل");
     const qty = num(form.qty);
     if (qty <= 0) return setErr("أدخل كمية أكبر من صفر");
-    const stock = finishedStock(form.productId, data);
-    if (stock < qty) return setErr(`المخزون التام المتاح ${stock} وحدة فقط`);
+    const stock = finishedBalances.get(form.productId)?.quantityOnHand;
+    if (stock != null && stock < qty) return setErr(`المخزون التام المتاح ${stock} وحدة فقط`);
     const unitPrice = num(form.unitPrice) || selectedProduct.selling_price;
     if (!Number.isFinite(unitPrice) || unitPrice <= 0) return setErr("سعر الوحدة يجب أن يكون أكبر من صفر");
     const commandId = form.commandId || globalThis.crypto.randomUUID();
@@ -990,7 +973,7 @@ function SalesTab({ data, refresh, canManage }) {
         const verification = await supabase.from("sales").select("id,status").eq("command_id", commandId).single();
         return verification.error ? verification : verification.data?.status === "posted";
       },
-      refetch: refresh,
+      refetch: () => Promise.all([refresh(), reloadInventory()]),
     });
     if (result.error) return setErr(result.mutationSaved
       ? "تم إرسال البيع، لكن تعذر التحقق أو تحديث الشاشة. حدّث الصفحة؛ لا تُنشئ أمرًا جديدًا لنفس العملية."
@@ -1006,7 +989,7 @@ function SalesTab({ data, refresh, canManage }) {
     const result = await runCriticalMutation({ scope:"sales:cancel", mutate:()=>supabase.rpc("cancel_sale",{target_sale_id:row.id,reason:reason.trim()}), verify:async()=>{
       const verification=await supabase.from("sales").select("status,cancelled_at").eq("id",row.id).single();
       return verification.error?verification:verification.data?.status==="cancelled";
-    }, refetch:refresh });
+    }, refetch:()=>Promise.all([refresh(),reloadInventory()]) });
     if (result.error) return setCancelAction((current)=>({...current,busy:false,error:result.mutationSaved?"وصل أمر الإلغاء للخادم، لكن تعذر التحقق. حدّث الشاشة قبل إعادة المحاولة.":result.error.message}));
     setCancelAction(null);
     setOk(result.refreshError ? "تم إلغاء البيع وحفظه، لكن تعذر تحديث الشاشة. حدّث الصفحة دون إعادة الإلغاء." : "تم إلغاء البيع، واستُبعد من الرصيد والإيراد مع حفظ أثر المراجعة.");
@@ -1019,10 +1002,11 @@ function SalesTab({ data, refresh, canManage }) {
   return (
     <div>
       <SectionTitle eyebrow="التوزيع" title="المبيعات" icon={<ShoppingCart size={14} />} />
+      {inventoryError && <Banner type="error">{inventoryError}</Banner>}
       <Card style={{ marginBottom: 18 }}>
         <div style={{ fontWeight: 700, marginBottom: 12 }}>عملية بيع جديدة</div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <Field label="المنتج"><Select value={form.productId} onChange={(e) => setForm({ ...form, productId: e.target.value })}><option value="">اختر المنتج</option>{data.products.filter((p) => !p.archived_at && (p.item_type || "sale") !== "rental").map((p) => <option key={p.id} value={p.id}>{p.name} (متاح: {finishedStock(p.id, data)})</option>)}</Select></Field>
+          <Field label="المنتج"><Select value={form.productId} onChange={(e) => setForm({ ...form, productId: e.target.value })}><option value="">اختر المنتج</option>{data.products.filter((p) => !p.archived_at && (p.item_type || "sale") !== "rental").map((p) => <option key={p.id} value={p.id}>{p.name} (متاح: {finishedBalances.has(p.id) ? fmt(finishedBalances.get(p.id).quantityOnHand) : "—"})</option>)}</Select></Field>
           <Field label="العميل"><Select value={form.customerId} onChange={(e) => setForm({ ...form, customerId: e.target.value })}><option value="">اختر العميل</option>{data.customers.filter((c) => !c.archived_at).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</Select></Field>
           <Field label="الكمية"><Input type="number" value={form.qty} onChange={(e) => setForm({ ...form, qty: e.target.value })} /></Field>
           <Field label="سعر الوحدة"><Input type="number" value={form.unitPrice} onChange={(e) => setForm({ ...form, unitPrice: e.target.value })} placeholder={selectedProduct ? `افتراضي: ${fmt(selectedProduct.selling_price)}` : ""} /></Field>
@@ -1051,6 +1035,8 @@ function SalesTab({ data, refresh, canManage }) {
 
 /* --------------------------------- Rentals ----------------------------------- */
 function RentalsTab({ data, refresh, canManage }) {
+  const { workspace: inventoryWorkspace, error: inventoryError, reload: reloadInventory } = useInventoryWorkspace("rentals");
+  const finishedBalances = useMemo(() => aggregateInventoryByProduct(inventoryWorkspace || {}), [inventoryWorkspace]);
   const [form, setForm] = useState({ productId: "", customerId: "", qty: "", rentalFee: "", startDate: todayStr(), expectedReturn: "", commandId: "" });
   const [err, setErr] = useState(""); const [ok, setOk] = useState("");
   const [cancelAction, setCancelAction] = useState(null);
@@ -1061,8 +1047,8 @@ function RentalsTab({ data, refresh, canManage }) {
     if (!form.customerId) return setErr("اختر العميل");
     const qty = num(form.qty);
     if (qty <= 0) return setErr("أدخل كمية أكبر من صفر");
-    const stock = finishedStock(form.productId, data);
-    if (stock < qty) return setErr(`المتاح ${stock} وحدة فقط (بعد خصم اللي مؤجر حاليًا)`);
+    const stock = finishedBalances.get(form.productId)?.quantityOnHand;
+    if (stock != null && stock < qty) return setErr(`المتاح ${stock} وحدة فقط (بعد خصم اللي مؤجر حاليًا)`);
     if (num(form.rentalFee) < 0) return setErr("قيمة الإيجار لا يمكن أن تكون سالبة");
     if (form.expectedReturn && form.expectedReturn < form.startDate) return setErr("تاريخ الاسترجاع المتوقع لا يمكن أن يسبق تاريخ البداية");
     const commandId = form.commandId || globalThis.crypto.randomUUID();
@@ -1078,7 +1064,7 @@ function RentalsTab({ data, refresh, canManage }) {
         const verification = await supabase.from("rentals").select("id,status").eq("command_id", commandId).single();
         return verification.error ? verification : verification.data?.status === "active";
       },
-      refetch: refresh,
+      refetch: () => Promise.all([refresh(), reloadInventory()]),
     });
     if (result.error) return setErr(result.mutationSaved
       ? "تم إرسال الإيجار، لكن تعذر التحقق أو تحديث الشاشة. حدّث الصفحة؛ لا تُنشئ أمرًا جديدًا لنفس العملية."
@@ -1089,7 +1075,7 @@ function RentalsTab({ data, refresh, canManage }) {
   async function markReturned(r) {
     setErr(""); setOk("");
     const mutationResult = await supabase.rpc("mark_rental_returned", { target_rental_id: r.id, target_return_date: todayStr() });
-    const result = await syncMutation({ scope: "rentals:return", mutationResult, refetch: refresh });
+    const result = await syncMutation({ scope: "rentals:return", mutationResult, refetch: () => Promise.all([refresh(), reloadInventory()]) });
     if (result.error) return setErr(result.error.message);
     setOk("تم تسجيل إرجاع الصنف بنجاح");
   }
@@ -1103,7 +1089,7 @@ function RentalsTab({ data, refresh, canManage }) {
     const result=await runCriticalMutation({scope:"rentals:cancel",mutate:()=>supabase.rpc("cancel_rental",{target_rental_id:row.id,reason:reason.trim()}),verify:async()=>{
       const verification=await supabase.from("rentals").select("status,cancelled_at").eq("id",row.id).single();
       return verification.error?verification:verification.data?.status==="cancelled";
-    },refetch:refresh});
+    },refetch:()=>Promise.all([refresh(),reloadInventory()])});
     if(result.error)return setCancelAction((current)=>({...current,busy:false,error:result.mutationSaved?"وصل أمر الإلغاء للخادم، لكن تعذر التحقق. حدّث الشاشة قبل إعادة المحاولة.":result.error.message}));
     setCancelAction(null);setOk(result.refreshError?"تم إلغاء الإيجار، لكن تعذر تحديث الشاشة. حدّث الصفحة دون إعادة الإلغاء.":"تم إلغاء الإيجار واستبعاده من الرصيد والمتاح مع حفظ أثر المراجعة.");
   }
@@ -1114,10 +1100,11 @@ function RentalsTab({ data, refresh, canManage }) {
   return (
     <div>
       <SectionTitle eyebrow="التأجير" title="الإيجارات" icon={<CalendarClock size={14} />} />
+      {inventoryError && <Banner type="error">{inventoryError}</Banner>}
       <Card style={{ marginBottom: 18 }}>
         <div style={{ fontWeight: 700, marginBottom: 12 }}>عملية إيجار جديدة</div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <Field label="الصنف"><Select value={form.productId} onChange={(e) => setForm({ ...form, productId: e.target.value })}><option value="">اختر الصنف</option>{rentalProducts.map((p) => <option key={p.id} value={p.id}>{p.name} (متاح: {finishedStock(p.id, data)})</option>)}</Select></Field>
+          <Field label="الصنف"><Select value={form.productId} onChange={(e) => setForm({ ...form, productId: e.target.value })}><option value="">اختر الصنف</option>{rentalProducts.map((p) => <option key={p.id} value={p.id}>{p.name} (متاح: {finishedBalances.has(p.id) ? fmt(finishedBalances.get(p.id).quantityOnHand) : "—"})</option>)}</Select></Field>
           <Field label="العميل"><Select value={form.customerId} onChange={(e) => setForm({ ...form, customerId: e.target.value })}><option value="">اختر العميل</option>{data.customers.filter((c) => !c.archived_at).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</Select></Field>
           <Field label="الكمية"><Input type="number" value={form.qty} onChange={(e) => setForm({ ...form, qty: e.target.value })} /></Field>
           <Field label="قيمة الإيجار الإجمالية"><Input type="number" value={form.rentalFee} onChange={(e) => setForm({ ...form, rentalFee: e.target.value })} /></Field>

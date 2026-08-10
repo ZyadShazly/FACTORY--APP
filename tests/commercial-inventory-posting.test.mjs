@@ -38,11 +38,12 @@ test("commercial lifecycle restores each issued inventory movement once", () => 
   assert.match(migration, /perform private\.reverse_commercial_inventory\('rental'/);
 });
 
-test("commercial UI posts through RPC and only counts completed production", () => {
+test("commercial UI posts through RPC and reads canonical inventory balances", () => {
   assert.match(ui, /supabase\.rpc\("post_sale"/);
   assert.match(ui, /supabase\.rpc\("post_rental"/);
   assert.doesNotMatch(ui, /insertRow\("sales"/);
   assert.doesNotMatch(ui, /insertRow\("rentals"/);
-  assert.match(ui, /o\.product_id === productId && o\.status === "completed"/);
+  assert.match(ui, /aggregateInventoryByProduct/);
+  assert.match(ui, /finishedBalances\.get\(form\.productId\)\?\.quantityOnHand/);
   assert.match(ui, /\.eq\("command_id", commandId\)/);
 });

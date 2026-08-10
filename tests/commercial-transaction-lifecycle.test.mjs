@@ -35,7 +35,7 @@ test("new invalid financial rows are blocked without rewriting the legacy anomal
 });
 
 test("UI excludes cancelled transactions from balances and stock and keeps audit history",()=>{
-  assert.match(ui,/data\.sales\.filter\(\(s\) => s\.product_id === productId && s\.status !== "cancelled"\)/);
+  assert.match(ui,/aggregateInventoryByProduct/);
   assert.match(ui,/data\.sales\.filter\(\(s\) => s\.customer_id === customerId && s\.status !== "cancelled"\)/);
   assert.match(ui,/data\.rentals\.filter\(\(r\) => r\.customer_id === customerId && r\.status !== "cancelled"\)/);
   assert.match(ui,/ArchiveSection title="المبيعات الملغاة"/);
