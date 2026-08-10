@@ -15,7 +15,7 @@ const TABLE_LABELS = {
   project_budget_versions:"نسخ ميزانية المشاريع",project_budget_sections:"أقسام الميزانية",project_budget_items:"بنود الميزانية",project_budget_templates:"قوالب الميزانية",
 };
 const ACTION_LABELS = {
-  insert:"إضافة", update:"تعديل", delete:"حذف",
+  insert:"إضافة", update:"تعديل", delete:"حذف", archive:"أرشفة", restore:"استعادة",
   role_change_attempt:"محاولة تغيير دور",
   privilege_change_attempt:"محاولة تغيير صلاحيات",
   profile_delete_attempt:"محاولة حذف حساب",
@@ -23,7 +23,7 @@ const ACTION_LABELS = {
 };
 export const PERMISSION_LABELS = {
   projects_view:"عرض المشاريع",projects_create:"إنشاء المشاريع",projects_edit:"تعديل المشاريع",projects_delete:"حذف المشاريع",
-  project_files_view:"عرض ملفات المشاريع",project_files_upload:"رفع ملفات المشاريع",project_files_delete:"حذف ملفات المشاريع",
+  project_files_view:"عرض ملفات المشاريع",project_files_upload:"رفع ملفات المشاريع",project_files_delete:"أرشفة واستعادة ملفات المشاريع",
   project_financials_view:"عرض ماليات المشاريع",payroll_view:"عرض الرواتب",payroll_create:"إنشاء الرواتب",payroll_edit:"تعديل الرواتب",
   projects_manage_lifecycle:"إدارة دورة حياة المشاريع",projects_manage_milestones:"إدارة مراحل التنفيذ",projects_manage_team:"إدارة فريق المشروع",projects_update_progress:"تحديث إنجاز المشروع",projects_close:"إغلاق المشروع",projects_override:"تجاوز استثنائي للمشروع",
   project_budget_view:"عرض الميزانية",project_budget_create:"إنشاء نسخة ميزانية",project_budget_edit:"تعديل مسودة الميزانية",project_budget_submit:"إرسال الميزانية للاعتماد",project_budget_approve:"اعتماد الميزانية",project_budget_reject:"رفض الميزانية",project_budget_view_financials:"عرض قيم الميزانية المالية",project_budget_manage_templates:"إدارة قوالب الميزانية",project_budget_override_activation:"تجاوز متطلب الميزانية للتفعيل",
