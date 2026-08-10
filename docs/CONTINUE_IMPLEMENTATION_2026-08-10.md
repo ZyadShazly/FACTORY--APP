@@ -29,15 +29,24 @@ Working branch: `product/continue-implementation-20260810`.
 - Retained private storage objects and added project activity plus audit records.
 - Blocked direct metadata deletion and direct archive-state mutation.
 
-### Global operational search — current batch
+### Global operational search — `21f9355`
 
 - Project results and overdue-project notifications now open the referenced project workspace.
 - Added explicit empty/error states.
 - Prevented late search responses from replacing newer query results.
 
+### Project base-currency integrity — current batch
+
+- Removed hard-coded SAR/EGP labels from project budgets, operational finance screens and Excel numeric styles.
+- Bootstrapped the configured system currency after authentication and propagated Owner setting changes immediately.
+- Made new project budgets and Actual Cost entries use the configured base currency and reject mixed-currency writes.
+- Protected the base-currency code from casual changes after monetary history exists; symbol, locale and decimals remain configurable.
+- Added an Owner-only, read-only reconciliation RPC for historical project budget, template and Actual Cost currency mismatches.
+- Preserved every historical row; no currency value or financial amount was rewritten.
+
 ## Verification snapshot
 
-- Full regression after the project-document batch: 463 passed, 0 failed, 2 optional integrations skipped.
+- Full regression after the base-currency batch: 471 passed, 0 failed, 2 optional integrations skipped (473 total).
 - Production build passed after every batch.
 - `git diff --check` passed.
 - New migrations were added to the repository only; none were applied to Production.

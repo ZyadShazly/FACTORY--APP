@@ -81,11 +81,11 @@ const STYLES = `<Styles>
 <Style ss:ID="Section"><Font ss:Bold="1" ss:Size="12"/><Interior ss:Color="#D9EAD3" ss:Pattern="Solid"/></Style>
 <Style ss:ID="SummaryLabel"><Font ss:Bold="1"/><Interior ss:Color="#F3F6F4" ss:Pattern="Solid"/></Style>
 <Style ss:ID="SummaryValue"><Font ss:Bold="1"/><NumberFormat ss:Format="#,##0.00"/></Style>
-<Style ss:ID="CurrencyTotal"><Font ss:Bold="1"/><NumberFormat ss:Format="#,##0.00 [$ر.س.-ar-SA]"/></Style>
+<Style ss:ID="CurrencyTotal"><Font ss:Bold="1"/><NumberFormat ss:Format="#,##0.00"/></Style>
 <Style ss:ID="Header"><Alignment ss:Horizontal="Center" ss:WrapText="1"/><Font ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#355E3B" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/></Borders></Style>
 <Style ss:ID="Text"><Alignment ss:WrapText="1"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#D9D9D9"/></Borders></Style>
 <Style ss:ID="Number"><NumberFormat ss:Format="#,##0.00"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#D9D9D9"/></Borders></Style>
-<Style ss:ID="Currency"><NumberFormat ss:Format="#,##0.00 [$ر.س.-ar-SA]"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#D9D9D9"/></Borders></Style>
+<Style ss:ID="Currency"><NumberFormat ss:Format="#,##0.00"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#D9D9D9"/></Borders></Style>
 <Style ss:ID="Date"><NumberFormat ss:Format="yyyy-mm-dd"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#D9D9D9"/></Borders></Style>
 <Style ss:ID="Status"><Alignment ss:Horizontal="Center"/><Font ss:Bold="1"/><Interior ss:Color="#FFF2CC" ss:Pattern="Solid"/></Style>
 <Style ss:ID="Empty"><Alignment ss:Horizontal="Center"/><Font ss:Italic="1" ss:Color="#777777"/></Style>

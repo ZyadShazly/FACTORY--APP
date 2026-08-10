@@ -3,6 +3,7 @@ import { BarChart3, Download, Printer, RefreshCw } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { supabase } from "../supabaseClient";
 import { exportExternalLaborWorkbook, exportInventoryWorkbook, exportPayrollWorkbook, printCurrentReport } from "./professionalExports";
+import { getCurrencySettings } from "../userExperience";
 import "./reportingPrint.css";
 
 const css = {
@@ -18,11 +19,12 @@ function defaultRange() {
 }
 
 function money(value, currency) {
-  return new Intl.NumberFormat(currency?.locale || "ar-SA", {
+  const configured = getCurrencySettings();
+  return new Intl.NumberFormat(currency?.locale || configured.currency_locale, {
     style: "currency",
-    currency: currency?.code || "SAR",
-    minimumFractionDigits: currency?.decimal_places ?? 2,
-    maximumFractionDigits: currency?.decimal_places ?? 2,
+    currency: currency?.code || configured.currency_code,
+    minimumFractionDigits: currency?.decimal_places ?? configured.decimal_places,
+    maximumFractionDigits: currency?.decimal_places ?? configured.decimal_places,
   }).format(Number(value || 0));
 }
 

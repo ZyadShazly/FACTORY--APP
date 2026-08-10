@@ -39,6 +39,7 @@ import { ArchiveSection } from "./ui/foundation";
 import { canonicalMaterialAlerts } from "./domain/inventoryBalances";
 import { readWorkspaceLocation, workspaceUrl } from "./app/urlNavigation";
 import { customerBalances, supplierBalances, transactionClassLabel } from "./domain/commercialBalances";
+import { configureCurrency, formatMoney } from "./userExperience";
 
 const V22_DEMO = (import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEMO === "true") && new URLSearchParams(window.location.search).get("demo") === "v22";
 const DEMO_ROLE = ["owner", "manager", "accountant", "production"].includes(new URLSearchParams(window.location.search).get("role")) ? new URLSearchParams(window.location.search).get("role") : "owner";
@@ -361,6 +362,25 @@ export default function App() {
   const [mutationFeedback, setMutationFeedback] = useState({ type: "success", message: "" });
   const [realtimeStatus, setRealtimeStatus] = useState(V22_DEMO ? (DEMO_CONNECTION_STATE === "offline" ? "RECONNECTING" : "DEMO") : "CONNECTING");
   const [openNavGroups, setOpenNavGroups] = useState(loadNavigationState);
+  const [currencyLoadError, setCurrencyLoadError] = useState("");
+  const [, setCurrencyRevision] = useState(0);
+
+  useEffect(() => {
+    if (V22_DEMO || !session || !profile) return;
+    let active = true;
+    void supabase.rpc("get_system_settings").then(({ data: settings, error }) => {
+      if (!active) return;
+      if (error) {
+        console.error("[Currency] settings bootstrap failed", error);
+        setCurrencyLoadError("تعذر تحميل العملة العامة؛ قد تظهر مبالغ بتنسيق محفوظ سابقًا حتى إعادة المحاولة.");
+        return;
+      }
+      configureCurrency(settings || {});
+      setCurrencyRevision((current) => current + 1);
+      setCurrencyLoadError("");
+    });
+    return () => { active = false; };
+  }, [session?.user?.id, profile?.id]);
 
   useEffect(() => {
     try {
@@ -651,6 +671,7 @@ export default function App() {
     <AppShell navigationGroups={navigationGroups} openGroups={openNavGroups} setOpenGroups={setOpenNavGroups} activeGroup={activeGroup} activePage={activePage} activeTab={activeTab} profile={profile} roleLabel={ROLES[role]?.label} realtimeStatus={realtimeStatus} warnings={dataWarnings} onNavigate={navigate} onRetryData={retryVisibleData} onSignOut={() => signOut()}>
         {!activeTab && <div className="module-state no-permission"><ShieldCheck size={30}/><strong>لا توجد صلاحية للوصول</strong><p>لا توجد صفحات مسموحة لهذا الحساب حاليًا. تواصل مع مدير النظام لتحديث صلاحياتك.</p></div>}
         {dataWarnings.length > 0 && <div className="module-state error compact"><AlertCircle size={20}/><div><strong>تعذر تحديث بعض البيانات</strong><p>{dataWarnings.map((key) => PAGE_LABELS[key] || key).join("، ")} — قد تكون البيانات المعروضة غير مكتملة.</p></div><button type="button" onClick={retryVisibleData}>إعادة المحاولة</button></div>}
+        {currencyLoadError && <div className="module-state error compact"><AlertCircle size={20}/><div><strong>إعداد العملة غير متزامن</strong><p>{currencyLoadError}</p></div></div>}
         {!["CONNECTED", "DEMO"].includes(realtimeStatus) && <div className="module-state offline compact"><AlertCircle size={20}/><div><strong>{realtimeStatus === "RECONNECTING" ? "جارِ إعادة الاتصال" : "الاتصال اللحظي غير جاهز"}</strong><p>يمكنك متابعة القراءة، وستتم مزامنة التغييرات تلقائيًا عند عودة الاتصال.</p></div><button type="button" onClick={retryVisibleData}>المحاولة الآن</button></div>}
         {activeTab === "dashboard" && <Dashboard data={data} navigate={navigate} permissions={permissions} />}
         {activeTab === "projects" && <ProjectsTab data={data} profile={profile} permissions={permissions} refresh={refetchTable} initialProjectId={routeProjectId} onProjectRoute={(projectId) => navigate("projects", { projectId, replace: !projectId })} />}
@@ -674,7 +695,7 @@ export default function App() {
         {activeTab === "reports" && permissions.view_financials && <ReportsTab data={data} />}
         {activeTab === "auditLog" && permissions.audit_log_view && <AuditLogTab data={data} />}
         {activeTab === "team" && <TeamTab profiles={data.profiles} employees={data.employees} refresh={refetchTable} currentProfile={profile} />}
-        {activeTab === "settings" && <SettingsPage currentProfile={profile} onRepaired={() => refetchTable("profiles")} />}
+        {activeTab === "settings" && <SettingsPage currentProfile={profile} onRepaired={() => refetchTable("profiles")} onCurrencySaved={(settings) => { configureCurrency(settings); setCurrencyRevision((current) => current + 1); setCurrencyLoadError(""); }} />}
       <Toast type={mutationFeedback.type} message={mutationFeedback.message} onDismiss={() => setMutationFeedback((current) => ({ ...current, message: "" }))} />
     </AppShell>
   );
@@ -765,9 +786,9 @@ function Dashboard({ data, navigate, permissions }) {
       </DashboardSection>
 
       {permissions.view_financials && <DashboardSection title="المالية" description="السيولة والربحية والتحصيلات" action={quickAction("reports", "فتح التقارير")}>
-        <DashboardMetric label="مبيعات اليوم" value={`${fmt(stats.todaySales)} ج.م`} tone="success" />
-        <DashboardMetric label="صافي الربح التقديري" value={`${fmt(stats.profit)} ج.م`} tone={stats.profit >= 0 ? "success" : "danger"} />
-        <DashboardMetric label="مستحق من العملاء" value={`${fmt(stats.receivables)} ج.م`} tone="gold" />
+        <DashboardMetric label="مبيعات اليوم" value={formatMoney(stats.todaySales)} tone="success" />
+        <DashboardMetric label="صافي الربح التقديري" value={formatMoney(stats.profit)} tone={stats.profit >= 0 ? "success" : "danger"} />
+        <DashboardMetric label="مستحق من العملاء" value={formatMoney(stats.receivables)} tone="gold" />
       </DashboardSection>}
 
       {canGo("employees") && <DashboardSection title="الموارد البشرية" description="القوة العاملة ودورة الرواتب" action={quickAction("employees", "فتح الموظفين")}>
@@ -888,7 +909,7 @@ function ProductsTab({ data, canCreate, canEdit, canArchive, hideProfitInfo, ins
           <div style={{ marginBottom: 12 }}>
             <Table headers={["المادة", "الكمية", "التكلفة", ""]}>
               {bom.map((r, i) => { const m = data.materials.find((x) => x.id === r.material_id); return (
-                <tr key={i}><Td>{m?.name}</Td><Td>{r.qty} {m?.unit}</Td><Td>{fmt((m?.unit_cost || 0) * r.qty)} ج.م</Td>
+                <tr key={i}><Td>{m?.name}</Td><Td>{r.qty} {m?.unit}</Td><Td>{formatMoney((m?.unit_cost || 0) * r.qty)}</Td>
                   <Td><button aria-label={`حذف ${m?.name||"المادة"} من التركيبة`} title="حذف من التركيبة" onClick={() => removeBomRow(i)} style={{ background: "none", border: "none", cursor: "pointer", color: C.red }}><Trash2 size={14} /></button></Td></tr>
               ); })}
             </Table>
@@ -913,10 +934,10 @@ function ProductsTab({ data, canCreate, canEdit, canArchive, hideProfitInfo, ins
                 <tr key={p.id}>
                   <Td>{p.name}</Td>
                   <Td>{ITEM_TYPE_LABEL[p.item_type] || "للبيع"}</Td>
-                  <Td>{fmt(matCost)} ج.م</Td><Td>{fmt(p.labor_cost)} ج.م</Td><Td>{fmt(p.overhead_cost)} ج.م</Td>
-                  <Td style={{ fontWeight: 700, color: C.brass }}>{fmt(unitCost)} ج.م</Td>
+                  <Td>{formatMoney(matCost)}</Td><Td>{formatMoney(p.labor_cost)}</Td><Td>{formatMoney(p.overhead_cost)}</Td>
+                  <Td style={{ fontWeight: 700, color: C.brass }}>{formatMoney(unitCost)}</Td>
                   {!hideProfitInfo && (<>
-                    <Td>{fmt(p.selling_price)} ج.م</Td>
+                    <Td>{formatMoney(p.selling_price)}</Td>
                     <Td style={{ color: margin == null ? C.muted : margin >= 0 ? C.green : C.red }}>{margin == null ? "—" : `${margin.toFixed(1)}%`}</Td>
                   </>)}
                   <Td>{finishedStock(p.id, data)}</Td>
@@ -1001,13 +1022,13 @@ function SalesTab({ data, insertRow, refresh, canManage }) {
         {postedSales.length === 0 ? <Empty text="لا توجد مبيعات مسجلة بعد" /> : (
           <Table headers={["التاريخ", "المنتج", "العميل", "الكمية", "سعر الوحدة", "الإجمالي", "الحالة", ""]}>
             {[...postedSales].reverse().map((s) => { const p = data.products.find((x) => x.id === s.product_id); const c = data.customers.find((x) => x.id === s.customer_id); return (
-              <tr key={s.id}><Td>{s.sale_date}</Td><Td>{p?.name || "—"}</Td><Td>{c?.name || "—"}</Td><Td>{s.qty}</Td><Td>{fmt(s.unit_price)} ج.م</Td><Td style={{ fontWeight: 700, color: invalidLegacySale(s) ? C.red : C.green }}>{fmt(s.total)} ج.م</Td><Td>{invalidLegacySale(s) ? <span style={{color:C.red,fontWeight:700}}>سجل قديم يحتاج مراجعة</span> : "مرحّل"}</Td><Td>{canManage && <button aria-label="إلغاء البيع" title="إلغاء البيع وعكس أثره" onClick={() => setCancelAction({row:s,reason:"",busy:false,error:""})} style={{background:"none",border:"none",cursor:"pointer",color:C.red}}><X size={15}/></button>}</Td></tr>
+              <tr key={s.id}><Td>{s.sale_date}</Td><Td>{p?.name || "—"}</Td><Td>{c?.name || "—"}</Td><Td>{s.qty}</Td><Td>{formatMoney(s.unit_price)}</Td><Td style={{ fontWeight: 700, color: invalidLegacySale(s) ? C.red : C.green }}>{formatMoney(s.total)}</Td><Td>{invalidLegacySale(s) ? <span style={{color:C.red,fontWeight:700}}>سجل قديم يحتاج مراجعة</span> : "مرحّل"}</Td><Td>{canManage && <button aria-label="إلغاء البيع" title="إلغاء البيع وعكس أثره" onClick={() => setCancelAction({row:s,reason:"",busy:false,error:""})} style={{background:"none",border:"none",cursor:"pointer",color:C.red}}><X size={15}/></button>}</Td></tr>
             ); })}
           </Table>
         )}
       </Card>
       <ArchiveSection title="المبيعات الملغاة" count={cancelledSales.length} helpText="السجلات الملغاة محفوظة للمراجعة، ولا تدخل في المخزون أو الإيراد أو رصيد العميل.">
-        {cancelledSales.length === 0 ? <Empty text="لا توجد مبيعات ملغاة" /> : <Table headers={["التاريخ", "المنتج", "العميل", "الإجمالي", "سبب الإلغاء", "وقت الإلغاء"]}>{[...cancelledSales].reverse().map((s) => <tr key={s.id}><Td>{s.sale_date}</Td><Td>{data.products.find((p) => p.id === s.product_id)?.name || "—"}</Td><Td>{data.customers.find((c) => c.id === s.customer_id)?.name || "—"}</Td><Td>{fmt(s.total)} ج.م</Td><Td>{s.cancellation_reason || "—"}</Td><Td>{s.cancelled_at ? new Date(s.cancelled_at).toLocaleString("ar-EG") : "—"}</Td></tr>)}</Table>}
+        {cancelledSales.length === 0 ? <Empty text="لا توجد مبيعات ملغاة" /> : <Table headers={["التاريخ", "المنتج", "العميل", "الإجمالي", "سبب الإلغاء", "وقت الإلغاء"]}>{[...cancelledSales].reverse().map((s) => <tr key={s.id}><Td>{s.sale_date}</Td><Td>{data.products.find((p) => p.id === s.product_id)?.name || "—"}</Td><Td>{data.customers.find((c) => c.id === s.customer_id)?.name || "—"}</Td><Td>{formatMoney(s.total)}</Td><Td>{s.cancellation_reason || "—"}</Td><Td>{s.cancelled_at ? new Date(s.cancelled_at).toLocaleString("ar-EG") : "—"}</Td></tr>)}</Table>}
       </ArchiveSection>
       <ConfirmDialog open={Boolean(cancelAction)} title="إلغاء عملية البيع" description="سيبقى السجل محفوظًا، وسيُعكس أثره على المخزون ورصيد العميل مرة واحدة فقط." confirmLabel="إلغاء وعكس" danger reasonRequired reason={cancelAction?.reason||""} busy={cancelAction?.busy} error={cancelAction?.error} onReasonChange={(reason)=>setCancelAction((current)=>({...current,reason,error:""}))} onConfirm={confirmCancelSale} onCancel={()=>setCancelAction(null)}/>
     </div>
@@ -1090,7 +1111,7 @@ function RentalsTab({ data, insertRow, refresh, canManage }) {
               return (
                 <tr key={r.id}>
                   <Td>{p?.name || "—"}</Td><Td>{c?.name || "—"}</Td><Td>{r.qty}</Td>
-                  <Td>{fmt(r.rental_fee)} ج.م</Td><Td>{r.start_date}</Td><Td>{r.expected_return_date || "—"}</Td>
+                  <Td>{formatMoney(r.rental_fee)}</Td><Td>{r.start_date}</Td><Td>{r.expected_return_date || "—"}</Td>
                   <Td style={{ color: C.brass, fontWeight: 700 }}>مؤجر حاليًا</Td>
                   <Td><div style={{display:"flex",gap:8,alignItems:"center"}}><Btn variant="ghost" onClick={() => markReturned(r)} style={{ fontSize: 12, padding: "5px 10px" }}>تسجيل الاسترجاع</Btn>{canManage && <button aria-label="إلغاء الإيجار" title="إلغاء الإيجار وعكس أثره" onClick={() => setCancelAction({row:r,reason:"",busy:false,error:""})} style={{background:"none",border:"none",cursor:"pointer",color:C.red}}><X size={15}/></button>}</div></Td>
                 </tr>
@@ -1100,7 +1121,7 @@ function RentalsTab({ data, insertRow, refresh, canManage }) {
         )}
       </Card>
       <ArchiveSection title="سجل الإيجارات المكتملة والملغاة" count={rentalHistory.length} helpText="الإرجاعات والإلغاءات نهائية ومحفوظة للمراجعة، ولا تزاحم الإيجارات النشطة.">
-        {rentalHistory.length === 0 ? <Empty text="لا يوجد سجل إيجارات سابق" /> : <Table headers={["الصنف", "العميل", "الكمية", "القيمة", "الحالة", "التاريخ النهائي", "السبب"]}>{[...rentalHistory].reverse().map((r) => <tr key={r.id}><Td>{data.products.find((p) => p.id === r.product_id)?.name || "—"}</Td><Td>{data.customers.find((c) => c.id === r.customer_id)?.name || "—"}</Td><Td>{r.qty}</Td><Td>{fmt(r.rental_fee)} ج.م</Td><Td style={{color:r.status === "returned" ? C.green : C.red,fontWeight:700}}>{r.status === "returned" ? "تم الاسترجاع" : "ملغي"}</Td><Td>{r.status === "returned" ? r.return_date || "—" : r.cancelled_at ? new Date(r.cancelled_at).toLocaleString("ar-EG") : "—"}</Td><Td>{r.cancellation_reason || "—"}</Td></tr>)}</Table>}
+        {rentalHistory.length === 0 ? <Empty text="لا يوجد سجل إيجارات سابق" /> : <Table headers={["الصنف", "العميل", "الكمية", "القيمة", "الحالة", "التاريخ النهائي", "السبب"]}>{[...rentalHistory].reverse().map((r) => <tr key={r.id}><Td>{data.products.find((p) => p.id === r.product_id)?.name || "—"}</Td><Td>{data.customers.find((c) => c.id === r.customer_id)?.name || "—"}</Td><Td>{r.qty}</Td><Td>{formatMoney(r.rental_fee)}</Td><Td style={{color:r.status === "returned" ? C.green : C.red,fontWeight:700}}>{r.status === "returned" ? "تم الاسترجاع" : "ملغي"}</Td><Td>{r.status === "returned" ? r.return_date || "—" : r.cancelled_at ? new Date(r.cancelled_at).toLocaleString("ar-EG") : "—"}</Td><Td>{r.cancellation_reason || "—"}</Td></tr>)}</Table>}
       </ArchiveSection>
       <ConfirmDialog open={Boolean(cancelAction)} title="إلغاء عملية الإيجار" description="سيبقى السجل محفوظًا وستعود الكمية للمتاح. الطلب المكرر لن يطبق الإلغاء مرتين." confirmLabel="إلغاء وعكس" danger reasonRequired reason={cancelAction?.reason||""} busy={cancelAction?.busy} error={cancelAction?.error} onReasonChange={(reason)=>setCancelAction((current)=>({...current,reason,error:""}))} onConfirm={confirmCancelRental} onCancel={()=>setCancelAction(null)}/>
     </div>
@@ -1194,8 +1215,8 @@ function SuppliersTab({ data, insertRow, updateRow, refresh, canManage }) {
             {filtered.map((s) => { const balances = supplierBalances(s.id, data); const bal = balances.due; return (
               <React.Fragment key={s.id}>
                 <tr>
-                  <Td>{s.name}</Td><Td>{s.phone || "—"}</Td><Td>{fmt(supplierPurchaseTotal(s.id, data))} ج.م</Td><Td>{fmt(supplierPaymentTotal(s.id, data))} ج.م</Td>
-                  <Td style={{ fontWeight: 700, color: bal > 0 ? C.red : C.green }}>{fmt(bal)} ج.م</Td><Td style={{fontWeight:700,color:C.green}}>{fmt(balances.advance)} ج.م{balances.legacyUnclassified>0&&<small style={{display:"block",color:C.red}}>يوجد {balances.legacyUnclassified} حركة قديمة غير مصنفة</small>}</Td>
+                  <Td>{s.name}</Td><Td>{s.phone || "—"}</Td><Td>{formatMoney(supplierPurchaseTotal(s.id, data))}</Td><Td>{formatMoney(supplierPaymentTotal(s.id, data))}</Td>
+                  <Td style={{ fontWeight: 700, color: bal > 0 ? C.red : C.green }}>{formatMoney(bal)}</Td><Td style={{fontWeight:700,color:C.green}}>{formatMoney(balances.advance)}{balances.legacyUnclassified>0&&<small style={{display:"block",color:C.red}}>يوجد {balances.legacyUnclassified} حركة قديمة غير مصنفة</small>}</Td>
                   <Td style={{ display: "flex", gap: 10, alignItems: "center" }}>
                     <button aria-label={`تعديل ${s.name}`} title="تعديل المورد" onClick={() => startEdit(s)} style={{ background: "none", border: "none", cursor: "pointer", color: C.brass }}><Pencil size={15} /></button>
                     {canManage && <button aria-label={`أرشفة ${s.name}`} onClick={() => archiveSupplier(s)} style={{ background: "none", border: "none", cursor: "pointer", color: C.red }}><Archive size={15} /></button>}
@@ -1215,7 +1236,7 @@ function SuppliersTab({ data, insertRow, updateRow, refresh, canManage }) {
           </Table>
         )}
       </ArchiveSection>
-      <ConfirmDialog open={Boolean(pendingPayment)} title="تسجيل سلفة مورد" description={pendingPayment ? `المستحق ${fmt(pendingPayment.due)} ج.م، وسيُصنف المبلغ الزائد ${fmt(pendingPayment.advance)} ج.م كسلفة مورد متاحة للتخصيص لاحقًا.` : ""} confirmLabel="تسجيل الدفعة والسلفة" danger={false} busy={paymentBusy} onConfirm={() => pendingPayment && commitPayment(pendingPayment)} onCancel={() => !paymentBusy && setPendingPayment(null)} />
+      <ConfirmDialog open={Boolean(pendingPayment)} title="تسجيل سلفة مورد" description={pendingPayment ? `المستحق ${formatMoney(pendingPayment.due)}، وسيُصنف المبلغ الزائد ${formatMoney(pendingPayment.advance)} كسلفة مورد متاحة للتخصيص لاحقًا.` : ""} confirmLabel="تسجيل الدفعة والسلفة" danger={false} busy={paymentBusy} onConfirm={() => pendingPayment && commitPayment(pendingPayment)} onCancel={() => !paymentBusy && setPendingPayment(null)} />
     </div>
   );
 }
@@ -1224,7 +1245,7 @@ function SupplierLedger({ supplierId, data }) {
   const payments = data.supplierPayments.filter((p) => p.supplier_id === supplierId).map((p) => ({ date: p.payment_date, type: transactionClassLabel(p), amount: -p.amount, note: p.note }));
   const rows = [...purchases, ...payments].sort((a, b) => (a.date || "").localeCompare(b.date || ""));
   if (rows.length === 0) return <div style={{ color: C.muted, fontSize: 13 }}>لا توجد حركات مسجلة</div>;
-  return <Table headers={["التاريخ", "النوع", "البيان", "المبلغ"]}>{rows.map((r, i) => <tr key={i}><Td>{r.date}</Td><Td style={{ color: r.type === "شراء" ? C.red : C.green }}>{r.type}</Td><Td>{r.note || "—"}</Td><Td>{fmt(Math.abs(r.amount))} ج.م</Td></tr>)}</Table>;
+  return <Table headers={["التاريخ", "النوع", "البيان", "المبلغ"]}>{rows.map((r, i) => <tr key={i}><Td>{r.date}</Td><Td style={{ color: r.type === "شراء" ? C.red : C.green }}>{r.type}</Td><Td>{r.note || "—"}</Td><Td>{formatMoney(Math.abs(r.amount))}</Td></tr>)}</Table>;
 }
 
 /* -------------------------------- Customers --------------------------------- */
@@ -1314,8 +1335,8 @@ function CustomersTab({ data, insertRow, updateRow, refresh, canManage }) {
             {filtered.map((c) => { const balances = customerBalances(c.id, data); const bal = balances.due; return (
               <React.Fragment key={c.id}>
                 <tr>
-                  <Td>{c.name}</Td><Td>{c.phone || "—"}</Td><Td>{fmt(customerSaleTotal(c.id, data) + customerRentalTotal(c.id, data))} ج.م</Td><Td>{fmt(customerReceiptTotal(c.id, data))} ج.م</Td>
-                  <Td style={{ fontWeight: 700, color: bal > 0 ? C.brass : C.green }}>{fmt(bal)} ج.م</Td><Td style={{fontWeight:700,color:C.green}}>{fmt(balances.advance)} ج.م{balances.legacyUnclassified>0&&<small style={{display:"block",color:C.red}}>يوجد {balances.legacyUnclassified} حركة قديمة غير مصنفة</small>}</Td>
+                  <Td>{c.name}</Td><Td>{c.phone || "—"}</Td><Td>{formatMoney(customerSaleTotal(c.id, data) + customerRentalTotal(c.id, data))}</Td><Td>{formatMoney(customerReceiptTotal(c.id, data))}</Td>
+                  <Td style={{ fontWeight: 700, color: bal > 0 ? C.brass : C.green }}>{formatMoney(bal)}</Td><Td style={{fontWeight:700,color:C.green}}>{formatMoney(balances.advance)}{balances.legacyUnclassified>0&&<small style={{display:"block",color:C.red}}>يوجد {balances.legacyUnclassified} حركة قديمة غير مصنفة</small>}</Td>
                   <Td style={{ display: "flex", gap: 10, alignItems: "center" }}>
                     <button aria-label={`تعديل ${c.name}`} title="تعديل العميل" onClick={() => startEdit(c)} style={{ background: "none", border: "none", cursor: "pointer", color: C.brass }}><Pencil size={15} /></button>
                     {canManage && <button aria-label={`أرشفة ${c.name}`} onClick={() => archiveCustomer(c)} style={{ background: "none", border: "none", cursor: "pointer", color: C.red }}><Archive size={15} /></button>}
@@ -1335,7 +1356,7 @@ function CustomersTab({ data, insertRow, updateRow, refresh, canManage }) {
           </Table>
         )}
       </ArchiveSection>
-      <ConfirmDialog open={Boolean(pendingReceipt)} title="تسجيل سلفة عميل" description={pendingReceipt ? `المستحق ${fmt(pendingReceipt.due)} ج.م، وسيُصنف المبلغ الزائد ${fmt(pendingReceipt.advance)} ج.م كسلفة عميل متاحة للتخصيص لاحقًا.` : ""} confirmLabel="تسجيل التحصيل والسلفة" busy={receiptBusy} onConfirm={() => pendingReceipt && commitReceipt(pendingReceipt)} onCancel={() => !receiptBusy && setPendingReceipt(null)} />
+      <ConfirmDialog open={Boolean(pendingReceipt)} title="تسجيل سلفة عميل" description={pendingReceipt ? `المستحق ${formatMoney(pendingReceipt.due)}، وسيُصنف المبلغ الزائد ${formatMoney(pendingReceipt.advance)} كسلفة عميل متاحة للتخصيص لاحقًا.` : ""} confirmLabel="تسجيل التحصيل والسلفة" busy={receiptBusy} onConfirm={() => pendingReceipt && commitReceipt(pendingReceipt)} onCancel={() => !receiptBusy && setPendingReceipt(null)} />
     </div>
   );
 }
@@ -1345,7 +1366,7 @@ function CustomerLedger({ customerId, data }) {
   const receipts = data.customerReceipts.filter((r) => r.customer_id === customerId).map((r) => ({ date: r.receipt_date, type: transactionClassLabel(r), amount: -r.amount, note: r.note }));
   const rows = [...sales, ...rentals, ...receipts].sort((a, b) => (a.date || "").localeCompare(b.date || ""));
   if (rows.length === 0) return <div style={{ color: C.muted, fontSize: 13 }}>لا توجد حركات مسجلة</div>;
-  return <Table headers={["التاريخ", "النوع", "البيان", "المبلغ"]}>{rows.map((r, i) => <tr key={i}><Td>{r.date}</Td><Td style={{ color: r.type === "تحصيل" ? C.green : C.brass }}>{r.type}</Td><Td>{r.note || "—"}</Td><Td>{fmt(Math.abs(r.amount))} ج.م</Td></tr>)}</Table>;
+  return <Table headers={["التاريخ", "النوع", "البيان", "المبلغ"]}>{rows.map((r, i) => <tr key={i}><Td>{r.date}</Td><Td style={{ color: r.type === "تحصيل" ? C.green : C.brass }}>{r.type}</Td><Td>{r.note || "—"}</Td><Td>{formatMoney(Math.abs(r.amount))}</Td></tr>)}</Table>;
 }
 
 
@@ -1382,7 +1403,7 @@ function PurchasesTab({ data, insertRow, deleteRow, canDelete }) {
   return <div>
     <SectionTitle eyebrow="التوريد" title="المشتريات" icon={<ClipboardList size={14} />} />
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14, marginBottom: 18 }}>
-      <Card><div style={{ color: C.muted, fontSize: 13 }}>إجمالي قيمة المشتريات</div><div style={{ color: C.brass, fontSize: 23, fontWeight: 800, marginTop: 8 }}>{fmt(total)} ج.م</div></Card>
+      <Card><div style={{ color: C.muted, fontSize: 13 }}>إجمالي قيمة المشتريات</div><div style={{ color: C.brass, fontSize: 23, fontWeight: 800, marginTop: 8 }}>{formatMoney(total)}</div></Card>
       <Card><div style={{ color: C.muted, fontSize: 13 }}>عدد عمليات الشراء</div><div style={{ color: C.green, fontSize: 23, fontWeight: 800, marginTop: 8 }}>{data.materialPurchases.length}</div></Card>
     </div>
     <Card style={{ marginBottom: 18 }}>
@@ -1399,7 +1420,7 @@ function PurchasesTab({ data, insertRow, deleteRow, canDelete }) {
     </Card>
     <Card>{data.materialPurchases.length === 0 ? <Empty text="لا توجد مشتريات مسجلة" /> : <Table headers={["التاريخ","المادة","المورد","الكمية","سعر الوحدة","الإجمالي",""]}>{[...data.materialPurchases].reverse().map((p) => {
       const m = data.materials.find((x) => x.id === p.material_id); const sup = data.suppliers.find((x) => x.id === p.supplier_id);
-      return <tr key={p.id}><Td>{p.purchase_date}</Td><Td>{m?.name || "—"}</Td><Td>{sup?.name || "—"}</Td><Td>{p.qty} {m?.unit || ""}</Td><Td>{fmt(p.unit_cost)} ج.م</Td><Td style={{fontWeight:700}}>{fmt(num(p.qty)*num(p.unit_cost))} ج.م</Td><Td>{canDelete && <button onClick={() => remove(p)} style={{background:"none",border:"none",cursor:"pointer",color:C.red}}><Trash2 size={15}/></button>}</Td></tr>
+      return <tr key={p.id}><Td>{p.purchase_date}</Td><Td>{m?.name || "—"}</Td><Td>{sup?.name || "—"}</Td><Td>{p.qty} {m?.unit || ""}</Td><Td>{formatMoney(p.unit_cost)}</Td><Td style={{fontWeight:700}}>{formatMoney(num(p.qty)*num(p.unit_cost))}</Td><Td>{canDelete && <button onClick={() => remove(p)} style={{background:"none",border:"none",cursor:"pointer",color:C.red}}><Trash2 size={15}/></button>}</Td></tr>
     })}</Table>}</Card>
   </div>;
 }
@@ -1445,7 +1466,7 @@ function ExpensesTab({ data, insertRow, profileRole, refresh }) {
   return <div>
     <ConfirmDialog open={Boolean(cancellingExpense)} title="إلغاء المصروف" description="سيبقى المصروف ظاهرًا في السجل وتُحفظ حركة الإلغاء وسببها للتدقيق." confirmLabel="إلغاء المصروف" danger busy={busyId===cancellingExpense?.id} reasonRequired reason={cancelReason} onReasonChange={setCancelReason} error={cancellingExpense&&err?err:""} onConfirm={confirmExpenseCancellation} onCancel={()=>{setCancellingExpense(null);setCancelReason("")}}/>
     <SectionTitle eyebrow="المالية" title="المصروفات" icon={<ReceiptText size={14} />} />
-    <Card style={{ marginBottom: 18 }}><div style={{ color: C.muted, fontSize: 13 }}>إجمالي المصروفات المسجلة</div><div style={{ color: C.red, fontSize: 24, fontWeight: 800, marginTop: 8 }}>{fmt(total)} ج.م</div></Card>
+    <Card style={{ marginBottom: 18 }}><div style={{ color: C.muted, fontSize: 13 }}>إجمالي المصروفات المسجلة</div><div style={{ color: C.red, fontSize: 24, fontWeight: 800, marginTop: 8 }}>{formatMoney(total)}</div></Card>
     <Card style={{ marginBottom: 18 }}>
       <div style={{ fontWeight: 800, marginBottom: 12 }}>مصروف جديد</div>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
@@ -1462,7 +1483,7 @@ function ExpensesTab({ data, insertRow, profileRole, refresh }) {
       const project = data.projects.find((p) => p.id === e.project_id);
       const status = e.cancelled_at ? "ملغي" : ({not_posted:"غير مرحّل",submitted:"قيد المراجعة",posted:"مرحّل",rejected:"مرفوض",reversed:"معكوس"}[e.cost_posting_status] || e.cost_posting_status);
       const canCancel = ["owner","manager"].includes(profileRole) && !e.cancelled_at;
-      return <tr key={e.id} style={{opacity:e.cancelled_at?0.65:1}}><Td>{e.expense_date}</Td><Td>{e.category}</Td><Td>{project?.name || "عام"}</Td><Td>{status}</Td><Td>{e.cancellation_reason || e.notes || "—"}</Td><Td style={{fontWeight:700,color:C.red}}>{fmt(e.amount)} ج.م</Td><Td><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{e.project_id && e.cost_posting_status === "not_posted" && !e.cancelled_at && <Btn disabled={busyId===e.id} onClick={() => runFinancialAction("prepare_operational_source_actual_cost", e)}>إرسال للتكلفة</Btn>}{canCancel && <Btn variant="danger" disabled={busyId===e.id} onClick={() => cancel(e)}>إلغاء</Btn>}</div></Td></tr>;
+      return <tr key={e.id} style={{opacity:e.cancelled_at?0.65:1}}><Td>{e.expense_date}</Td><Td>{e.category}</Td><Td>{project?.name || "عام"}</Td><Td>{status}</Td><Td>{e.cancellation_reason || e.notes || "—"}</Td><Td style={{fontWeight:700,color:C.red}}>{formatMoney(e.amount)}</Td><Td><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{e.project_id && e.cost_posting_status === "not_posted" && !e.cancelled_at && <Btn disabled={busyId===e.id} onClick={() => runFinancialAction("prepare_operational_source_actual_cost", e)}>إرسال للتكلفة</Btn>}{canCancel && <Btn variant="danger" disabled={busyId===e.id} onClick={() => cancel(e)}>إلغاء</Btn>}</div></Td></tr>;
     })}</Table>}</Card>
   </div>;
 }

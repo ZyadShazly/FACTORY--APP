@@ -62,9 +62,11 @@ const FRIENDLY_BY_CODE = {
 export function userFacingError(error, fallback = "تعذر إكمال العملية. راجع البيانات وحاول مرة أخرى.") {
   if (!error) return fallback;
   const code = String(error.code || "");
-  if (FRIENDLY_BY_CODE[code]) return FRIENDLY_BY_CODE[code];
   const raw = String(error.message || error || "").trim();
   const lower = raw.toLowerCase();
+  if (lower.includes("base currency cannot be changed")) return "لا يمكن تغيير كود العملة بعد وجود حركات مالية. يلزم Migration مراجعة ومصالحة صريحة؛ يمكنك تعديل الرمز والتنسيق فقط.";
+  if (lower.includes("must match the configured base currency") || lower.includes("must use the configured base currency")) return "عملة الحركة لا تطابق العملة الأساسية المضبوطة للنظام.";
+  if (FRIENDLY_BY_CODE[code]) return FRIENDLY_BY_CODE[code];
   if (lower.includes("foreign key") || lower.includes("violates foreign key") || lower.includes("still referenced")) return FRIENDLY_BY_CODE["23503"];
   if (lower.includes("duplicate key") || lower.includes("unique constraint")) return FRIENDLY_BY_CODE["23505"];
   if (lower.includes("permission") || lower.includes("not authorized") || lower.includes("authorization required")) return FRIENDLY_BY_CODE["42501"];
