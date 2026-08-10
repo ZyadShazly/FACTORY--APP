@@ -123,8 +123,7 @@ export function ProjectWorkspace({ project, data, profile, permissions, refresh,
   const effectiveProgress = project.effective_progress_percentage ?? project.progress_percentage ?? effectiveProjectProgress({ mode:progress.mode, manual:progress.manual, calculated:calculatedProgress, overrideReason:progress.reason });
   const customer = data.customers.find((row) => row.id === project.customer_id);
   const manager = data.profiles.find((row) => row.id === project.project_manager_id);
-  const costsByType = Object.fromEntries(["material","production","payroll","daily_labor","expense","transport","other"].map((type) => [type, summary.costs.filter((row) => row.cost_type === type).reduce((sum,row) => sum + number(row.amount),0)]));
-  const actual = Object.values(costsByType).reduce((sum,value) => sum + value,0);
+  const actual = number(project.actual_cost);
   const profit = number(project.revenue)-actual; const margin = number(project.revenue) ? (profit/number(project.revenue))*100 : 0;
 
   useEffect(() => {
@@ -249,7 +248,7 @@ export function ProjectWorkspace({ project, data, profile, permissions, refresh,
       <Field label="ملاحظات" wide><TextArea value={details.notes || ""} onChange={(e)=>setDetails({...details,notes:e.target.value})}/></Field>
     </div><div className="v22-actions"><Button variant="ghost" onClick={()=>setEditing(false)}>إلغاء</Button><Button disabled={busy} onClick={saveDetails}>حفظ البيانات</Button></div></Panel>}
 
-    <nav className="workspace-tabs" aria-label="أقسام مساحة المشروع">{TABS.map(([id,label,Icon])=><button key={id} className={tab===id?"active":""} onClick={()=>setTab(id)}><Icon size={15}/><span>{label}</span>{id==="reports"&&<small>قريبًا</small>}</button>)}</nav>
+    <nav className="workspace-tabs" aria-label="أقسام مساحة المشروع">{TABS.filter(([id])=>id!=="reports").map(([id,label,Icon])=><button key={id} className={tab===id?"active":""} onClick={()=>setTab(id)}><Icon size={15}/><span>{label}</span></button>)}</nav>
 
     {tab === "overview" && <div className="workspace-overview">
       <ProjectPilotWorkflow workflow={workflow} data={data} project={project} busy={busy} managerTarget={managerTarget} setManagerTarget={setManagerTarget} managerReason={managerReason} setManagerReason={setManagerReason} onAction={runWorkflowAction} onAssign={assignManager} onClose={closeProject} onBudget={()=>setTab("budget")}/>
@@ -277,7 +276,6 @@ export function ProjectWorkspace({ project, data, profile, permissions, refresh,
     {tab === "assets" && <LinkedRows title="العُهد والأصول المرتبطة" rows={summary.assignments} empty="لا توجد عهد مفتوحة مرتبطة" render={(row)=><><span>{row.assignment_code||"عهدة"}</span><small>{row.status} · العهدة نفسها ليست تكلفة مشروع</small></>}/>} 
     {tab === "budget" && <ProjectBudgetTab project={project} data={data} permissions={permissions} refresh={refresh}/>}
     {tab === "actualCost" && <PermissionGuard allow={permissions.project_financials_view} fallback={<div className="workspace-no-permission"><ShieldCheck size={24}/>لا تملك صلاحية عرض ماليات المشروع.</div>}><ProjectActualCostTab project={project} profile={profile}/></PermissionGuard>}
-    {tab === "reports" && <ComingSoon title="تقارير المشروع المتقدمة" description="التنبؤ والربحية المتقدمة والتقارير المقارنة مؤجلة حتى اكتمال الميزانية والتكلفة الفعلية."/>}
     {tab === "activity" && <ProjectTimeline activities={summary.activities}/>} 
   </div>;
 }

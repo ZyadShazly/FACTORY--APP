@@ -9,8 +9,9 @@ const migration = readFileSync(
 
 test('UAT-006 invoice approval preserves document and base currency metadata', () => {
   assert.match(migration, /currency,base_currency,exchange_rate,rate_date,status/);
-  assert.match(migration, /effective_base_currency:=coalesce/);
-  assert.match(migration, /effective_rate:=coalesce/);
+  assert.match(migration, /effective_base_currency:=nullif\(po\.base_currency/);
+  assert.match(migration, /effective_rate:=po\.exchange_rate/);
+  assert.match(migration, /currency contract is incomplete/i);
 });
 
 test('UAT-006 rejects incomplete or invalid exchange-rate contracts', () => {

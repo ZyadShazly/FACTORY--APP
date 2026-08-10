@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle2, Filter, RefreshCw, RotateCcw, Send, ShieldCheck, Wallet, XCircle } from "lucide-react";
 import { supabase } from "../supabaseClient";
-import { Button, EmptyState, ErrorState, Field, Input, money, Panel, Select, StatCard, SuccessState, TextArea } from "./shared";
+import { Button, ConfirmDialog, EmptyState, ErrorState, Field, Input, money, Panel, Select, StatCard, SuccessState, TextArea } from "./shared";
 import "./projectActualCost.css";
 
 const STATUS_LABELS = { draft:"مسودة", submitted:"مرسلة", approved:"معتمدة", rejected:"مرفوضة", reversed:"معكوسة" };
@@ -20,12 +20,14 @@ export function ProjectActualCostTab({ project, profile }) {
   const [busyId, setBusyId] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [pendingAction, setPendingAction] = useState(null);
+  const [actionReason, setActionReason] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true); setError("");
     const [costResult, varianceResult] = await Promise.all([
       supabase.rpc("get_project_actual_cost_snapshot", { target_project: project.id }),
-      supabase.rpc("get_project_cost_variance_snapshot", { target_project: project.id }),
+      supabase.rpc("get_project_cost_variance_snapshot_canonical", { target_project: project.id }),
     ]);
     if (costResult.error || varianceResult.error) {
       setError(costResult.error?.message || varianceResult.error?.message || "تعذر تحميل التكلفة الفعلية.");
@@ -55,8 +57,13 @@ export function ProjectActualCostTab({ project, profile }) {
   }
 
   function askAndRun(name, row, promptText) {
-    const reason = window.prompt(promptText);
-    if (reason?.trim()) runAction(name, row, reason.trim());
+    setActionReason("");
+    setPendingAction({ name, row, title: promptText });
+  }
+  async function confirmAction() {
+    if (!pendingAction || !actionReason.trim()) return;
+    await runAction(pendingAction.name, pendingAction.row, actionReason.trim());
+    setPendingAction(null); setActionReason("");
   }
 
   if (loading) return <Panel className="actual-cost-loading"><RefreshCw className="spin" size={22}/> جارِ تحميل التكلفة الفعلية...</Panel>;
@@ -99,5 +106,6 @@ export function ProjectActualCostTab({ project, profile }) {
     </Panel>
 
     <div className="actual-cost-contract-note"><Wallet size={18}/><span>العهدة النقدية وتسليم الأدوات لا يُسجلان كمصروف تلقائيًا؛ الذي يدخل التكلفة هو سطر التسوية أو الاستهلاك المعتمد فقط.</span></div>
+    <ConfirmDialog open={Boolean(pendingAction)} title={pendingAction?.title||"تأكيد الإجراء"} description="سيبقى السبب والقرار محفوظين في سجل التدقيق." confirmLabel="تأكيد" danger busy={Boolean(busyId)} reasonRequired reason={actionReason} onReasonChange={setActionReason} onConfirm={confirmAction} onCancel={()=>{setPendingAction(null);setActionReason("")}}/>
   </div>;
 }

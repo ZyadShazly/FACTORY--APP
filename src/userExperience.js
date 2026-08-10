@@ -40,6 +40,17 @@ export function formatMoney(value, overrides = {}) {
   })} ${settings.currency_symbol || settings.currency_code || ""}`.trim();
 }
 
+export function formatDocumentMoney(value, currencyCode, locale = "ar-SA") {
+  const amount = Number.isFinite(Number(value)) ? Number(value) : 0;
+  const code = String(currencyCode || "").trim().toUpperCase();
+  if (!/^[A-Z]{3}$/.test(code)) return formatMoney(amount);
+  try {
+    return new Intl.NumberFormat(locale, { style:"currency", currency:code, currencyDisplay:"code", minimumFractionDigits:2, maximumFractionDigits:2 }).format(amount);
+  } catch {
+    return `${amount.toLocaleString(locale,{minimumFractionDigits:2,maximumFractionDigits:2})} ${code}`;
+  }
+}
+
 const FRIENDLY_BY_CODE = {
   "23503": "لا يمكن حذف هذا السجل لأنه مرتبط ببيانات تاريخية. عطّله أو أرشفه بدلًا من الحذف.",
   "23505": "هذه البيانات مسجلة بالفعل. راجع القيم المكررة ثم حاول مرة أخرى.",

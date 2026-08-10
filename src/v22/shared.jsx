@@ -34,7 +34,7 @@ export function Field({ label, children, wide = false }) {
 }
 export function Input(props) { return <input {...props} className={`v22-input ${props.className || ""}`} />; }
 export function Select({ children, ...props }) { return <select {...props} className="v22-input">{children}</select>; }
-export function TextArea(props) { return <textarea {...props} className={`v22-input v22-textarea ${props.className || ""}`} />; }
+export const TextArea = React.forwardRef(function TextArea(props, ref) { return <textarea ref={ref} {...props} className={`v22-input v22-textarea ${props.className || ""}`} />; });
 export function Button({ children, variant = "primary", ...props }) {
   return <button {...props} className={`v22-button ${variant}`}>{children}</button>;
 }
@@ -53,21 +53,38 @@ export function SuccessState({ message }) {
 }
 
 export function Toast({ type = "success", message, onDismiss }) {
+  React.useEffect(() => {
+    if (!message || !onDismiss) return undefined;
+    const timer = window.setTimeout(onDismiss, type === "error" ? 8000 : 5000);
+    return () => window.clearTimeout(timer);
+  }, [message, onDismiss, type]);
   if (!message) return null;
-  const Icon = type === "error" ? AlertCircle : CheckCircle2;
+  const Icon = type === "success" ? CheckCircle2 : AlertCircle;
   return <div className={`v22-toast ${type}`} role={type === "error" ? "alert" : "status"}>
     <Icon size={19} /><span>{message}</span>
     <button type="button" onClick={onDismiss} aria-label="إغلاق الرسالة"><X size={16} /></button>
   </div>;
 }
 
-export function ConfirmDialog({ open, title, description, confirmLabel = "تأكيد", danger = false, onConfirm, onCancel }) {
+export function ConfirmDialog({ open, title, description, confirmLabel = "تأكيد", danger = false, busy = false, reasonRequired = false, reason = "", onReasonChange, error = "", onConfirm, onCancel }) {
+  const titleId = React.useId();
+  const descriptionId = React.useId();
+  const reasonRef = React.useRef(null);
+  React.useEffect(() => {
+    if (!open) return undefined;
+    const timer = window.setTimeout(() => reasonRef.current?.focus(), 0);
+    const onKeyDown = (event) => { if (event.key === "Escape" && !busy) onCancel?.(); };
+    window.addEventListener("keydown", onKeyDown);
+    return () => { window.clearTimeout(timer); window.removeEventListener("keydown", onKeyDown); };
+  }, [open, busy, onCancel]);
   if (!open) return null;
-  return <div className="v22-modal-backdrop" role="presentation" onMouseDown={onCancel}>
-    <div className="v22-modal" role="dialog" aria-modal="true" aria-labelledby="confirm-title" onMouseDown={(e) => e.stopPropagation()}>
-      <button className="v22-icon-button close" onClick={onCancel} aria-label="إغلاق"><X size={18} /></button>
-      <h3 id="confirm-title">{title}</h3><p>{description}</p>
-      <div className="v22-actions"><Button variant="ghost" onClick={onCancel}>إلغاء</Button><Button variant={danger ? "danger" : "primary"} onClick={onConfirm}>{confirmLabel}</Button></div>
+  return <div className="v22-modal-backdrop" role="presentation" onMouseDown={() => !busy && onCancel?.()}>
+    <div className="v22-modal" role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={descriptionId} onMouseDown={(e) => e.stopPropagation()}>
+      <button className="v22-icon-button close" disabled={busy} onClick={onCancel} aria-label="إغلاق"><X size={18} /></button>
+      <h3 id={titleId}>{title}</h3><p id={descriptionId}>{description}</p>
+      {reasonRequired && <Field label="السبب الإجباري"><TextArea ref={reasonRef} value={reason} disabled={busy} onChange={(event)=>onReasonChange?.(event.target.value)} /></Field>}
+      <ErrorState error={error}/>
+      <div className="v22-actions"><Button variant="ghost" disabled={busy} onClick={onCancel}>إلغاء</Button><Button variant={danger ? "danger" : "primary"} disabled={busy || (reasonRequired && !reason.trim())} onClick={onConfirm}>{busy ? "جارِ الحفظ..." : confirmLabel}</Button></div>
     </div>
   </div>;
 }

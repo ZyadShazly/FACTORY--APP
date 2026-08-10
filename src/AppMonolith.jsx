@@ -9,14 +9,14 @@ import {
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
 } from "recharts";
-import { ACTION_PERMISSIONS, actionPermissions, Toast } from "./v22/shared";
+import { ACTION_PERMISSIONS, actionPermissions, ConfirmDialog, Toast } from "./v22/shared";
 import { ProjectsTab, ProjectFilesHub } from "./v22/projects";
 import { EmployeesTab } from "./v22/payroll";
 import { PayrollReviewTab as PayrollTab } from "./v22/PayrollReviewTab";
 import { DailyLaborTab } from "./v22/dailyLabor";
 import { AuditLogTab, PERMISSION_LABELS } from "./v22/audit";
 import { demoData, demoProfile } from "./v22/demoData";
-import { syncMutation } from "./v22/mutations";
+import { runCriticalMutation, syncMutation } from "./v22/mutations";
 import { dataTableKeysForRole, resolveAllowedTab, TABLES } from "./realtime";
 import { buildNavigationGroups, loadNavigationState, NAV_GROUPS, NAV_GROUP_STORAGE_KEY } from "./navigation";
 import { canAdministerTarget, canAssignRole, identityProtectionReason, isAdministrativeRole, PRODUCTION_ALLOWED_PAGES, SELF_SIGNUP_ROLES, SYSTEM_ROLES } from "./identity";
@@ -35,6 +35,9 @@ import { MaterialsCatalogWorkspace } from "./operational/MaterialsCatalogWorkspa
 import { ProductionWorkspace } from "./operational/ProductionWorkspace";
 import { ProcurementWorkspace } from "./operational/ProcurementWorkspace";
 import { ArchiveSection } from "./ui/foundation";
+import { canonicalMaterialAlerts } from "./domain/inventoryBalances";
+import { readWorkspaceLocation, workspaceUrl } from "./app/urlNavigation";
+import { customerBalances, supplierBalances, transactionClassLabel } from "./domain/commercialBalances";
 
 const V22_DEMO = (import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEMO === "true") && new URLSearchParams(window.location.search).get("demo") === "v22";
 const DEMO_ROLE = ["owner", "manager", "accountant", "production"].includes(new URLSearchParams(window.location.search).get("role")) ? new URLSearchParams(window.location.search).get("role") : "owner";
@@ -144,24 +147,6 @@ const fetchTableRows = createTableFetcher({
 });
 
 /* ------------------------------ دوال الحسابات ------------------------------ */
-function materialConsumedQty(materialId, data) {
-  let total = 0;
-  for (const o of data.productionOrders) {
-    const p = data.products.find((x) => x.id === o.product_id);
-    if (!p) continue;
-    const row = (p.bom || []).find((r) => r.material_id === materialId);
-    if (row) total += row.qty * o.qty * (1 + num(o.waste_percentage) / 100);
-  }
-  return total;
-}
-function materialPurchasedQty(materialId, data) {
-  return data.materialPurchases.filter((p) => p.material_id === materialId).reduce((s, p) => s + p.qty, 0);
-}
-function materialStock(materialId, data) {
-  const m = data.materials.find((x) => x.id === materialId);
-  if (!m) return 0;
-  return num(m.initial_stock) + materialPurchasedQty(materialId, data) - materialConsumedQty(materialId, data);
-}
 function bomUnitCost(product, data) {
   return (product.bom || []).reduce((s, r) => {
     const m = data.materials.find((x) => x.id === r.material_id);
@@ -191,19 +176,19 @@ function supplierPurchaseTotal(supplierId, data) {
   return data.materialPurchases.filter((p) => p.supplier_id === supplierId).reduce((s, p) => s + p.qty * p.unit_cost, 0);
 }
 function supplierPaymentTotal(supplierId, data) {
-  return data.supplierPayments.filter((p) => p.supplier_id === supplierId).reduce((s, p) => s + p.amount, 0);
+  return supplierBalances(supplierId, data).cashPaid;
 }
-function supplierBalance(supplierId, data) { return supplierPurchaseTotal(supplierId, data) - supplierPaymentTotal(supplierId, data); }
+function supplierBalance(supplierId, data) { return supplierBalances(supplierId, data).due; }
 function customerSaleTotal(customerId, data) {
   return data.sales.filter((s) => s.customer_id === customerId && s.status !== "cancelled").reduce((s, o) => s + o.total, 0);
 }
 function customerReceiptTotal(customerId, data) {
-  return data.customerReceipts.filter((r) => r.customer_id === customerId).reduce((s, r) => s + r.amount, 0);
+  return customerBalances(customerId, data).cashReceived;
 }
 function customerRentalTotal(customerId, data) {
   return data.rentals.filter((r) => r.customer_id === customerId && r.status !== "cancelled").reduce((s, r) => s + r.rental_fee, 0);
 }
-function customerBalance(customerId, data) { return customerSaleTotal(customerId, data) + customerRentalTotal(customerId, data) - customerReceiptTotal(customerId, data); }
+function customerBalance(customerId, data) { return customerBalances(customerId, data).due; }
 
 /* ------------------------------- عناصر عامة ------------------------------- */
 function Card({ children, style, className = "", ...rest }) {
@@ -371,7 +356,9 @@ export default function App() {
     supabase, demo: V22_DEMO, demoProfile: ACTIVE_DEMO_PROFILE,
   });
   const [data, setData] = useState(V22_DEMO ? demoData : null);
-  const [tab, setTab] = useState(V22_DEMO ? (ASSET_QR_MODE ? "assets" : "projects") : (ASSET_QR_MODE ? "assets" : null));
+  const initialLocation = readWorkspaceLocation(window.location.search);
+  const [tab, setTab] = useState(V22_DEMO ? (ASSET_QR_MODE ? "assets" : initialLocation.page || "projects") : (ASSET_QR_MODE ? "assets" : initialLocation.page));
+  const [routeProjectId, setRouteProjectId] = useState(initialLocation.projectId);
   const [dataWarnings, setDataWarnings] = useState([]);
   const [mutationFeedback, setMutationFeedback] = useState({ type: "success", message: "" });
   const [realtimeStatus, setRealtimeStatus] = useState(V22_DEMO ? (DEMO_CONNECTION_STATE === "offline" ? "RECONNECTING" : "DEMO") : "CONNECTING");
@@ -384,6 +371,16 @@ export default function App() {
       console.warn("[Navigation] Could not persist sidebar state", error);
     }
   }, [openNavGroups]);
+
+  useEffect(() => {
+    const onPopState = () => {
+      const location = readWorkspaceLocation(window.location.search);
+      setTab(location.page);
+      setRouteProjectId(location.projectId);
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
 
   const selectedGroupId = useMemo(() => NAV_GROUPS.find((group) => group.pages.includes(tab))?.id, [tab]);
   useEffect(() => {
@@ -581,6 +578,15 @@ export default function App() {
     setTab((currentTab) => resolveAllowedTab(currentTab, permissions.pages || []));
   }, [permissions]);
 
+  const navigate = useCallback((page, options = {}) => {
+    const next = { page, projectId: options.projectId || null };
+    const nextUrl = workspaceUrl(next);
+    if (options.replace) window.history.replaceState(next, "", nextUrl);
+    else window.history.pushState(next, "", nextUrl);
+    setTab(page);
+    setRouteProjectId(next.projectId);
+  }, []);
+
   if (ASSET_CONFIRMATION_MODE) return <AssetExternalConfirmation/>;
   if (V22_DEMO && DEMO_ACCOUNT_STATE === "missing") return <BootstrapFailure missingProfile message="تم تسجيل الدخول، لكن ملف الحساب الإداري غير موجود." session={{ user: { id: "00000000-0000-0000-0000-000000000099", email: "missing-profile@nextep.demo" } }} onRetry={() => {}} onSignOut={() => {}}/>;
   if (bootstrapStatus === "checking-session" || bootstrapStatus === "loading-profile") return <BootstrapLoading text={bootstrapStatus === "loading-profile" ? "جارِ تحميل بيانات حسابك..." : "جارِ التحقق من الجلسة..."}/>;
@@ -624,43 +630,43 @@ export default function App() {
   async function insertRow(key, payload) {
     const mutationResult = await supabase.from(TABLES[key]).insert(payload);
     const result = await syncMutation({ scope: `${key}:create`, mutationResult, refetch: () => refetchTable(key) });
-    setMutationFeedback(result.error ? { type: "error", message: result.error.message } : { type: "success", message: "تم الحفظ بنجاح" });
+    setMutationFeedback(result.error ? { type: "error", message: result.error.message } : result.refreshError ? { type: "warning", message: "تم الحفظ، لكن تعذر تحديث الشاشة. أعد تحميل البيانات دون تكرار العملية." } : { type: "success", message: "تم الحفظ بنجاح" });
     return result.error?.message || null;
   }
   async function deleteRow(key, id) {
     const mutationResult = await supabase.from(TABLES[key]).delete().eq("id", id);
     const result = await syncMutation({ scope: `${key}:delete`, mutationResult, refetch: () => refetchTable(key) });
-    setMutationFeedback(result.error ? { type: "error", message: result.error.message } : { type: "success", message: "تم الحذف بنجاح" });
+    setMutationFeedback(result.error ? { type: "error", message: result.error.message } : result.refreshError ? { type: "warning", message: "تم الحذف، لكن تعذر تحديث الشاشة." } : { type: "success", message: "تم الحذف بنجاح" });
     return result.error?.message || null;
   }
   async function updateRow(key, id, patch) {
     const mutationResult = await supabase.from(TABLES[key]).update(patch).eq("id", id);
     const result = await syncMutation({ scope: `${key}:update`, mutationResult, refetch: () => refetchTable(key) });
-    setMutationFeedback(result.error ? { type: "error", message: result.error.message } : { type: "success", message: "تم حفظ التعديل بنجاح" });
+    setMutationFeedback(result.error ? { type: "error", message: result.error.message } : result.refreshError ? { type: "warning", message: "تم حفظ التعديل، لكن تعذر تحديث الشاشة." } : { type: "success", message: "تم حفظ التعديل بنجاح" });
     return result.error?.message || null;
   }
 
   const retryVisibleData = () => Promise.all(dataTableKeysForRole(role, Boolean(permissions.assets_view)).map((key) => refetchTable(key)));
 
   return (
-    <AppShell navigationGroups={navigationGroups} openGroups={openNavGroups} setOpenGroups={setOpenNavGroups} activeGroup={activeGroup} activePage={activePage} activeTab={activeTab} profile={profile} roleLabel={ROLES[role]?.label} realtimeStatus={realtimeStatus} warnings={dataWarnings} onNavigate={setTab} onRetryData={retryVisibleData} onSignOut={() => signOut()}>
+    <AppShell navigationGroups={navigationGroups} openGroups={openNavGroups} setOpenGroups={setOpenNavGroups} activeGroup={activeGroup} activePage={activePage} activeTab={activeTab} profile={profile} roleLabel={ROLES[role]?.label} realtimeStatus={realtimeStatus} warnings={dataWarnings} onNavigate={navigate} onRetryData={retryVisibleData} onSignOut={() => signOut()}>
         {!activeTab && <div className="module-state no-permission"><ShieldCheck size={30}/><strong>لا توجد صلاحية للوصول</strong><p>لا توجد صفحات مسموحة لهذا الحساب حاليًا. تواصل مع مدير النظام لتحديث صلاحياتك.</p></div>}
         {dataWarnings.length > 0 && <div className="module-state error compact"><AlertCircle size={20}/><div><strong>تعذر تحديث بعض البيانات</strong><p>{dataWarnings.map((key) => PAGE_LABELS[key] || key).join("، ")} — قد تكون البيانات المعروضة غير مكتملة.</p></div><button type="button" onClick={retryVisibleData}>إعادة المحاولة</button></div>}
         {!["CONNECTED", "DEMO"].includes(realtimeStatus) && <div className="module-state offline compact"><AlertCircle size={20}/><div><strong>{realtimeStatus === "RECONNECTING" ? "جارِ إعادة الاتصال" : "الاتصال اللحظي غير جاهز"}</strong><p>يمكنك متابعة القراءة، وستتم مزامنة التغييرات تلقائيًا عند عودة الاتصال.</p></div><button type="button" onClick={retryVisibleData}>المحاولة الآن</button></div>}
-        {activeTab === "dashboard" && <Dashboard data={data} navigate={setTab} permissions={permissions} />}
-        {activeTab === "projects" && <ProjectsTab data={data} profile={profile} permissions={permissions} refresh={refetchTable} />}
+        {activeTab === "dashboard" && <Dashboard data={data} navigate={navigate} permissions={permissions} />}
+        {activeTab === "projects" && <ProjectsTab data={data} profile={profile} permissions={permissions} refresh={refetchTable} initialProjectId={routeProjectId} onProjectRoute={(projectId) => navigate("projects", { projectId, replace: !projectId })} />}
         {activeTab === "projectFiles" && <ProjectFilesHub data={data} permissions={permissions} refresh={refetchTable} />}
-        {activeTab === "inventory" && <InventoryTab canViewFinancials={permissions.view_financials} onNavigate={setTab} allowedPages={permissions.pages || []} />}
-        {activeTab === "purchases" && <ProcurementWorkspace data={data} onNavigate={setTab} />}
+        {activeTab === "inventory" && <InventoryTab canViewFinancials={permissions.view_financials} onNavigate={navigate} allowedPages={permissions.pages || []} />}
+        {activeTab === "purchases" && <ProcurementWorkspace data={data} onNavigate={navigate} />}
         {activeTab === "expenses" && <ExpensesTab data={data} insertRow={insertRow} profileRole={role} refresh={() => refetchTable("expenses")} />}
-        {activeTab === "materials" && <MaterialsTab data={data} canDelete={permissions.can_delete} insertRow={insertRow} deleteRow={deleteRow} updateRow={updateRow} onNavigate={setTab} />}
+        {activeTab === "materials" && <MaterialsTab data={data} canDelete={permissions.can_delete} insertRow={insertRow} deleteRow={deleteRow} updateRow={updateRow} onNavigate={navigate} />}
         {activeTab === "products" && <ProductsTab data={data} canCreate={permissions.can_create_products} canEdit={permissions.can_edit_products} canArchive={permissions.can_delete && permissions.can_edit_products} hideProfitInfo={!permissions.view_financials} insertRow={insertRow} updateRow={updateRow} />}
         {activeTab === "production" && <ProductionTab data={data} profileRole={role} canViewFinancials={permissions.view_financials} />}
         {activeTab === "assets" && permissions.assets_view && <AssetsPage data={data} profile={profile} permissions={permissions} refresh={refetchTable} />}
         {activeTab === "sales" && <SalesTab data={data} insertRow={insertRow} refresh={() => refetchTable("sales")} canManage={isAdministrativeRole(role)} />}
         {activeTab === "rentals" && <RentalsTab data={data} insertRow={insertRow} refresh={() => refetchTable("rentals")} canManage={isAdministrativeRole(role)} />}
-        {activeTab === "suppliers" && <SuppliersTab data={data} insertRow={insertRow} updateRow={updateRow} canManage={isAdministrativeRole(role)} />}
-        {activeTab === "customers" && <CustomersTab data={data} insertRow={insertRow} updateRow={updateRow} canManage={isAdministrativeRole(role)} />}
+        {activeTab === "suppliers" && <SuppliersTab data={data} insertRow={insertRow} updateRow={updateRow} refresh={() => refetchTable("supplierPayments")} canManage={isAdministrativeRole(role)} />}
+        {activeTab === "customers" && <CustomersTab data={data} insertRow={insertRow} updateRow={updateRow} refresh={() => refetchTable("customerReceipts")} canManage={isAdministrativeRole(role)} />}
         {activeTab === "employees" && role !== "production" && <EmployeesTab data={data} profile={profile} refresh={refetchTable} />}
         {activeTab === "workCalendar" && permissions.payroll_calendar_view && <WorkCalendarTab data={data} profile={profile} permissions={permissions} refresh={refetchTable} />}
         {activeTab === "payroll" && permissions.payroll_view && data.payroll.some((row) => row.status === "draft" && row.calendar_stale) && <div className="module-state error compact"><AlertCircle size={20}/><div><strong>مسودة الراتب تحتاج إعادة حساب</strong><p>تغير تقويم العمل بعد إنشاء المسودة. تمنع قاعدة البيانات اعتمادها حتى إعادة الحساب أو استخدام صلاحية التجاوز الموثقة.</p></div></div>}
@@ -688,13 +694,31 @@ function DashboardSection({ title, description, action, children, className = ""
 }
 
 function Dashboard({ data, navigate, permissions }) {
+  const [inventoryWorkspace, setInventoryWorkspace] = useState(null);
+  const [inventoryError, setInventoryError] = useState("");
+  const [inventoryUpdatedAt, setInventoryUpdatedAt] = useState(null);
+  useEffect(() => {
+    let active = true;
+    const loadInventory = () => supabase.rpc("get_inventory_workspace").then(({ data: workspace, error }) => {
+      if (!active) return;
+      if (error) setInventoryError("تعذر تحميل رصيد دفتر المخزون؛ لم يتم عرض تقدير بديل.");
+      else { setInventoryWorkspace(workspace || {}); setInventoryError(""); setInventoryUpdatedAt(new Date()); }
+    });
+    void loadInventory();
+    const channel = supabase.channel("dashboard-inventory-ledger")
+      .on("postgres_changes", { event:"*", schema:"public", table:"inventory_movements" }, loadInventory)
+      .subscribe();
+    return () => { active = false; void supabase.removeChannel(channel); };
+  }, [data.materials, data.materialPurchases, data.productionOrders]);
+
   const stats = useMemo(() => {
     const today = todayStr();
     const monthKey = today.slice(0, 7);
     const activeProjects = data.projects.filter((project) => !["delivered", "cancelled"].includes(project.status));
     const delayedProjects = activeProjects.filter((project) => project.delivery_date && project.delivery_date < today);
     const averageProgress = activeProjects.length ? activeProjects.reduce((sum, project) => sum + num(project.progress), 0) / activeProjects.length : 0;
-    const lowMaterials = data.materials.map((material) => ({ ...material, stock: materialStock(material.id, data) })).filter((material) => material.stock <= 10).sort((a, b) => a.stock - b.stock);
+    const materialAlerts = inventoryWorkspace ? canonicalMaterialAlerts(inventoryWorkspace) : { low: [], unlinked: [] };
+    const lowMaterials = materialAlerts.low;
     const lowProducts = data.products.filter((product) => !product.archived_at).map((product) => ({ ...product, stock: finishedStock(product.id, data) })).filter((product) => product.stock <= 5).sort((a, b) => a.stock - b.stock);
     const postedSales = data.sales.filter((sale) => sale.status !== "cancelled");
     const revenue = postedSales.reduce((sum, sale) => sum + num(sale.total), 0);
@@ -708,7 +732,7 @@ function Dashboard({ data, navigate, permissions }) {
       averageProgress,
       ordersThisMonth: data.productionOrders.filter((order) => (order.order_date || "").slice(0, 7) === monthKey).length,
       todayProduction: data.productionOrders.filter((order) => order.order_date === today).reduce((sum, order) => sum + num(order.qty), 0),
-      lowMaterials,
+      lowMaterials, unlinkedMaterials: materialAlerts.unlinked,
       lowProducts,
       todaySales: postedSales.filter((sale) => sale.sale_date === today).reduce((sum, sale) => sum + num(sale.total), 0),
       profit: revenue - cogs,
@@ -719,7 +743,7 @@ function Dashboard({ data, navigate, permissions }) {
       activeAssetAssignments: data.assetAssignments.filter((row) => ["pending_receiver_confirmation", "issued", "partially_returned", "settlement_pending"].includes(row.status)).length,
       assetAlertCount: data.assetAlerts.length,
     };
-  }, [data]);
+  }, [data, inventoryWorkspace]);
 
   const recentActivities = [...data.projectActivities].sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || ""))).slice(0, 6);
   const canGo = (page) => permissions.pages.includes(page);
@@ -755,10 +779,13 @@ function Dashboard({ data, navigate, permissions }) {
 
       <DashboardSection title="التنبيهات" description="العناصر التي تحتاج تدخلاً سريعًا" className="dashboard-wide" action={quickAction("inventory", "فتح المخزون")}>
         <div className="dashboard-alerts">
-          {stats.lowMaterials.slice(0, 3).map((item) => <div className="dashboard-alert" key={`material-${item.id}`}><AlertCircle size={17} /><span><strong>{item.name}</strong> — الرصيد {fmt(item.stock)} {item.unit}</span></div>)}
+          {inventoryUpdatedAt && <div className="dashboard-clear"><CheckCircle2 size={18}/> المصدر: دفتر حركات المخزون · آخر تحديث {inventoryUpdatedAt.toLocaleTimeString("ar-EG")}</div>}
+          {stats.lowMaterials.slice(0, 3).map((item) => <div className="dashboard-alert" key={`material-${item.id}`}><AlertCircle size={17} /><span><strong>{item.name}</strong> — الرصيد {fmt(item.quantityOnHand)} {item.unit} عبر {item.warehouseNames.length} مخزن</span></div>)}
+          {stats.unlinkedMaterials.slice(0, 3).map((item) => <div className="dashboard-alert" key={`unlinked-material-${item.id}`}><AlertCircle size={17} /><span><strong>{item.name}</strong> — جودة بيانات: المادة غير مربوطة بصنف مخزون، ولا يوجد تقدير رصيد.</span></div>)}
+          {inventoryError && <div className="dashboard-alert"><AlertCircle size={17}/><span>{inventoryError}</span></div>}
           {stats.lowProducts.slice(0, 3).map((item) => <div className="dashboard-alert" key={`product-${item.id}`}><AlertCircle size={17} /><span><strong>{item.name}</strong> — المتاح {fmt(item.stock)} وحدة</span></div>)}
           {stats.assetAlertCount > 0 && <div className="dashboard-alert"><AlertCircle size={17}/><span><strong>تنبيهات الأصول والعِدّة</strong> — {stats.assetAlertCount} عنصر يحتاج متابعة</span></div>}
-          {!stats.lowMaterials.length && !stats.lowProducts.length && !stats.assetAlertCount && <div className="dashboard-clear"><CheckCircle2 size={18} /> لا توجد تنبيهات مخزون أو أصول حرجة حاليًا.</div>}
+          {!inventoryError && !stats.unlinkedMaterials.length && !stats.lowMaterials.length && !stats.lowProducts.length && !stats.assetAlertCount && <div className="dashboard-clear"><CheckCircle2 size={18} /> لا توجد تنبيهات مخزون أو أصول حرجة حاليًا.</div>}
         </div>
       </DashboardSection>
 
@@ -863,7 +890,7 @@ function ProductsTab({ data, canCreate, canEdit, canArchive, hideProfitInfo, ins
             <Table headers={["المادة", "الكمية", "التكلفة", ""]}>
               {bom.map((r, i) => { const m = data.materials.find((x) => x.id === r.material_id); return (
                 <tr key={i}><Td>{m?.name}</Td><Td>{r.qty} {m?.unit}</Td><Td>{fmt((m?.unit_cost || 0) * r.qty)} ج.م</Td>
-                  <Td><button onClick={() => removeBomRow(i)} style={{ background: "none", border: "none", cursor: "pointer", color: C.red }}><Trash2 size={14} /></button></Td></tr>
+                  <Td><button aria-label={`حذف ${m?.name||"المادة"} من التركيبة`} title="حذف من التركيبة" onClick={() => removeBomRow(i)} style={{ background: "none", border: "none", cursor: "pointer", color: C.red }}><Trash2 size={14} /></button></Td></tr>
               ); })}
             </Table>
           </div>
@@ -895,7 +922,7 @@ function ProductsTab({ data, canCreate, canEdit, canArchive, hideProfitInfo, ins
                   </>)}
                   <Td>{finishedStock(p.id, data)}</Td>
                   <Td style={{ display: "flex", gap: 10 }}>
-                    {canEdit && <button onClick={() => startEdit(p)} style={{ background: "none", border: "none", cursor: "pointer", color: C.brass }}><Pencil size={15} /></button>}
+                    {canEdit && <button aria-label={`تعديل ${p.name}`} title="تعديل المنتج" onClick={() => startEdit(p)} style={{ background: "none", border: "none", cursor: "pointer", color: C.brass }}><Pencil size={15} /></button>}
                     {canArchive && <button aria-label={`أرشفة ${p.name}`} onClick={() => archiveProduct(p)} style={{ background: "none", border: "none", cursor: "pointer", color: C.red }}><Archive size={15} /></button>}
                   </Td>
                 </tr>
@@ -918,6 +945,7 @@ const ProductionTab=ProductionWorkspace;
 function SalesTab({ data, insertRow, refresh, canManage }) {
   const [form, setForm] = useState({ productId: "", customerId: "", qty: "", unitPrice: "", date: todayStr() });
   const [err, setErr] = useState(""); const [ok, setOk] = useState("");
+  const [cancelAction, setCancelAction] = useState(null);
   const selectedProduct = data.products.find((p) => p.id === form.productId);
 
   async function submit() {
@@ -929,7 +957,7 @@ function SalesTab({ data, insertRow, refresh, canManage }) {
     const stock = finishedStock(form.productId, data);
     if (stock < qty) return setErr(`المخزون التام المتاح ${stock} وحدة فقط`);
     const unitPrice = num(form.unitPrice) || selectedProduct.selling_price;
-    if (unitPrice < 0) return setErr("سعر الوحدة لا يمكن أن يكون سالبًا");
+    if (!Number.isFinite(unitPrice) || unitPrice <= 0) return setErr("سعر الوحدة يجب أن يكون أكبر من صفر");
     const total = unitPrice * qty;
     const e = await insertRow("sales", { product_id: form.productId, customer_id: form.customerId, qty, unit_price: unitPrice, total, sale_date: form.date });
     if (e) return setErr(e);
@@ -937,15 +965,17 @@ function SalesTab({ data, insertRow, refresh, canManage }) {
     setForm({ productId: "", customerId: "", qty: "", unitPrice: "", date: todayStr() });
   }
 
-  async function cancelSale(row) {
-    const reason = window.prompt("سبب إلغاء عملية البيع؟ سيبقى السجل محفوظًا وسيعود رصيد المنتج للحساب.");
-    if (!reason?.trim()) return;
-    if (!window.confirm("تأكيد إلغاء البيع مع الحفاظ على السجل التاريخي؟")) return;
+  async function confirmCancelSale() {
+    const { row, reason } = cancelAction;
+    setCancelAction((current)=>({...current,busy:true,error:""}));
     setErr(""); setOk("");
-    const mutationResult = await supabase.rpc("cancel_sale", { target_sale_id: row.id, reason: reason.trim() });
-    const result = await syncMutation({ scope: "sales:cancel", mutationResult, refetch: refresh });
-    if (result.error) return setErr(result.error.message);
-    setOk("تم إلغاء البيع، واستُبعد من الرصيد والإيراد مع حفظ أثر المراجعة.");
+    const result = await runCriticalMutation({ scope:"sales:cancel", mutate:()=>supabase.rpc("cancel_sale",{target_sale_id:row.id,reason:reason.trim()}), verify:async()=>{
+      const verification=await supabase.from("sales").select("status,cancelled_at").eq("id",row.id).single();
+      return verification.error?verification:verification.data?.status==="cancelled";
+    }, refetch:refresh });
+    if (result.error) return setCancelAction((current)=>({...current,busy:false,error:result.mutationSaved?"وصل أمر الإلغاء للخادم، لكن تعذر التحقق. حدّث الشاشة قبل إعادة المحاولة.":result.error.message}));
+    setCancelAction(null);
+    setOk(result.refreshError ? "تم إلغاء البيع وحفظه، لكن تعذر تحديث الشاشة. حدّث الصفحة دون إعادة الإلغاء." : "تم إلغاء البيع، واستُبعد من الرصيد والإيراد مع حفظ أثر المراجعة.");
   }
 
   const postedSales = data.sales.filter((sale) => sale.status !== "cancelled");
@@ -972,7 +1002,7 @@ function SalesTab({ data, insertRow, refresh, canManage }) {
         {postedSales.length === 0 ? <Empty text="لا توجد مبيعات مسجلة بعد" /> : (
           <Table headers={["التاريخ", "المنتج", "العميل", "الكمية", "سعر الوحدة", "الإجمالي", "الحالة", ""]}>
             {[...postedSales].reverse().map((s) => { const p = data.products.find((x) => x.id === s.product_id); const c = data.customers.find((x) => x.id === s.customer_id); return (
-              <tr key={s.id}><Td>{s.sale_date}</Td><Td>{p?.name || "—"}</Td><Td>{c?.name || "—"}</Td><Td>{s.qty}</Td><Td>{fmt(s.unit_price)} ج.م</Td><Td style={{ fontWeight: 700, color: invalidLegacySale(s) ? C.red : C.green }}>{fmt(s.total)} ج.م</Td><Td>{invalidLegacySale(s) ? <span style={{color:C.red,fontWeight:700}}>سجل قديم يحتاج مراجعة</span> : "مرحّل"}</Td><Td>{canManage && <button aria-label="إلغاء البيع" onClick={() => cancelSale(s)} style={{background:"none",border:"none",cursor:"pointer",color:C.red}}><X size={15}/></button>}</Td></tr>
+              <tr key={s.id}><Td>{s.sale_date}</Td><Td>{p?.name || "—"}</Td><Td>{c?.name || "—"}</Td><Td>{s.qty}</Td><Td>{fmt(s.unit_price)} ج.م</Td><Td style={{ fontWeight: 700, color: invalidLegacySale(s) ? C.red : C.green }}>{fmt(s.total)} ج.م</Td><Td>{invalidLegacySale(s) ? <span style={{color:C.red,fontWeight:700}}>سجل قديم يحتاج مراجعة</span> : "مرحّل"}</Td><Td>{canManage && <button aria-label="إلغاء البيع" title="إلغاء البيع وعكس أثره" onClick={() => setCancelAction({row:s,reason:"",busy:false,error:""})} style={{background:"none",border:"none",cursor:"pointer",color:C.red}}><X size={15}/></button>}</Td></tr>
             ); })}
           </Table>
         )}
@@ -980,6 +1010,7 @@ function SalesTab({ data, insertRow, refresh, canManage }) {
       <ArchiveSection title="المبيعات الملغاة" count={cancelledSales.length} helpText="السجلات الملغاة محفوظة للمراجعة، ولا تدخل في المخزون أو الإيراد أو رصيد العميل.">
         {cancelledSales.length === 0 ? <Empty text="لا توجد مبيعات ملغاة" /> : <Table headers={["التاريخ", "المنتج", "العميل", "الإجمالي", "سبب الإلغاء", "وقت الإلغاء"]}>{[...cancelledSales].reverse().map((s) => <tr key={s.id}><Td>{s.sale_date}</Td><Td>{data.products.find((p) => p.id === s.product_id)?.name || "—"}</Td><Td>{data.customers.find((c) => c.id === s.customer_id)?.name || "—"}</Td><Td>{fmt(s.total)} ج.م</Td><Td>{s.cancellation_reason || "—"}</Td><Td>{s.cancelled_at ? new Date(s.cancelled_at).toLocaleString("ar-EG") : "—"}</Td></tr>)}</Table>}
       </ArchiveSection>
+      <ConfirmDialog open={Boolean(cancelAction)} title="إلغاء عملية البيع" description="سيبقى السجل محفوظًا، وسيُعكس أثره على المخزون ورصيد العميل مرة واحدة فقط." confirmLabel="إلغاء وعكس" danger reasonRequired reason={cancelAction?.reason||""} busy={cancelAction?.busy} error={cancelAction?.error} onReasonChange={(reason)=>setCancelAction((current)=>({...current,reason,error:""}))} onConfirm={confirmCancelSale} onCancel={()=>setCancelAction(null)}/>
     </div>
   );
 }
@@ -988,6 +1019,7 @@ function SalesTab({ data, insertRow, refresh, canManage }) {
 function RentalsTab({ data, insertRow, refresh, canManage }) {
   const [form, setForm] = useState({ productId: "", customerId: "", qty: "", rentalFee: "", startDate: todayStr(), expectedReturn: "" });
   const [err, setErr] = useState(""); const [ok, setOk] = useState("");
+  const [cancelAction, setCancelAction] = useState(null);
 
   async function submit() {
     setErr(""); setOk("");
@@ -1018,15 +1050,16 @@ function RentalsTab({ data, insertRow, refresh, canManage }) {
 
   const rentalProducts = data.products.filter((p) => !p.archived_at && (p.item_type || "sale") !== "sale");
 
-  async function cancelRental(r) {
-    const reason = window.prompt("سبب إلغاء الإيجار؟ سيبقى السجل محفوظًا وستعود الكمية للمتاح.");
-    if (!reason?.trim()) return;
-    if (!window.confirm("تأكيد إلغاء الإيجار مع الحفاظ على السجل التاريخي؟")) return;
+  async function confirmCancelRental() {
+    const { row, reason } = cancelAction;
+    setCancelAction((current)=>({...current,busy:true,error:""}));
     setErr(""); setOk("");
-    const mutationResult = await supabase.rpc("cancel_rental", { target_rental_id: r.id, reason: reason.trim() });
-    const result = await syncMutation({ scope: "rentals:cancel", mutationResult, refetch: refresh });
-    if (result.error) return setErr(result.error.message);
-    setOk("تم إلغاء الإيجار واستبعاده من الرصيد والمتاح مع حفظ أثر المراجعة.");
+    const result=await runCriticalMutation({scope:"rentals:cancel",mutate:()=>supabase.rpc("cancel_rental",{target_rental_id:row.id,reason:reason.trim()}),verify:async()=>{
+      const verification=await supabase.from("rentals").select("status,cancelled_at").eq("id",row.id).single();
+      return verification.error?verification:verification.data?.status==="cancelled";
+    },refetch:refresh});
+    if(result.error)return setCancelAction((current)=>({...current,busy:false,error:result.mutationSaved?"وصل أمر الإلغاء للخادم، لكن تعذر التحقق. حدّث الشاشة قبل إعادة المحاولة.":result.error.message}));
+    setCancelAction(null);setOk(result.refreshError?"تم إلغاء الإيجار، لكن تعذر تحديث الشاشة. حدّث الصفحة دون إعادة الإلغاء.":"تم إلغاء الإيجار واستبعاده من الرصيد والمتاح مع حفظ أثر المراجعة.");
   }
 
   const activeRentals = data.rentals.filter((rental) => rental.status === "active");
@@ -1060,7 +1093,7 @@ function RentalsTab({ data, insertRow, refresh, canManage }) {
                   <Td>{p?.name || "—"}</Td><Td>{c?.name || "—"}</Td><Td>{r.qty}</Td>
                   <Td>{fmt(r.rental_fee)} ج.م</Td><Td>{r.start_date}</Td><Td>{r.expected_return_date || "—"}</Td>
                   <Td style={{ color: C.brass, fontWeight: 700 }}>مؤجر حاليًا</Td>
-                  <Td><div style={{display:"flex",gap:8,alignItems:"center"}}><Btn variant="ghost" onClick={() => markReturned(r)} style={{ fontSize: 12, padding: "5px 10px" }}>تسجيل الاسترجاع</Btn>{canManage && <button aria-label="إلغاء الإيجار" onClick={() => cancelRental(r)} style={{background:"none",border:"none",cursor:"pointer",color:C.red}}><X size={15}/></button>}</div></Td>
+                  <Td><div style={{display:"flex",gap:8,alignItems:"center"}}><Btn variant="ghost" onClick={() => markReturned(r)} style={{ fontSize: 12, padding: "5px 10px" }}>تسجيل الاسترجاع</Btn>{canManage && <button aria-label="إلغاء الإيجار" title="إلغاء الإيجار وعكس أثره" onClick={() => setCancelAction({row:r,reason:"",busy:false,error:""})} style={{background:"none",border:"none",cursor:"pointer",color:C.red}}><X size={15}/></button>}</div></Td>
                 </tr>
               );
             })}
@@ -1070,17 +1103,19 @@ function RentalsTab({ data, insertRow, refresh, canManage }) {
       <ArchiveSection title="سجل الإيجارات المكتملة والملغاة" count={rentalHistory.length} helpText="الإرجاعات والإلغاءات نهائية ومحفوظة للمراجعة، ولا تزاحم الإيجارات النشطة.">
         {rentalHistory.length === 0 ? <Empty text="لا يوجد سجل إيجارات سابق" /> : <Table headers={["الصنف", "العميل", "الكمية", "القيمة", "الحالة", "التاريخ النهائي", "السبب"]}>{[...rentalHistory].reverse().map((r) => <tr key={r.id}><Td>{data.products.find((p) => p.id === r.product_id)?.name || "—"}</Td><Td>{data.customers.find((c) => c.id === r.customer_id)?.name || "—"}</Td><Td>{r.qty}</Td><Td>{fmt(r.rental_fee)} ج.م</Td><Td style={{color:r.status === "returned" ? C.green : C.red,fontWeight:700}}>{r.status === "returned" ? "تم الاسترجاع" : "ملغي"}</Td><Td>{r.status === "returned" ? r.return_date || "—" : r.cancelled_at ? new Date(r.cancelled_at).toLocaleString("ar-EG") : "—"}</Td><Td>{r.cancellation_reason || "—"}</Td></tr>)}</Table>}
       </ArchiveSection>
+      <ConfirmDialog open={Boolean(cancelAction)} title="إلغاء عملية الإيجار" description="سيبقى السجل محفوظًا وستعود الكمية للمتاح. الطلب المكرر لن يطبق الإلغاء مرتين." confirmLabel="إلغاء وعكس" danger reasonRequired reason={cancelAction?.reason||""} busy={cancelAction?.busy} error={cancelAction?.error} onReasonChange={(reason)=>setCancelAction((current)=>({...current,reason,error:""}))} onConfirm={confirmCancelRental} onCancel={()=>setCancelAction(null)}/>
     </div>
   );
 }
 
 /* -------------------------------- Suppliers --------------------------------- */
-function SuppliersTab({ data, insertRow, updateRow, canManage }) {
+function SuppliersTab({ data, insertRow, updateRow, refresh, canManage }) {
   const [name, setName] = useState(""); const [phone, setPhone] = useState("");
   const [editingId, setEditingId] = useState(null);
   const [payment, setPayment] = useState({ supplierId: "", amount: "", date: todayStr() });
   const [err, setErr] = useState(""); const [expanded, setExpanded] = useState(null);
   const [search, setSearch] = useState("");
+  const [pendingPayment, setPendingPayment] = useState(null); const [paymentBusy, setPaymentBusy] = useState(false);
 
   function startEdit(s) { setEditingId(s.id); setName(s.name); setPhone(s.phone || ""); }
   function cancelEdit() { setEditingId(null); setName(""); setPhone(""); setErr(""); }
@@ -1091,12 +1126,21 @@ function SuppliersTab({ data, insertRow, updateRow, canManage }) {
     if (e) return setErr(e);
     setName(""); setPhone(""); setEditingId(null); setErr("");
   }
+  async function commitPayment(payload = payment) {
+    setPaymentBusy(true); setErr("");
+    const result = await supabase.rpc("record_supplier_payment", { target_supplier: payload.supplierId, payment_amount: num(payload.amount), paid_on: payload.date, payment_note: null });
+    if (result.error) { setPaymentBusy(false); return setErr(result.error.message); }
+    const refreshed = await refresh();
+    setPaymentBusy(false); setPendingPayment(null);
+    if (refreshed?.error) return setErr("تم حفظ الدفعة، لكن تعذر تحديث الشاشة. حدّث الصفحة بأمان؛ لا تعِد تسجيل الدفعة.");
+    setPayment({ supplierId: "", amount: "", date: todayStr() });
+  }
   async function addPayment() {
     if (!payment.supplierId) return setErr("اختر المورد");
     if (num(payment.amount) <= 0) return setErr("أدخل مبلغ أكبر من صفر");
-    const e = await insertRow("supplierPayments", { supplier_id: payment.supplierId, amount: num(payment.amount), payment_date: payment.date });
-    if (e) return setErr(e);
-    setPayment({ supplierId: "", amount: "", date: todayStr() }); setErr("");
+    const due = supplierBalances(payment.supplierId, data).due;
+    if (num(payment.amount) > due) return setPendingPayment({ ...payment, due, advance: num(payment.amount) - due });
+    await commitPayment();
   }
   async function archiveSupplier(supplier) {
     const reason = window.prompt(`سبب أرشفة المورد "${supplier.name}"؟`);
@@ -1139,25 +1183,25 @@ function SuppliersTab({ data, insertRow, updateRow, canManage }) {
           <Field label="المبلغ"><Input type="number" value={payment.amount} onChange={(e) => setPayment({ ...payment, amount: e.target.value })} /></Field>
           <Field label="التاريخ"><Input type="date" value={payment.date} onChange={(e) => setPayment({ ...payment, date: e.target.value })} /></Field>
         </div>
-        <div style={{ marginTop: 12 }}><Btn onClick={addPayment}><Wallet size={15} /> تسجيل الدفعة</Btn></div>
+        <div style={{ marginTop: 12 }}><Btn disabled={paymentBusy} onClick={addPayment}><Wallet size={15} /> {paymentBusy ? "جارِ التسجيل..." : "تسجيل الدفعة"}</Btn></div>
         {err && <Banner>{err}</Banner>}
       </Card>
       <Card>
         <SearchBox value={search} onChange={setSearch} placeholder="ابحث باسم المورد..." />
         {filtered.length === 0 ? <Empty text="لا توجد نتائج" /> : (
-          <Table headers={["المورد", "الهاتف", "إجمالي المشتريات", "إجمالي المدفوع", "الرصيد المستحق", ""]}>
-            {filtered.map((s) => { const bal = supplierBalance(s.id, data); return (
+          <Table headers={["المورد", "الهاتف", "إجمالي المشتريات", "إجمالي المدفوع", "المستحق", "السلفة", ""]}>
+            {filtered.map((s) => { const balances = supplierBalances(s.id, data); const bal = balances.due; return (
               <React.Fragment key={s.id}>
                 <tr>
                   <Td>{s.name}</Td><Td>{s.phone || "—"}</Td><Td>{fmt(supplierPurchaseTotal(s.id, data))} ج.م</Td><Td>{fmt(supplierPaymentTotal(s.id, data))} ج.م</Td>
-                  <Td style={{ fontWeight: 700, color: bal > 0 ? C.red : C.green }}>{fmt(bal)} ج.م</Td>
+                  <Td style={{ fontWeight: 700, color: bal > 0 ? C.red : C.green }}>{fmt(bal)} ج.م</Td><Td style={{fontWeight:700,color:C.green}}>{fmt(balances.advance)} ج.م{balances.legacyUnclassified>0&&<small style={{display:"block",color:C.red}}>يوجد {balances.legacyUnclassified} حركة قديمة غير مصنفة</small>}</Td>
                   <Td style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                    <button onClick={() => startEdit(s)} style={{ background: "none", border: "none", cursor: "pointer", color: C.brass }}><Pencil size={15} /></button>
+                    <button aria-label={`تعديل ${s.name}`} title="تعديل المورد" onClick={() => startEdit(s)} style={{ background: "none", border: "none", cursor: "pointer", color: C.brass }}><Pencil size={15} /></button>
                     {canManage && <button aria-label={`أرشفة ${s.name}`} onClick={() => archiveSupplier(s)} style={{ background: "none", border: "none", cursor: "pointer", color: C.red }}><Archive size={15} /></button>}
                     <button onClick={() => setExpanded(expanded === s.id ? null : s.id)} style={{ background: "none", border: "none", color: C.brass, cursor: "pointer", fontSize: 12.5 }}>{expanded === s.id ? "إخفاء الحركات" : "عرض الحركات"}</button>
                   </Td>
                 </tr>
-                {expanded === s.id && <tr><Td colSpan={6} style={{ background: C.panelAlt }}><SupplierLedger supplierId={s.id} data={data} /></Td></tr>}
+                {expanded === s.id && <tr><Td colSpan={7} style={{ background: C.panelAlt }}><SupplierLedger supplierId={s.id} data={data} /></Td></tr>}
               </React.Fragment>
             ); })}
           </Table>
@@ -1170,24 +1214,26 @@ function SuppliersTab({ data, insertRow, updateRow, canManage }) {
           </Table>
         )}
       </ArchiveSection>
+      <ConfirmDialog open={Boolean(pendingPayment)} title="تسجيل سلفة مورد" description={pendingPayment ? `المستحق ${fmt(pendingPayment.due)} ج.م، وسيُصنف المبلغ الزائد ${fmt(pendingPayment.advance)} ج.م كسلفة مورد متاحة للتخصيص لاحقًا.` : ""} confirmLabel="تسجيل الدفعة والسلفة" danger={false} busy={paymentBusy} onConfirm={() => pendingPayment && commitPayment(pendingPayment)} onCancel={() => !paymentBusy && setPendingPayment(null)} />
     </div>
   );
 }
 function SupplierLedger({ supplierId, data }) {
   const purchases = data.materialPurchases.filter((p) => p.supplier_id === supplierId).map((p) => ({ date: p.purchase_date, type: "شراء", amount: p.qty * p.unit_cost, note: data.materials.find((m) => m.id === p.material_id)?.name }));
-  const payments = data.supplierPayments.filter((p) => p.supplier_id === supplierId).map((p) => ({ date: p.payment_date, type: "دفعة", amount: -p.amount, note: p.note }));
+  const payments = data.supplierPayments.filter((p) => p.supplier_id === supplierId).map((p) => ({ date: p.payment_date, type: transactionClassLabel(p), amount: -p.amount, note: p.note }));
   const rows = [...purchases, ...payments].sort((a, b) => (a.date || "").localeCompare(b.date || ""));
   if (rows.length === 0) return <div style={{ color: C.muted, fontSize: 13 }}>لا توجد حركات مسجلة</div>;
   return <Table headers={["التاريخ", "النوع", "البيان", "المبلغ"]}>{rows.map((r, i) => <tr key={i}><Td>{r.date}</Td><Td style={{ color: r.type === "شراء" ? C.red : C.green }}>{r.type}</Td><Td>{r.note || "—"}</Td><Td>{fmt(Math.abs(r.amount))} ج.م</Td></tr>)}</Table>;
 }
 
 /* -------------------------------- Customers --------------------------------- */
-function CustomersTab({ data, insertRow, updateRow, canManage }) {
+function CustomersTab({ data, insertRow, updateRow, refresh, canManage }) {
   const [name, setName] = useState(""); const [phone, setPhone] = useState("");
   const [editingId, setEditingId] = useState(null);
   const [receipt, setReceipt] = useState({ customerId: "", amount: "", date: todayStr() });
   const [err, setErr] = useState(""); const [expanded, setExpanded] = useState(null);
   const [search, setSearch] = useState("");
+  const [pendingReceipt, setPendingReceipt] = useState(null); const [receiptBusy, setReceiptBusy] = useState(false);
 
   function startEdit(c) { setEditingId(c.id); setName(c.name); setPhone(c.phone || ""); }
   function cancelEdit() { setEditingId(null); setName(""); setPhone(""); setErr(""); }
@@ -1198,12 +1244,21 @@ function CustomersTab({ data, insertRow, updateRow, canManage }) {
     if (e) return setErr(e);
     setName(""); setPhone(""); setEditingId(null); setErr("");
   }
+  async function commitReceipt(payload = receipt) {
+    setReceiptBusy(true); setErr("");
+    const result = await supabase.rpc("record_customer_receipt", { target_customer: payload.customerId, receipt_amount: num(payload.amount), received_on: payload.date, receipt_note: null });
+    if (result.error) { setReceiptBusy(false); return setErr(result.error.message); }
+    const refreshed = await refresh();
+    setReceiptBusy(false); setPendingReceipt(null);
+    if (refreshed?.error) return setErr("تم حفظ التحصيل، لكن تعذر تحديث الشاشة. حدّث الصفحة بأمان؛ لا تعِد تسجيل التحصيل.");
+    setReceipt({ customerId: "", amount: "", date: todayStr() });
+  }
   async function addReceipt() {
     if (!receipt.customerId) return setErr("اختر العميل");
     if (num(receipt.amount) <= 0) return setErr("أدخل مبلغ أكبر من صفر");
-    const e = await insertRow("customerReceipts", { customer_id: receipt.customerId, amount: num(receipt.amount), receipt_date: receipt.date });
-    if (e) return setErr(e);
-    setReceipt({ customerId: "", amount: "", date: todayStr() }); setErr("");
+    const due = customerBalances(receipt.customerId, data).due;
+    if (num(receipt.amount) > due) return setPendingReceipt({ ...receipt, due, advance: num(receipt.amount) - due });
+    await commitReceipt();
   }
   async function archiveCustomer(customer) {
     const reason = window.prompt(`سبب أرشفة العميل "${customer.name}"؟`);
@@ -1246,25 +1301,25 @@ function CustomersTab({ data, insertRow, updateRow, canManage }) {
           <Field label="المبلغ"><Input type="number" value={receipt.amount} onChange={(e) => setReceipt({ ...receipt, amount: e.target.value })} /></Field>
           <Field label="التاريخ"><Input type="date" value={receipt.date} onChange={(e) => setReceipt({ ...receipt, date: e.target.value })} /></Field>
         </div>
-        <div style={{ marginTop: 12 }}><Btn onClick={addReceipt}><Wallet size={15} /> تسجيل التحصيل</Btn></div>
+        <div style={{ marginTop: 12 }}><Btn disabled={receiptBusy} onClick={addReceipt}><Wallet size={15} /> {receiptBusy ? "جارِ التسجيل..." : "تسجيل التحصيل"}</Btn></div>
         {err && <Banner>{err}</Banner>}
       </Card>
       <Card>
         <SearchBox value={search} onChange={setSearch} placeholder="ابحث باسم العميل..." />
         {filtered.length === 0 ? <Empty text="لا توجد نتائج" /> : (
-          <Table headers={["العميل", "الهاتف", "إجمالي المبيعات والإيجارات", "إجمالي التحصيل", "الرصيد المستحق", ""]}>
-            {filtered.map((c) => { const bal = customerBalance(c.id, data); return (
+          <Table headers={["العميل", "الهاتف", "إجمالي المبيعات والإيجارات", "إجمالي التحصيل", "المستحق", "السلفة", ""]}>
+            {filtered.map((c) => { const balances = customerBalances(c.id, data); const bal = balances.due; return (
               <React.Fragment key={c.id}>
                 <tr>
                   <Td>{c.name}</Td><Td>{c.phone || "—"}</Td><Td>{fmt(customerSaleTotal(c.id, data) + customerRentalTotal(c.id, data))} ج.م</Td><Td>{fmt(customerReceiptTotal(c.id, data))} ج.م</Td>
-                  <Td style={{ fontWeight: 700, color: bal > 0 ? C.brass : C.green }}>{fmt(bal)} ج.م</Td>
+                  <Td style={{ fontWeight: 700, color: bal > 0 ? C.brass : C.green }}>{fmt(bal)} ج.م</Td><Td style={{fontWeight:700,color:C.green}}>{fmt(balances.advance)} ج.م{balances.legacyUnclassified>0&&<small style={{display:"block",color:C.red}}>يوجد {balances.legacyUnclassified} حركة قديمة غير مصنفة</small>}</Td>
                   <Td style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                    <button onClick={() => startEdit(c)} style={{ background: "none", border: "none", cursor: "pointer", color: C.brass }}><Pencil size={15} /></button>
+                    <button aria-label={`تعديل ${c.name}`} title="تعديل العميل" onClick={() => startEdit(c)} style={{ background: "none", border: "none", cursor: "pointer", color: C.brass }}><Pencil size={15} /></button>
                     {canManage && <button aria-label={`أرشفة ${c.name}`} onClick={() => archiveCustomer(c)} style={{ background: "none", border: "none", cursor: "pointer", color: C.red }}><Archive size={15} /></button>}
                     <button onClick={() => setExpanded(expanded === c.id ? null : c.id)} style={{ background: "none", border: "none", color: C.brass, cursor: "pointer", fontSize: 12.5 }}>{expanded === c.id ? "إخفاء الحركات" : "عرض الحركات"}</button>
                   </Td>
                 </tr>
-                {expanded === c.id && <tr><Td colSpan={6} style={{ background: C.panelAlt }}><CustomerLedger customerId={c.id} data={data} /></Td></tr>}
+                {expanded === c.id && <tr><Td colSpan={7} style={{ background: C.panelAlt }}><CustomerLedger customerId={c.id} data={data} /></Td></tr>}
               </React.Fragment>
             ); })}
           </Table>
@@ -1277,13 +1332,14 @@ function CustomersTab({ data, insertRow, updateRow, canManage }) {
           </Table>
         )}
       </ArchiveSection>
+      <ConfirmDialog open={Boolean(pendingReceipt)} title="تسجيل سلفة عميل" description={pendingReceipt ? `المستحق ${fmt(pendingReceipt.due)} ج.م، وسيُصنف المبلغ الزائد ${fmt(pendingReceipt.advance)} ج.م كسلفة عميل متاحة للتخصيص لاحقًا.` : ""} confirmLabel="تسجيل التحصيل والسلفة" busy={receiptBusy} onConfirm={() => pendingReceipt && commitReceipt(pendingReceipt)} onCancel={() => !receiptBusy && setPendingReceipt(null)} />
     </div>
   );
 }
 function CustomerLedger({ customerId, data }) {
   const sales = data.sales.filter((s) => s.customer_id === customerId).map((s) => ({ date: s.sale_date, type: s.status === "cancelled" ? "بيع ملغي" : "بيع", amount: s.status === "cancelled" ? 0 : s.total, note: `${data.products.find((p) => p.id === s.product_id)?.name || "—"}${s.status === "cancelled" ? ` — ${s.cancellation_reason || "ملغي"}` : ""}` }));
   const rentals = data.rentals.filter((r) => r.customer_id === customerId).map((r) => ({ date: r.start_date, type: r.status === "cancelled" ? "إيجار ملغي" : "إيجار", amount: r.status === "cancelled" ? 0 : r.rental_fee, note: `${data.products.find((p) => p.id === r.product_id)?.name || "—"}${r.status === "cancelled" ? ` — ${r.cancellation_reason || "ملغي"}` : ""}` }));
-  const receipts = data.customerReceipts.filter((r) => r.customer_id === customerId).map((r) => ({ date: r.receipt_date, type: "تحصيل", amount: -r.amount, note: r.note }));
+  const receipts = data.customerReceipts.filter((r) => r.customer_id === customerId).map((r) => ({ date: r.receipt_date, type: transactionClassLabel(r), amount: -r.amount, note: r.note }));
   const rows = [...sales, ...rentals, ...receipts].sort((a, b) => (a.date || "").localeCompare(b.date || ""));
   if (rows.length === 0) return <div style={{ color: C.muted, fontSize: 13 }}>لا توجد حركات مسجلة</div>;
   return <Table headers={["التاريخ", "النوع", "البيان", "المبلغ"]}>{rows.map((r, i) => <tr key={i}><Td>{r.date}</Td><Td style={{ color: r.type === "تحصيل" ? C.green : C.brass }}>{r.type}</Td><Td>{r.note || "—"}</Td><Td>{fmt(Math.abs(r.amount))} ج.م</Td></tr>)}</Table>;
@@ -1351,6 +1407,8 @@ function ExpensesTab({ data, insertRow, profileRole, refresh }) {
   const [form, setForm] = useState({ category: categories[0], amount: "", date: todayStr(), notes: "", projectId: "" });
   const [err, setErr] = useState(""); const [ok, setOk] = useState("");
   const [busyId, setBusyId] = useState(null);
+  const [cancellingExpense, setCancellingExpense] = useState(null);
+  const [cancelReason, setCancelReason] = useState("");
   async function submit() {
     setErr(""); setOk("");
     if (num(form.amount) <= 0) return setErr("أدخل مبلغ أكبر من صفر");
@@ -1372,14 +1430,17 @@ function ExpensesTab({ data, insertRow, profileRole, refresh }) {
     setOk(name === "cancel_expense" ? "تم إلغاء المصروف مع الحفاظ على سجله" : "تم إرسال المصروف لمراجعة التكلفة الفعلية");
   }
   async function cancel(row) {
-    const reason = window.prompt("اكتب سبب إلغاء المصروف");
-    if (reason === null) return;
-    if (!reason.trim()) return setErr("سبب الإلغاء مطلوب");
-    await runFinancialAction("cancel_expense", row, reason.trim());
+    setCancelReason(""); setCancellingExpense(row);
+  }
+  async function confirmExpenseCancellation() {
+    if (!cancelReason.trim()) return setErr("سبب الإلغاء مطلوب");
+    await runFinancialAction("cancel_expense", cancellingExpense, cancelReason.trim());
+    setCancellingExpense(null); setCancelReason("");
   }
   const activeExpenses = data.expenses.filter((expense) => !expense.cancelled_at);
   const total = activeExpenses.reduce((sum, e) => sum + num(e.amount), 0);
   return <div>
+    <ConfirmDialog open={Boolean(cancellingExpense)} title="إلغاء المصروف" description="سيبقى المصروف ظاهرًا في السجل وتُحفظ حركة الإلغاء وسببها للتدقيق." confirmLabel="إلغاء المصروف" danger busy={busyId===cancellingExpense?.id} reasonRequired reason={cancelReason} onReasonChange={setCancelReason} error={cancellingExpense&&err?err:""} onConfirm={confirmExpenseCancellation} onCancel={()=>{setCancellingExpense(null);setCancelReason("")}}/>
     <SectionTitle eyebrow="المالية" title="المصروفات" icon={<ReceiptText size={14} />} />
     <Card style={{ marginBottom: 18 }}><div style={{ color: C.muted, fontSize: 13 }}>إجمالي المصروفات المسجلة</div><div style={{ color: C.red, fontSize: 24, fontWeight: 800, marginTop: 8 }}>{fmt(total)} ج.م</div></Card>
     <Card style={{ marginBottom: 18 }}>

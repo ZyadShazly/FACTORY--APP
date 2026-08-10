@@ -331,7 +331,7 @@ export function DailyLaborTab({ data, profile, permissions, refresh }) {
             {canSeeMoney && <td><span className={`payroll-status ${row.payment_status}`}>{PAYMENT_STATUS[row.payment_status]}</span></td>}
             <td><div className="v22-actions">
               <Button variant="ghost" onClick={() => openDetails(row)}><Eye size={14}/> فتح التفاصيل</Button>
-              {permissions.daily_labor_delete && (row.review_status || "draft") === "draft" && row.payment_status !== "paid" && !row.actual_cost_entry_id && number(row.correction_count) === 0 && <button className="v22-icon-button danger" onClick={() => remove(row)}><Trash2 size={15}/></button>}
+              {permissions.daily_labor_delete && (row.review_status || "draft") === "draft" && row.payment_status !== "paid" && !row.actual_cost_entry_id && number(row.correction_count) === 0 && <button className="v22-icon-button danger" aria-label={`حذف مسودة وردية ${row.worker_name}`} title="حذف المسودة" onClick={() => remove(row)}><Trash2 size={15}/></button>}
             </div></td>
           </tr>)}
         </DataTable>

@@ -1,6 +1,7 @@
 import React,{useEffect,useMemo,useState}from"react";
 import{supabase}from"../supabaseClient";
 import{Button,Notice,Panel,friendlyError,money}from"./ui";
+import{ConfirmDialog}from"../v22/shared";
 import{WarehouseManagementPanel}from"./WarehouseManagementPanel";
 import{InventoryCatalogPanel}from"./InventoryCatalogPanel";
 import{OpeningInventoryPanel}from"./OpeningInventoryPanel";
@@ -34,6 +35,7 @@ export function InventoryWorkspace({canViewFinancials=true,onNavigate,allowedPag
   const[error,setError]=useState("");
   const[ok,setOk]=useState("");
   const[busy,setBusy]=useState(false);
+  const[confirmingPost,setConfirmingPost]=useState(false);
   const[tab,setTab]=useState("items");
   const[operation,setOperation]=useState("receive");
   const[createRequest,setCreateRequest]=useState(0);
@@ -109,9 +111,11 @@ export function InventoryWorkspace({canViewFinancials=true,onNavigate,allowedPag
   async function postCount(){
     if(!count.session)return setError("اختر جلسة الجرد");
     if(!count.postingReason.trim())return setError("اكتب سبب اعتماد فروقات الجرد");
-    if(!window.confirm("سيتم ترحيل فروقات الجرد إلى دفتر المخزون. متابعة؟"))return;
-    await call("post_inventory_count_session",{target_session:count.session,posting_reason:count.postingReason.trim()},"تم اعتماد الجرد وترحيل الفروقات.");
-    setCount(current=>({...current,session:"",postingReason:""}));
+    setConfirmingPost(true);
+  }
+  async function confirmPostCount(){
+    const result=await call("post_inventory_count_session",{target_session:count.session,posting_reason:count.postingReason.trim()},"تم اعتماد الجرد وترحيل الفروقات.");
+    if(result){setCount(current=>({...current,session:"",postingReason:""}));setConfirmingPost(false)}
   }
 
   return <div className="inventory-workspace">
@@ -216,5 +220,6 @@ export function InventoryWorkspace({canViewFinancials=true,onNavigate,allowedPag
         ?<WarehouseManagementPanel workspace={workspace} onChanged={load} canViewFinancials={canViewFinancials}/>
         :<Notice>لا توجد صلاحية لإدارة المخازن ومواقع التخزين.</Notice>)}
     </>}
+    <ConfirmDialog open={confirmingPost} title="اعتماد وترحيل الجرد" description="سيتم ترحيل فروقات الجرد إلى دفتر المخزون كحركات غير قابلة للحذف." confirmLabel="ترحيل الفروقات" danger busy={busy} onConfirm={confirmPostCount} onCancel={()=>setConfirmingPost(false)}/>
   </div>;
 }

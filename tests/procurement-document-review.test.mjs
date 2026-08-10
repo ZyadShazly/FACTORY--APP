@@ -17,7 +17,7 @@ test('professional preview includes identity, commercial totals, VAT, and signat
   for (const token of ['/logo.png','المرجع الداخلي','المشروع','المورد','سعر الوحدة','ضريبة القيمة المضافة','الإجمالي النهائي','الاسم / التوقيع']) {
     assert.match(source, new RegExp(token.replace('/', '\\/')));
   }
-  assert.match(source, /formatMoney/);
+  assert.match(source, /formatDocumentMoney/);
   assert.match(source, /getCurrencySettings/);
   assert.doesNotMatch(source, /currency:"SAR"/);
 });

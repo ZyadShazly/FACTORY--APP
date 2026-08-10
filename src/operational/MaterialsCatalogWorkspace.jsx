@@ -19,6 +19,17 @@ export function MaterialsCatalogWorkspace({data,insertRow,onNavigate}){
 
   const materials=setup?.materials||data.materials||[];
   const linkedByMaterial=useMemo(()=>new Map((setup?.catalog||[]).filter(i=>i.material_id).map(i=>[i.material_id,i])),[setup]);
+  const identityWarnings=useMemo(()=>{
+    const names=new Map(),codes=new Map();
+    for(const material of materials){
+      const normalizedName=material.name?.trim().replace(/\s+/g," ").toLowerCase();
+      const normalizedCode=material.material_code?.trim().replace(/\s+/g,"-").toUpperCase();
+      if(normalizedName)names.set(normalizedName,[...(names.get(normalizedName)||[]),material]);
+      if(normalizedCode)codes.set(normalizedCode,[...(codes.get(normalizedCode)||[]),material]);
+    }
+    return [...names.entries()].filter(([,rows])=>rows.length>1).map(([key,rows])=>`اسم مكرر «${key}» (${rows.length})`)
+      .concat([...codes.entries()].filter(([,rows])=>rows.length>1).map(([key,rows])=>`كود مكرر «${key}» (${rows.length})`));
+  },[materials]);
 
   async function add(){
     setError("");setOk("");
@@ -80,6 +91,7 @@ export function MaterialsCatalogWorkspace({data,insertRow,onNavigate}){
   return <div>
     <h2>دليل المواد الخام</h2>
     <Notice>زيادة الرصيد لا تتم من دليل المواد مباشرة. أنشئ صنف مخزون مربوطًا ثم استخدم طلب شراء ← أمر شراء ← استلام، أو مستند الرصيد الافتتاحي.</Notice>
+    {identityWarnings.length>0&&<Notice type="error">جودة بيانات تاريخية: {identityWarnings.join("، ")}. راجع السجلات ولا تدمجها أو تحذفها تلقائيًا.</Notice>}
     {error&&<Notice type="error">{error}</Notice>}{ok&&<Notice>{ok}</Notice>}
     <Panel title="إضافة تعريف مادة"><div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"end"}}>
       <Field label="كود المادة"><input style={inputStyle} value={code} onChange={e=>setCode(e.target.value)} placeholder="مثال: MDF-18" autoCapitalize="characters"/></Field>

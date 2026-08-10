@@ -38,9 +38,13 @@ begin
     raise exception 'Received purchase order required';
   end if;
 
-  effective_base_currency:=coalesce(nullif(po.base_currency,''),po.currency);
-  effective_rate:=coalesce(po.exchange_rate,case when po.currency=effective_base_currency then 1 else null end);
-  effective_rate_date:=coalesce(po.rate_date,po.order_date);
+  effective_base_currency:=nullif(po.base_currency,'');
+  effective_rate:=po.exchange_rate;
+  effective_rate_date:=po.rate_date;
+
+  if effective_base_currency is null or effective_rate is null or effective_rate_date is null then
+    raise exception 'Purchase order currency contract is incomplete; repair metadata explicitly before invoice approval';
+  end if;
 
   if effective_rate is null or effective_rate<=0 then
     raise exception 'A positive exchange rate is required before invoice approval';

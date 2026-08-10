@@ -13,7 +13,7 @@ const ui = readFileSync(
 
 test('UAT-010 normalizes case and whitespace before duplicate checks', () => {
   assert.match(migration, /create or replace function public\.normalize_material_identity/);
-  assert.match(migration, /lower\(regexp_replace\(btrim\(value\), '\\\\s\+'/);
+  assert.match(migration, /lower\(regexp_replace\(btrim\(value\), '\\s\+'/);
 });
 
 test('UAT-010 blocks new and renamed duplicate material names', () => {
@@ -35,6 +35,8 @@ test('UAT-010 UI captures material code and blocks obvious duplicate names and c
   assert.match(ui, /duplicateName/);
   assert.match(ui, /duplicateCode/);
   assert.match(ui, /كود المادة/);
+  assert.match(ui, /identityWarnings/);
+  assert.match(ui, /جودة بيانات تاريخية/);
 });
 
 test('UAT-010 preserves legacy rows and exposes reconciliation evidence', () => {

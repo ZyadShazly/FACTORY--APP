@@ -31,7 +31,7 @@ export function ProjectCard({ project, customer, showFinancials, onOpen }) {
 
 const emptyProject = { project_code: "", project_name: "", customer_id: "", location: "", start_date: today(), delivery_date: "", priority:"normal", expected_cost: 0, revenue: 0, notes: "" };
 
-export function ProjectsTab({ data, profile, permissions, refresh, initialProjectId = null }) {
+export function ProjectsTab({ data, profile, permissions, refresh, initialProjectId = null, onProjectRoute }) {
   const [selectedId, setSelectedId] = useState(initialProjectId);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyProject);
@@ -42,6 +42,7 @@ export function ProjectsTab({ data, profile, permissions, refresh, initialProjec
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const selected = data.projects.find((row) => row.id === selectedId);
+  useEffect(() => { setSelectedId(initialProjectId && data.projects.some((row) => row.id === initialProjectId) ? initialProjectId : null); }, [initialProjectId, data.projects]);
   useEffect(() => { window.scrollTo({ top: 0, behavior: "auto" }); }, [selectedId]);
   const projects = useMemo(() => data.projects.filter((project) => {
     const q = search.trim().toLowerCase();
@@ -51,7 +52,7 @@ export function ProjectsTab({ data, profile, permissions, refresh, initialProjec
   }), [data.projects, search, status, customer, fromDate]);
   const activeProjects = projects.filter((project) => !["closed","cancelled"].includes(project.lifecycle));
   const archivedProjects = projects.filter((project) => ["closed","cancelled"].includes(project.lifecycle));
-  const renderProject = (project) => <ProjectCard key={project.id} project={project} customer={data.customers.find((c) => c.id === project.customer_id)} showFinancials={permissions.project_financials_view} onOpen={() => setSelectedId(project.id)} />;
+  const renderProject = (project) => <ProjectCard key={project.id} project={project} customer={data.customers.find((c) => c.id === project.customer_id)} showFinancials={permissions.project_financials_view} onOpen={() => { setSelectedId(project.id); onProjectRoute?.(project.id); }} />;
 
   async function createProject(e) {
     e.preventDefault(); setError(""); setSuccess("");
@@ -66,7 +67,7 @@ export function ProjectsTab({ data, profile, permissions, refresh, initialProjec
     setForm(emptyProject); setShowForm(false); setSuccess("تم إنشاء مسودة المشروع بنجاح"); setSelectedId(mutationResult.data.id);
   }
 
-  if (selected) return <ProjectDetails project={selected} data={data} profile={profile} permissions={permissions} refresh={refresh} onBack={() => setSelectedId(null)} />;
+  if (selected) return <ProjectDetails project={selected} data={data} profile={profile} permissions={permissions} refresh={refresh} onBack={() => { setSelectedId(null); onProjectRoute?.(null); }} />;
   return <div>
     <PageTitle eyebrow="Project Workspace" title="المشاريع" description="إدارة دورة حياة المشروع ومراحل التنفيذ والفريق والملفات والروابط التشغيلية من مساحة واحدة."
       actions={<PermissionGuard allow={permissions.projects_create}><Button onClick={() => setShowForm(true)}><Plus size={16} /> مشروع جديد</Button></PermissionGuard>} />
