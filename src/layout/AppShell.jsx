@@ -24,6 +24,7 @@ function Topbar({ activeGroup, activePage, navigationGroups, realtimeStatus, war
   const [search, setSearch] = useState("");
   const [searchResults, setSearchResults] = useState([]);
   const [searchBusy, setSearchBusy] = useState(false);
+  const [searchError, setSearchError] = useState("");
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [actionItems, setActionItems] = useState([]);
   const [actionError, setActionError] = useState("");
@@ -42,25 +43,36 @@ function Topbar({ activeGroup, activePage, navigationGroups, realtimeStatus, war
   useEffect(() => { void loadActions(); }, []);
   useEffect(() => {
     const q = search.trim();
-    if (q.length < 2) { setSearchResults([]); setSearchBusy(false); return undefined; }
+    if (q.length < 2) { setSearchResults([]); setSearchBusy(false); setSearchError(""); return undefined; }
+    let cancelled = false;
     setSearchBusy(true);
+    setSearchError("");
     const timer = window.setTimeout(async () => {
       const { data, error } = await supabase.rpc("search_workspace", { search_term: q, limit_count: 12 });
+      if (cancelled) return;
       setSearchResults(error ? [] : (data?.items || []));
+      setSearchError(error ? "تعذر البحث الآن. حاول مرة أخرى." : "");
       setSearchBusy(false);
     }, 250);
-    return () => window.clearTimeout(timer);
+    return () => { cancelled = true; window.clearTimeout(timer); };
   }, [search]);
 
-  const go = (pageId) => { onNavigate(pageId); setSearch(""); setSearchResults([]); };
+  const goPage = (pageId) => { onNavigate(pageId); setSearch(""); setSearchResults([]); };
+  const goItem = (item) => {
+    const projectId = ["project", "project_overdue"].includes(item.kind) ? item.reference_id : null;
+    onNavigate(item.page_id, projectId ? { projectId } : {});
+    setSearch(""); setSearchResults([]);
+  };
   return <header className="app-topbar">
     <div className="topbar-title-row"><button type="button" className="topbar-icon mobile-menu-button" aria-label="فتح القائمة" onClick={onMenu}><Menu size={21}/></button><div className="topbar-title"><div className="topbar-breadcrumb"><span>نظام NEXTEP</span><b>/</b><span>{activeGroup?.label || "الرئيسية"}</span></div><h1>{activePage?.label || "مساحة العمل"}</h1></div></div>
     <div className="topbar-tools">
       <div className="global-search"><Search size={17}/><input aria-label="البحث العام" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="مشروع، موظف، أصل، أمر شراء..."/>
-        {(pageResults.length > 0 || searchResults.length > 0 || searchBusy) && <div className="global-search-results">
-          {pageResults.map((item) => <button type="button" key={`page-${item.id}`} onClick={() => go(item.id)}><span>{item.label}</span><small>{item.group}</small></button>)}
-          {searchResults.map((item) => <button type="button" key={`${item.kind}-${item.reference_id}`} onClick={() => go(item.page_id)}><span>{item.title}</span><small>{item.subtitle || item.kind}</small></button>)}
+        {(search.trim().length >= 2 || pageResults.length > 0) && <div className="global-search-results">
+          {pageResults.map((item) => <button type="button" key={`page-${item.id}`} onClick={() => goPage(item.id)}><span>{item.label}</span><small>{item.group}</small></button>)}
+          {searchResults.map((item) => <button type="button" key={`${item.kind}-${item.reference_id}`} onClick={() => goItem(item)}><span>{item.title}</span><small>{item.subtitle || item.kind}</small></button>)}
           {searchBusy && <p>جارِ البحث...</p>}
+          {!searchBusy && searchError && <p>{searchError}</p>}
+          {!searchBusy && !searchError && !pageResults.length && !searchResults.length && <p>لا توجد نتائج مطابقة.</p>}
         </div>}
       </div>
       <div className="quick-actions" aria-label="إجراءات سريعة"><Zap size={15}/>{quickItems.map((item) => <button type="button" key={item.id} onClick={() => onNavigate(item.id)}>{item.label}</button>)}</div>
@@ -68,7 +80,7 @@ function Topbar({ activeGroup, activePage, navigationGroups, realtimeStatus, war
         <button type="button" className="topbar-icon" aria-label="الإشعارات" aria-expanded={notificationsOpen} onClick={() => { setNotificationsOpen((open) => !open); if (!notificationsOpen) void loadActions(); }}><Bell size={19}/>{notificationCount > 0 && <b>{notificationCount}</b>}</button>
         {notificationsOpen && <div className="notifications-panel"><strong>مركز المتابعة</strong>
           {!notificationCount && !actionError && <p className="notification-ok">لا توجد عناصر تحتاج تدخلاً حاليًا.</p>}
-          {actionItems.map((item) => <button type="button" key={`${item.kind}-${item.reference_id}`} onClick={() => { onNavigate(item.page_id); setNotificationsOpen(false); }}><span>{item.title}</span><small>{item.detail}</small></button>)}
+          {actionItems.map((item) => <button type="button" key={`${item.kind}-${item.reference_id}`} onClick={() => { goItem(item); setNotificationsOpen(false); }}><span>{item.title}</span><small>{item.detail}</small></button>)}
           {disconnected && <p>التحديث اللحظي: {realtimeStatus === "RECONNECTING" ? "جارِ إعادة الاتصال" : "جارِ الاتصال"}</p>}
           {warnings.length > 0 && <p>تعذر تحديث {warnings.length} من مصادر البيانات.</p>}
           {actionError && <p>{actionError}</p>}
@@ -81,6 +93,6 @@ function Topbar({ activeGroup, activePage, navigationGroups, realtimeStatus, war
 
 export function AppShell({ children, navigationGroups, openGroups, setOpenGroups, activeGroup, activePage, activeTab, profile, roleLabel, realtimeStatus, warnings, onNavigate, onRetryData, onSignOut }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const navigate = (pageId) => { onNavigate(pageId); setDrawerOpen(false); };
+  const navigate = (pageId, options = {}) => { onNavigate(pageId, options); setDrawerOpen(false); };
   return <div dir="rtl" className={`app-shell ${drawerOpen ? "drawer-open" : ""}`}><button type="button" className="drawer-backdrop" aria-label="إغلاق القائمة" onClick={() => setDrawerOpen(false)}/><Sidebar {...{ navigationGroups, openGroups, setOpenGroups, activeGroup, activeTab, profile, roleLabel, realtimeStatus }} onNavigate={navigate} onSignOut={onSignOut} onClose={() => setDrawerOpen(false)}/><main className="app-main"><Topbar {...{ activeGroup, activePage, navigationGroups, realtimeStatus, warnings }} onNavigate={navigate} onMenu={() => setDrawerOpen(true)} onRetryData={onRetryData}/><div className="app-content">{children}</div></main></div>;
 }
