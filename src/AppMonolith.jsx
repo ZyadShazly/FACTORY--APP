@@ -9,7 +9,7 @@ import {
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
 } from "recharts";
-import { ACTION_PERMISSIONS, actionPermissions, ConfirmDialog, Toast } from "./v22/shared";
+import { ACTION_PERMISSIONS, actionPermissions, ConfirmDialog } from "./v22/shared";
 import { ProjectsTab, ProjectFilesHub } from "./v22/projects";
 import { EmployeesTab } from "./v22/payroll";
 import { PayrollReviewTab as PayrollTab } from "./v22/PayrollReviewTab";
@@ -350,7 +350,6 @@ export default function App() {
   const [tab, setTab] = useState(V22_DEMO ? (ASSET_QR_MODE ? "assets" : initialLocation.page || "projects") : (ASSET_QR_MODE ? "assets" : initialLocation.page));
   const [routeProjectId, setRouteProjectId] = useState(initialLocation.projectId);
   const [dataWarnings, setDataWarnings] = useState([]);
-  const [mutationFeedback, setMutationFeedback] = useState({ type: "success", message: "" });
   const [realtimeStatus, setRealtimeStatus] = useState(V22_DEMO ? (DEMO_CONNECTION_STATE === "offline" ? "RECONNECTING" : "DEMO") : "CONNECTING");
   const [openNavGroups, setOpenNavGroups] = useState(loadNavigationState);
   const [currencyLoadError, setCurrencyLoadError] = useState("");
@@ -641,25 +640,6 @@ export default function App() {
   const activeGroup = navigationGroups.find((group) => group.items.some((item) => item.id === activeTab));
   const activePage = NAV.find((item) => item.id === activeTab);
 
-  async function insertRow(key, payload) {
-    const mutationResult = await supabase.from(TABLES[key]).insert(payload);
-    const result = await syncMutation({ scope: `${key}:create`, mutationResult, refetch: () => refetchTable(key) });
-    setMutationFeedback(result.error ? { type: "error", message: result.error.message } : result.refreshError ? { type: "warning", message: "تم الحفظ، لكن تعذر تحديث الشاشة. أعد تحميل البيانات دون تكرار العملية." } : { type: "success", message: "تم الحفظ بنجاح" });
-    return result.error?.message || null;
-  }
-  async function deleteRow(key, id) {
-    const mutationResult = await supabase.from(TABLES[key]).delete().eq("id", id);
-    const result = await syncMutation({ scope: `${key}:delete`, mutationResult, refetch: () => refetchTable(key) });
-    setMutationFeedback(result.error ? { type: "error", message: result.error.message } : result.refreshError ? { type: "warning", message: "تم الحذف، لكن تعذر تحديث الشاشة." } : { type: "success", message: "تم الحذف بنجاح" });
-    return result.error?.message || null;
-  }
-  async function updateRow(key, id, patch) {
-    const mutationResult = await supabase.from(TABLES[key]).update(patch).eq("id", id);
-    const result = await syncMutation({ scope: `${key}:update`, mutationResult, refetch: () => refetchTable(key) });
-    setMutationFeedback(result.error ? { type: "error", message: result.error.message } : result.refreshError ? { type: "warning", message: "تم حفظ التعديل، لكن تعذر تحديث الشاشة." } : { type: "success", message: "تم حفظ التعديل بنجاح" });
-    return result.error?.message || null;
-  }
-
   const retryVisibleData = () => Promise.all(dataTableKeysForRole(role, Boolean(permissions.assets_view)).map((key) => refetchTable(key)));
 
   return (
@@ -674,7 +654,7 @@ export default function App() {
         {activeTab === "inventory" && <InventoryTab canViewFinancials={permissions.view_financials} onNavigate={navigate} allowedPages={permissions.pages || []} />}
         {activeTab === "purchases" && <ProcurementWorkspace data={data} onNavigate={navigate} />}
         {activeTab === "expenses" && <ExpensesTab data={data} profileRole={role} refresh={() => refetchTable("expenses")} />}
-        {activeTab === "materials" && <MaterialsTab data={data} canDelete={permissions.can_delete} insertRow={insertRow} deleteRow={deleteRow} updateRow={updateRow} onNavigate={navigate} />}
+        {activeTab === "materials" && <MaterialsTab data={data} canManage={isAdministrativeRole(role)} refresh={() => refetchTable("materials")} onNavigate={navigate} />}
         {activeTab === "products" && <ProductsTab data={data} canCreate={permissions.can_create_products} canEdit={permissions.can_edit_products} canArchive={permissions.can_delete && permissions.can_edit_products} hideProfitInfo={!permissions.view_financials} refresh={() => refetchTable("products")} />}
         {activeTab === "production" && <ProductionTab data={data} profileRole={role} canViewFinancials={permissions.view_financials} />}
         {activeTab === "assets" && permissions.assets_view && <AssetsPage data={data} profile={profile} permissions={permissions} refresh={refetchTable} />}
@@ -691,7 +671,6 @@ export default function App() {
         {activeTab === "auditLog" && permissions.audit_log_view && <AuditLogTab data={data} />}
         {activeTab === "team" && <TeamTab profiles={data.profiles} employees={data.employees} refresh={refetchTable} currentProfile={profile} />}
         {activeTab === "settings" && <SettingsPage currentProfile={profile} onRepaired={() => refetchTable("profiles")} onCurrencySaved={(settings) => { configureCurrency(settings); setCurrencyRevision((current) => current + 1); setCurrencyLoadError(""); }} />}
-      <Toast type={mutationFeedback.type} message={mutationFeedback.message} onDismiss={() => setMutationFeedback((current) => ({ ...current, message: "" }))} />
     </AppShell>
   );
 }
@@ -1421,61 +1400,6 @@ function CustomerLedger({ customerId, data }) {
   return <Table headers={["التاريخ", "النوع", "البيان", "المبلغ"]}>{rows.map((r, i) => <tr key={i}><Td>{r.date}</Td><Td style={{ color: r.type === "تحصيل" ? C.green : C.brass }}>{r.type}</Td><Td>{r.note || "—"}</Td><Td>{formatMoney(Math.abs(r.amount))}</Td></tr>)}</Table>;
 }
 
-
-/* -------------------------------- Purchases -------------------------------- */
-function PurchasesTab({ data, insertRow, deleteRow, canDelete }) {
-  const [form, setForm] = useState({ materialId: "", supplierId: "", qty: "", unitCost: "", date: todayStr() });
-  const [err, setErr] = useState("");
-  const [ok, setOk] = useState("");
-
-  async function submit() {
-    setErr(""); setOk("");
-    if (!form.materialId) return setErr("اختر المادة الخام");
-    if (num(form.qty) <= 0) return setErr("أدخل كمية أكبر من صفر");
-    if (num(form.unitCost) < 0) return setErr("سعر الوحدة غير صحيح");
-    const e = await insertRow("materialPurchases", {
-      material_id: form.materialId,
-      supplier_id: form.supplierId || null,
-      qty: num(form.qty),
-      unit_cost: num(form.unitCost),
-      purchase_date: form.date,
-    });
-    if (e) return setErr(e);
-    setOk("تم تسجيل المشتريات وزيادة المخزون بنجاح");
-    setForm({ materialId: "", supplierId: "", qty: "", unitCost: "", date: todayStr() });
-  }
-
-  async function remove(row) {
-    if (!window.confirm("متأكد من حذف عملية الشراء؟ سيتم تخفيض المخزون.")) return;
-    const e = await deleteRow("materialPurchases", row.id);
-    if (e) setErr(e);
-  }
-
-  const total = data.materialPurchases.reduce((sum, p) => sum + num(p.qty) * num(p.unit_cost), 0);
-  return <div>
-    <SectionTitle eyebrow="التوريد" title="المشتريات" icon={<ClipboardList size={14} />} />
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14, marginBottom: 18 }}>
-      <Card><div style={{ color: C.muted, fontSize: 13 }}>إجمالي قيمة المشتريات</div><div style={{ color: C.brass, fontSize: 23, fontWeight: 800, marginTop: 8 }}>{formatMoney(total)}</div></Card>
-      <Card><div style={{ color: C.muted, fontSize: 13 }}>عدد عمليات الشراء</div><div style={{ color: C.green, fontSize: 23, fontWeight: 800, marginTop: 8 }}>{data.materialPurchases.length}</div></Card>
-    </div>
-    <Card style={{ marginBottom: 18 }}>
-      <div style={{ fontWeight: 800, marginBottom: 12 }}>عملية شراء جديدة</div>
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-        <Field label="المادة"><Select value={form.materialId} onChange={(e) => setForm({ ...form, materialId: e.target.value })}><option value="">اختر المادة</option>{data.materials.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}</Select></Field>
-        <Field label="المورد"><Select value={form.supplierId} onChange={(e) => setForm({ ...form, supplierId: e.target.value })}><option value="">بدون مورد محدد</option>{data.suppliers.filter((s) => !s.archived_at).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</Select></Field>
-        <Field label="الكمية"><Input type="number" min="0" step="any" value={form.qty} onChange={(e) => setForm({ ...form, qty: e.target.value })} /></Field>
-        <Field label="سعر الوحدة"><Input type="number" min="0" step="any" value={form.unitCost} onChange={(e) => setForm({ ...form, unitCost: e.target.value })} /></Field>
-        <Field label="التاريخ"><Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></Field>
-      </div>
-      <div style={{ marginTop: 12 }}><Btn onClick={submit}><Plus size={15}/> تسجيل الشراء</Btn></div>
-      {err && <Banner type="error">{err}</Banner>}{ok && <Banner type="success">{ok}</Banner>}
-    </Card>
-    <Card>{data.materialPurchases.length === 0 ? <Empty text="لا توجد مشتريات مسجلة" /> : <Table headers={["التاريخ","المادة","المورد","الكمية","سعر الوحدة","الإجمالي",""]}>{[...data.materialPurchases].reverse().map((p) => {
-      const m = data.materials.find((x) => x.id === p.material_id); const sup = data.suppliers.find((x) => x.id === p.supplier_id);
-      return <tr key={p.id}><Td>{p.purchase_date}</Td><Td>{m?.name || "—"}</Td><Td>{sup?.name || "—"}</Td><Td>{p.qty} {m?.unit || ""}</Td><Td>{formatMoney(p.unit_cost)}</Td><Td style={{fontWeight:700}}>{formatMoney(num(p.qty)*num(p.unit_cost))}</Td><Td>{canDelete && <button onClick={() => remove(p)} style={{background:"none",border:"none",cursor:"pointer",color:C.red}}><Trash2 size={15}/></button>}</Td></tr>
-    })}</Table>}</Card>
-  </div>;
-}
 
 /* -------------------------------- Expenses --------------------------------- */
 function ExpensesTab({ data, profileRole, refresh }) {
