@@ -158,7 +158,7 @@ function productUnitCost(product, data) {
   return bomUnitCost(product, data) + num(product.labor_cost) + num(product.overhead_cost);
 }
 function producedQty(productId, data) {
-  return data.productionOrders.filter((o) => o.product_id === productId).reduce((s, o) => s + o.qty, 0);
+  return data.productionOrders.filter((o) => o.product_id === productId && o.status === "completed").reduce((s, o) => s + o.qty, 0);
 }
 function soldQty(productId, data) {
   return data.sales.filter((s) => s.product_id === productId && s.status !== "cancelled").reduce((s, o) => s + o.qty, 0);
@@ -683,8 +683,8 @@ export default function App() {
         {activeTab === "products" && <ProductsTab data={data} canCreate={permissions.can_create_products} canEdit={permissions.can_edit_products} canArchive={permissions.can_delete && permissions.can_edit_products} hideProfitInfo={!permissions.view_financials} insertRow={insertRow} updateRow={updateRow} />}
         {activeTab === "production" && <ProductionTab data={data} profileRole={role} canViewFinancials={permissions.view_financials} />}
         {activeTab === "assets" && permissions.assets_view && <AssetsPage data={data} profile={profile} permissions={permissions} refresh={refetchTable} />}
-        {activeTab === "sales" && <SalesTab data={data} insertRow={insertRow} refresh={() => refetchTable("sales")} canManage={isAdministrativeRole(role)} />}
-        {activeTab === "rentals" && <RentalsTab data={data} insertRow={insertRow} refresh={() => refetchTable("rentals")} canManage={isAdministrativeRole(role)} />}
+        {activeTab === "sales" && <SalesTab data={data} refresh={() => refetchTable("sales")} canManage={isAdministrativeRole(role)} />}
+        {activeTab === "rentals" && <RentalsTab data={data} refresh={() => refetchTable("rentals")} canManage={isAdministrativeRole(role)} />}
         {activeTab === "suppliers" && <SuppliersTab data={data} insertRow={insertRow} updateRow={updateRow} refresh={() => refetchTable("supplierPayments")} canManage={isAdministrativeRole(role)} />}
         {activeTab === "customers" && <CustomersTab data={data} insertRow={insertRow} updateRow={updateRow} refresh={() => refetchTable("customerReceipts")} canManage={isAdministrativeRole(role)} />}
         {activeTab === "employees" && role !== "production" && <EmployeesTab data={data} profile={profile} refresh={refetchTable} />}
@@ -962,8 +962,8 @@ function ProductsTab({ data, canCreate, canEdit, canArchive, hideProfitInfo, ins
 const ProductionTab=ProductionWorkspace;
 
 /* ----------------------------------- Sales ---------------------------------- */
-function SalesTab({ data, insertRow, refresh, canManage }) {
-  const [form, setForm] = useState({ productId: "", customerId: "", qty: "", unitPrice: "", date: todayStr() });
+function SalesTab({ data, refresh, canManage }) {
+  const [form, setForm] = useState({ productId: "", customerId: "", qty: "", unitPrice: "", date: todayStr(), commandId: "" });
   const [err, setErr] = useState(""); const [ok, setOk] = useState("");
   const [cancelAction, setCancelAction] = useState(null);
   const selectedProduct = data.products.find((p) => p.id === form.productId);
@@ -978,11 +978,25 @@ function SalesTab({ data, insertRow, refresh, canManage }) {
     if (stock < qty) return setErr(`المخزون التام المتاح ${stock} وحدة فقط`);
     const unitPrice = num(form.unitPrice) || selectedProduct.selling_price;
     if (!Number.isFinite(unitPrice) || unitPrice <= 0) return setErr("سعر الوحدة يجب أن يكون أكبر من صفر");
-    const total = unitPrice * qty;
-    const e = await insertRow("sales", { product_id: form.productId, customer_id: form.customerId, qty, unit_price: unitPrice, total, sale_date: form.date });
-    if (e) return setErr(e);
-    setOk("تم تسجيل عملية البيع وتحديث مخزون المنتج التام وحساب العميل");
-    setForm({ productId: "", customerId: "", qty: "", unitPrice: "", date: todayStr() });
+    const commandId = form.commandId || globalThis.crypto.randomUUID();
+    if (!form.commandId) setForm((current) => ({ ...current, commandId }));
+    const result = await runCriticalMutation({
+      scope: "sales:post",
+      mutate: () => supabase.rpc("post_sale", {
+        target_product: form.productId, target_customer: form.customerId, sale_quantity: qty,
+        sale_unit_price: unitPrice, sold_on: form.date, sale_note: null, command_id: commandId,
+      }),
+      verify: async () => {
+        const verification = await supabase.from("sales").select("id,status").eq("command_id", commandId).single();
+        return verification.error ? verification : verification.data?.status === "posted";
+      },
+      refetch: refresh,
+    });
+    if (result.error) return setErr(result.mutationSaved
+      ? "تم إرسال البيع، لكن تعذر التحقق أو تحديث الشاشة. حدّث الصفحة؛ لا تُنشئ أمرًا جديدًا لنفس العملية."
+      : result.error.message);
+    setOk(result.refreshError ? "تم تسجيل البيع وخصم المخزون، لكن تعذر تحديث الشاشة. حدّث الصفحة بأمان." : "تم تسجيل البيع وخصم مخزون المنتج التام وتحديث حساب العميل");
+    setForm({ productId: "", customerId: "", qty: "", unitPrice: "", date: todayStr(), commandId: "" });
   }
 
   async function confirmCancelSale() {
@@ -1036,8 +1050,8 @@ function SalesTab({ data, insertRow, refresh, canManage }) {
 }
 
 /* --------------------------------- Rentals ----------------------------------- */
-function RentalsTab({ data, insertRow, refresh, canManage }) {
-  const [form, setForm] = useState({ productId: "", customerId: "", qty: "", rentalFee: "", startDate: todayStr(), expectedReturn: "" });
+function RentalsTab({ data, refresh, canManage }) {
+  const [form, setForm] = useState({ productId: "", customerId: "", qty: "", rentalFee: "", startDate: todayStr(), expectedReturn: "", commandId: "" });
   const [err, setErr] = useState(""); const [ok, setOk] = useState("");
   const [cancelAction, setCancelAction] = useState(null);
 
@@ -1051,14 +1065,26 @@ function RentalsTab({ data, insertRow, refresh, canManage }) {
     if (stock < qty) return setErr(`المتاح ${stock} وحدة فقط (بعد خصم اللي مؤجر حاليًا)`);
     if (num(form.rentalFee) < 0) return setErr("قيمة الإيجار لا يمكن أن تكون سالبة");
     if (form.expectedReturn && form.expectedReturn < form.startDate) return setErr("تاريخ الاسترجاع المتوقع لا يمكن أن يسبق تاريخ البداية");
-    const e = await insertRow("rentals", {
-      product_id: form.productId, customer_id: form.customerId, qty,
-      rental_fee: num(form.rentalFee), start_date: form.startDate,
-      expected_return_date: form.expectedReturn || null, status: "active",
+    const commandId = form.commandId || globalThis.crypto.randomUUID();
+    if (!form.commandId) setForm((current) => ({ ...current, commandId }));
+    const result = await runCriticalMutation({
+      scope: "rentals:post",
+      mutate: () => supabase.rpc("post_rental", {
+        target_product: form.productId, target_customer: form.customerId, rental_quantity: qty,
+        total_rental_fee: num(form.rentalFee), starts_on: form.startDate,
+        expected_return_on: form.expectedReturn || null, rental_note: null, command_id: commandId,
+      }),
+      verify: async () => {
+        const verification = await supabase.from("rentals").select("id,status").eq("command_id", commandId).single();
+        return verification.error ? verification : verification.data?.status === "active";
+      },
+      refetch: refresh,
     });
-    if (e) return setErr(e);
-    setOk("تم تسجيل الإيجار وخصم الكمية من المتاح");
-    setForm({ productId: "", customerId: "", qty: "", rentalFee: "", startDate: todayStr(), expectedReturn: "" });
+    if (result.error) return setErr(result.mutationSaved
+      ? "تم إرسال الإيجار، لكن تعذر التحقق أو تحديث الشاشة. حدّث الصفحة؛ لا تُنشئ أمرًا جديدًا لنفس العملية."
+      : result.error.message);
+    setOk(result.refreshError ? "تم تسجيل الإيجار وخصم المخزون، لكن تعذر تحديث الشاشة. حدّث الصفحة بأمان." : "تم تسجيل الإيجار وخصم الكمية من مخزون المنتجات التامة");
+    setForm({ productId: "", customerId: "", qty: "", rentalFee: "", startDate: todayStr(), expectedReturn: "", commandId: "" });
   }
   async function markReturned(r) {
     setErr(""); setOk("");
