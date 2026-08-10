@@ -60,4 +60,47 @@ execute function private.align_production_receipt_with_quality();
 
 revoke all on function private.align_production_receipt_with_quality() from public,anon,authenticated;
 
+-- The completion RPC writes its audit row after the receipt. Keep that append-only
+-- history aligned with the canonical receipt instead of the planned order quantity.
+create or replace function private.align_production_completion_audit()
+returns trigger
+language plpgsql
+security definer
+set search_path=''
+as $$
+declare
+  receipt public.inventory_movements%rowtype;
+begin
+  select movement.* into receipt
+  from public.inventory_movements movement
+  where movement.id=(new.metadata->>'finished_goods_movement_id')::uuid
+    and movement.production_order_id=new.record_id::uuid
+    and movement.movement_type='production_receipt';
+
+  if not found then
+    raise exception using errcode='23514',message='Canonical production receipt is required for completion audit';
+  end if;
+
+  new.metadata:=coalesce(new.metadata,'{}'::jsonb)||jsonb_build_object(
+    'finished_goods_quantity',receipt.quantity_delta,
+    'finished_goods_unit_cost',receipt.unit_cost,
+    'planned_quantity',receipt.metadata->'planned_quantity',
+    'quality_accepted_quantity',receipt.metadata->'quality_accepted_quantity',
+    'quality_rejected_quantity',receipt.metadata->'quality_rejected_quantity',
+    'capitalized_total_cost',receipt.metadata->'capitalized_total_cost',
+    'cost_basis',receipt.metadata->'cost_basis'
+  );
+  return new;
+end
+$$;
+
+drop trigger if exists production_completion_audit_alignment on public.audit_log;
+create trigger production_completion_audit_alignment
+before insert on public.audit_log
+for each row
+when (new.table_name='production_orders' and new.action='production_order_completed')
+execute function private.align_production_completion_audit();
+
+revoke all on function private.align_production_completion_audit() from public,anon,authenticated;
+
 commit;
