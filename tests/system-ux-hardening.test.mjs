@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
-const migration = fs.readFileSync('supabase/migrations/202607190020_system_ux_hardening.sql','utf8');
-const acl = fs.readFileSync('supabase/migrations/202607190021_system_ux_hardening_rpc_acl.sql','utf8');
+const migration = fs.readFileSync('supabase/migrations/20260719185315_system_ux_hardening.sql','utf8');
+const acl = fs.readFileSync('supabase/migrations/20260719185436_system_ux_hardening_rpc_acl.sql','utf8');
 const ux = fs.readFileSync('src/userExperience.js','utf8');
 const patcher = fs.readFileSync('scripts/apply-system-ux-hardening-safe.mjs','utf8');
 

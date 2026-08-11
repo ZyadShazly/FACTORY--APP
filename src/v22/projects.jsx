@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Calendar, Download, Eye, File, MapPin, Paperclip, Plus, Trash2, Upload } from "lucide-react";
+import { Archive, Calendar, Download, Eye, File, MapPin, Paperclip, Plus, RotateCcw, Upload } from "lucide-react";
 import { supabase } from "../supabaseClient";
-import { Button, EmptyState, ErrorState, Field, Input, money, number, PageTitle, Panel, PermissionGuard, Select, SuccessState, TextArea, Toast, today } from "./shared";
+import { Button, ConfirmDialog, EmptyState, ErrorState, Field, Input, money, number, PageTitle, Panel, PermissionGuard, Select, SuccessState, TextArea, Toast, today } from "./shared";
 import { buildProjectFilePath, FILE_CATEGORIES, isSupportedProjectFile, PROJECT_FILES_ACCEPT, PROJECT_FILES_BUCKET, PROJECT_FILES_TABLE } from "./fileTypes";
-import { syncMutation } from "./mutations";
+import { runCriticalMutation, syncMutation } from "./mutations";
 import { PROJECT_EXECUTION_STAGES, PROJECT_LIFECYCLES } from "./projectDomain";
 import { ProjectWorkspace } from "./projectWorkspace";
 import { ArchiveSection, KpiCard, KpiGrid } from "../ui";
@@ -31,7 +31,7 @@ export function ProjectCard({ project, customer, showFinancials, onOpen }) {
 
 const emptyProject = { project_code: "", project_name: "", customer_id: "", location: "", start_date: today(), delivery_date: "", priority:"normal", expected_cost: 0, revenue: 0, notes: "" };
 
-export function ProjectsTab({ data, profile, permissions, refresh, initialProjectId = null }) {
+export function ProjectsTab({ data, profile, permissions, refresh, initialProjectId = null, onProjectRoute }) {
   const [selectedId, setSelectedId] = useState(initialProjectId);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyProject);
@@ -42,6 +42,7 @@ export function ProjectsTab({ data, profile, permissions, refresh, initialProjec
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const selected = data.projects.find((row) => row.id === selectedId);
+  useEffect(() => { setSelectedId(initialProjectId && data.projects.some((row) => row.id === initialProjectId) ? initialProjectId : null); }, [initialProjectId, data.projects]);
   useEffect(() => { window.scrollTo({ top: 0, behavior: "auto" }); }, [selectedId]);
   const projects = useMemo(() => data.projects.filter((project) => {
     const q = search.trim().toLowerCase();
@@ -51,7 +52,7 @@ export function ProjectsTab({ data, profile, permissions, refresh, initialProjec
   }), [data.projects, search, status, customer, fromDate]);
   const activeProjects = projects.filter((project) => !["closed","cancelled"].includes(project.lifecycle));
   const archivedProjects = projects.filter((project) => ["closed","cancelled"].includes(project.lifecycle));
-  const renderProject = (project) => <ProjectCard key={project.id} project={project} customer={data.customers.find((c) => c.id === project.customer_id)} showFinancials={permissions.project_financials_view} onOpen={() => setSelectedId(project.id)} />;
+  const renderProject = (project) => <ProjectCard key={project.id} project={project} customer={data.customers.find((c) => c.id === project.customer_id)} showFinancials={permissions.project_financials_view} onOpen={() => { setSelectedId(project.id); onProjectRoute?.(project.id); }} />;
 
   async function createProject(e) {
     e.preventDefault(); setError(""); setSuccess("");
@@ -66,7 +67,7 @@ export function ProjectsTab({ data, profile, permissions, refresh, initialProjec
     setForm(emptyProject); setShowForm(false); setSuccess("تم إنشاء مسودة المشروع بنجاح"); setSelectedId(mutationResult.data.id);
   }
 
-  if (selected) return <ProjectDetails project={selected} data={data} profile={profile} permissions={permissions} refresh={refresh} onBack={() => setSelectedId(null)} />;
+  if (selected) return <ProjectDetails project={selected} data={data} profile={profile} permissions={permissions} refresh={refresh} onBack={() => { setSelectedId(null); onProjectRoute?.(null); }} />;
   return <div>
     <PageTitle eyebrow="Project Workspace" title="المشاريع" description="إدارة دورة حياة المشروع ومراحل التنفيذ والفريق والملفات والروابط التشغيلية من مساحة واحدة."
       actions={<PermissionGuard allow={permissions.projects_create}><Button onClick={() => setShowForm(true)}><Plus size={16} /> مشروع جديد</Button></PermissionGuard>} />
@@ -134,17 +135,22 @@ export function FileUploader({ project, files, permissions, profile, refresh }) 
         return setError(`فشل رفع الملف إلى التخزين: ${uploadResult.error.message}`);
       }
 
-      const createdAt = new Date().toISOString();
-      const fileRecord = {
-        project_id: projectId, file_name: file.name, file_path: filePath,
-        file_type: file.type || ext || "application/octet-stream", file_size: file.size,
-        category, description: description.trim() || null, uploaded_by: profile.id, created_at: createdAt,
-      };
-      const insertResult = await supabase.from(PROJECT_FILES_TABLE).insert(fileRecord).select("*").single();
+      const insertResult = await runCriticalMutation({
+        scope: "projectFiles:register",
+        mutate: () => supabase.rpc("register_project_file_upload", {
+          target_project: projectId, file_path: filePath, file_name: file.name,
+          file_type: file.type || ext || "application/octet-stream", file_size: file.size,
+          file_category: category, file_description: description.trim() || null,
+        }),
+        verify: async () => {
+          const verification = await supabase.from(PROJECT_FILES_TABLE).select("id").eq("file_path", filePath).maybeSingle();
+          return verification.error ? verification : Boolean(verification.data);
+        },
+      });
       console.info("[ProjectFiles] insertResult", insertResult);
-      if (insertResult.error || !insertResult.data) {
-        console.error("[ProjectFiles] database insert failed", insertResult.error, fileRecord);
-        const rollbackResult = await supabase.storage.from(bucketName).remove([filePath]);
+      if (insertResult.error || !insertResult.mutationResult?.data) {
+        console.error("[ProjectFiles] database insert failed", insertResult.error);
+        const rollbackResult = await supabase.rpc("discard_unregistered_upload", { bucket_name: bucketName, file_path: filePath });
         if (rollbackResult.error) console.error("[ProjectFiles] storage rollback failed", rollbackResult.error);
         return setError(`تم إلغاء الرفع لأن حفظ بيانات الملف فشل: ${insertResult.error?.message || "لم يرجع السجل المحفوظ"}`);
       }
@@ -174,10 +180,14 @@ export function FileUploader({ project, files, permissions, profile, refresh }) 
 export function FileList({ files, canDelete, onRefresh }) {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [pendingAction, setPendingAction] = useState(null);
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
   async function openFile(file, download = false) { const { data, error: e } = await supabase.storage.from(PROJECT_FILES_BUCKET).createSignedUrl(file.file_path, 300, { download }); if (e) { console.error("[ProjectFiles] signed URL failed", e); return setError(e.message); } const opened = window.open(data.signedUrl, "_blank"); if (!opened) return setError("تعذر فتح الملف. اسمح بالنوافذ المنبثقة لهذا الموقع وحاول مرة أخرى."); opened.opener = null; }
-  async function remove(file) { if (!window.confirm(`حذف ${file.file_name}؟`)) return; setError(""); setSuccess(""); const mutationResult = await supabase.from(PROJECT_FILES_TABLE).delete().eq("id", file.id); const result=await syncMutation({scope:"projectFiles:delete",mutationResult,refetch:onRefresh}); if(result.error)return setError(result.error.message); const storageMutationResult = await supabase.storage.from(PROJECT_FILES_BUCKET).remove([file.file_path]); console.info("[ProjectFiles:delete] storage mutationResult",storageMutationResult); if (storageMutationResult.error) { console.error("[ProjectFiles] storage cleanup failed", storageMutationResult.error); setError("تم حذف سجل الملف، لكن تعذر تنظيف الملف من التخزين. راجع مسؤول النظام."); } else setSuccess("تم حذف الملف بنجاح"); }
-  if (!files.length) return <><Toast type="error" message={error} onDismiss={()=>setError("")}/><Toast message={success} onDismiss={()=>setSuccess("")}/><EmptyState title="لا توجد ملفات" description="ستظهر الرسومات والمستندات هنا بعد رفعها." /></>;
-  return <div className="file-groups"><Toast type="error" message={error} onDismiss={()=>setError("")}/><Toast message={success} onDismiss={()=>setSuccess("")}/>{Object.entries(FILE_CATEGORIES).map(([key,label]) => { const group = files.filter((f) => f.category === key); if (!group.length) return null; return <div key={key}><h4>{label}<span>{group.length}</span></h4>{group.map((file) => <div className="file-row" key={file.id}><div className="file-icon"><File size={18} /></div><div className="file-name"><strong>{file.file_name}</strong><span>{(file.file_size / 1024 / 1024).toFixed(2)} MB · {file.description || "بدون وصف"}</span></div><button className="v22-icon-button" onClick={() => openFile(file)} title="فتح" aria-label={`فتح ${file.file_name}`}><Eye size={16} /></button><button className="v22-icon-button" onClick={() => openFile(file, true)} title="تنزيل" aria-label={`تنزيل ${file.file_name}`}><Download size={16} /></button>{canDelete && <button className="v22-icon-button danger" onClick={() => remove(file)} title="حذف" aria-label={`حذف ${file.file_name}`}><Trash2 size={16} /></button>}</div>)}</div>; })}</div>;
+  async function commitAction() { if (!pendingAction || !reason.trim()) return; setBusy(true); setError(""); setSuccess(""); const restoring=Boolean(pendingAction.archived_at); const mutationResult=await supabase.rpc(restoring?"restore_project_file":"archive_project_file",{target_file:pendingAction.id,reason:reason.trim()}); const result=await syncMutation({scope:restoring?"projectFiles:restore":"projectFiles:archive",mutationResult,refetch:onRefresh}); setBusy(false); if(result.error)return setError(result.error.message); setSuccess(restoring?"تمت استعادة الملف إلى المشروع.":"تمت أرشفة الملف مع الاحتفاظ بنسخته وسجل نشاطه."); setPendingAction(null); setReason(""); }
+  const activeFiles=files.filter((file)=>!file.archived_at); const archivedFiles=files.filter((file)=>file.archived_at);
+  const rows=(group)=><>{group.map((file) => <div className="file-row" key={file.id}><div className="file-icon"><File size={18} /></div><div className="file-name"><strong>{file.file_name}</strong><span>{(file.file_size / 1024 / 1024).toFixed(2)} MB · {file.archive_reason || file.description || "بدون وصف"}</span></div><button className="v22-icon-button" onClick={() => openFile(file)} title="فتح" aria-label={`فتح ${file.file_name}`}><Eye size={16} /></button><button className="v22-icon-button" onClick={() => openFile(file, true)} title="تنزيل" aria-label={`تنزيل ${file.file_name}`}><Download size={16} /></button>{canDelete && <button className={`v22-icon-button ${file.archived_at?"":"danger"}`} onClick={() => {setPendingAction(file);setReason("")}} title={file.archived_at?"استعادة":"أرشفة"} aria-label={`${file.archived_at?"استعادة":"أرشفة"} ${file.file_name}`}>{file.archived_at?<RotateCcw size={16}/>:<Archive size={16}/>}</button>}</div>)}</>;
+  return <div className="file-groups"><ConfirmDialog open={Boolean(pendingAction)} title={pendingAction?.archived_at?"استعادة الملف":"أرشفة الملف"} description={pendingAction?.archived_at?"سيعود الملف إلى قائمة العمل النشطة مع بقاء كامل سجل الأرشفة.":"سيختفي الملف من قائمة العمل النشطة، لكن ستبقى نسخته وسجل المشروع محفوظين."} confirmLabel={pendingAction?.archived_at?"استعادة الملف":"أرشفة الملف"} danger={!pendingAction?.archived_at} busy={busy} reasonRequired reason={reason} onReasonChange={setReason} error={error} onConfirm={commitAction} onCancel={()=>{if(!busy){setPendingAction(null);setReason("")}}}/><Toast type="error" message={!pendingAction?error:""} onDismiss={()=>setError("")}/><Toast message={success} onDismiss={()=>setSuccess("")}/>{activeFiles.length?Object.entries(FILE_CATEGORIES).map(([key,label]) => { const group = activeFiles.filter((f) => f.category === key); if (!group.length) return null; return <div key={key}><h4>{label}<span>{group.length}</span></h4>{rows(group)}</div>; }):<EmptyState title="لا توجد ملفات نشطة" description="ستظهر الرسومات والمستندات هنا بعد رفعها أو استعادتها." />}<ArchiveSection title="أرشيف ملفات المشروع" count={archivedFiles.length} helpText="الملفات محفوظة للرجوع والتدقيق ولا تُحذف نسخها من التخزين.">{archivedFiles.length?rows(archivedFiles):<EmptyState title="لا توجد ملفات مؤرشفة"/>}</ArchiveSection></div>;
 }
 
 export function ProjectFilesHub({ data, permissions, refresh }) {

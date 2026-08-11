@@ -6,7 +6,7 @@ import {
   PROJECT_LIFECYCLE_TRANSITIONS,
 } from "../src/v22/projectDomain.js";
 
-const migration = await readFile(new URL("../supabase/migrations/202607190001_project_workspace_upgrade.sql", import.meta.url), "utf8");
+const migration = await readFile(new URL("../supabase/migrations/20260719000100_project_workspace_upgrade.sql", import.meta.url), "utf8");
 const projects = await readFile(new URL("../src/v22/projects.jsx", import.meta.url), "utf8");
 const workspace = await readFile(new URL("../src/v22/projectWorkspace.jsx", import.meta.url), "utf8");
 const realtime = await readFile(new URL("../src/realtime.js", import.meta.url), "utf8");
@@ -142,10 +142,10 @@ test("indexes are named once and internal helpers are not API executable", () =>
   }
 });
 
-test("workspace is RTL, modular, responsive, and marks future modules honestly", () => {
-  for(const label of ["نظرة عامة","مراحل التنفيذ","الفريق","الملفات","الخامات والمشتريات","الإنتاج","العمالة","المصروفات","العِدّة","الميزانية","التكلفة الفعلية","التقارير","سجل النشاط"]) assert.match(workspace,new RegExp(label));
+test("workspace is RTL, modular, responsive, and exposes only implemented modules", () => {
+  for(const label of ["نظرة عامة","مراحل التنفيذ","الفريق","الملفات","الخامات والمشتريات","الإنتاج","العمالة","المصروفات","العِدّة","الميزانية","التكلفة الفعلية","سجل النشاط"]) assert.match(workspace,new RegExp(label));
   assert.match(workspace,/dir="rtl"/);
-  assert.match(workspace,/قريبًا — لم تُنشأ بيانات تقديرية أو مالية وهمية/);
+  assert.doesNotMatch(workspace,/ComingSoon|قريبًا —|\["reports"/);
   assert.match(css,/@media\(max-width:760px\)/);
   assert.match(css,/@media\(max-width:430px\)/);
   assert.match(css,/overflow-x:auto/);

@@ -2,9 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
-const migration = await readFile(new URL('../supabase/migrations/202607190013_procurement_workflow.sql', import.meta.url), 'utf8');
-const hardening = await readFile(new URL('../supabase/migrations/202607190014_procurement_security_hardening.sql', import.meta.url), 'utf8');
-const accounting = await readFile(new URL('../supabase/migrations/202607190015_procurement_invoice_accounting_hardening.sql', import.meta.url), 'utf8');
+const migration = await readFile(new URL('../supabase/migrations/20260719154134_procurement_workflow.sql', import.meta.url), 'utf8');
+const hardening = await readFile(new URL('../supabase/migrations/20260719154209_procurement_security_hardening.sql', import.meta.url), 'utf8');
+const accounting = await readFile(new URL('../supabase/migrations/20260719154406_procurement_invoice_accounting_hardening.sql', import.meta.url), 'utf8');
 
 test('procurement workflow exposes protected lifecycle RPCs', () => {
   for (const rpc of ['save_purchase_request','submit_purchase_request','decide_purchase_request','save_supplier_quote','create_purchase_order_from_quote','confirm_goods_receipt','approve_supplier_invoice','get_procurement_workspace']) {
@@ -26,7 +26,7 @@ test('supplier invoice posts net line total to Actual Cost', () => {
 });
 
 test('procurement tables are RPC-only for authenticated users', async () => {
-  const foundation = await readFile(new URL('../supabase/migrations/202607190012_procurement_foundation.sql', import.meta.url), 'utf8');
+  const foundation = await readFile(new URL('../supabase/migrations/20260719153729_procurement_foundation.sql', import.meta.url), 'utf8');
   assert.match(foundation, /revoke all on public\.purchase_requests/);
   assert.match(foundation, /from anon,authenticated/);
 });

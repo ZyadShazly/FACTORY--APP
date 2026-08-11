@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
-const sql = fs.readFileSync('supabase/migrations/202607190009_project_actual_cost_workflow_variance.sql','utf8');
+const sql = fs.readFileSync('supabase/migrations/20260719134651_project_actual_cost_workflow_variance.sql','utf8');
 
 test('submitted costs can be rejected only with a reason', () => {
   assert.match(sql,/reject_project_actual_cost/);

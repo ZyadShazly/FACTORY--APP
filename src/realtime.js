@@ -35,6 +35,7 @@ export const REALTIME_TABLE_TO_KEY = Object.freeze({
   asset_return_events: "assetReturnEvents",
   asset_return_items: "assetReturnItems",
   asset_settlements: "assetSettlements",
+  asset_maintenance_orders: "assetMaintenanceOrders",
   asset_movements: "assetMovements",
   asset_attachments: "assetAttachments",
   asset_realtime_signal: "assetRealtimeSignal",
@@ -45,7 +46,7 @@ export const TABLES = Object.freeze(
 );
 
 const PRODUCTION_DATA_KEYS = Object.freeze(["projects", "projectFiles", "projectActivities", "projectMilestones", "projectMembers", "materials", "products", "productionOrders"]);
-const PRODUCTION_ASSET_KEYS = Object.freeze(["assetCategories", "assetLocations", "assets", "assetAssignments", "assetAssignmentItems", "assetReturnEvents", "assetReturnItems", "assetMovements", "assetAttachments", "assetAlerts"]);
+const PRODUCTION_ASSET_KEYS = Object.freeze(["assetCategories", "assetLocations", "assets", "assetAssignments", "assetAssignmentItems", "assetReturnEvents", "assetReturnItems", "assetMaintenanceOrders", "assetMovements", "assetAttachments", "assetAlerts"]);
 
 export function dataTableKeysForRole(role, assetsAllowed = false) {
   return role === "production" ? [...PRODUCTION_DATA_KEYS, ...(assetsAllowed ? PRODUCTION_ASSET_KEYS : [])] : Object.keys(TABLES);

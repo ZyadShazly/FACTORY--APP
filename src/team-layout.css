@@ -10,6 +10,22 @@
   min-width: 0;
 }
 
+.managed-account-create {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.managed-account-create p {
+  margin: 5px 0 0;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.managed-account-create > button {
+  justify-self: start;
+}
+
 .team-card {
   display: block !important;
   width: 100%;

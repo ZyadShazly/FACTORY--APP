@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
-const foundation = fs.readFileSync('supabase/migrations/202607210001_inventory_operations.sql','utf8');
-const hardening = fs.readFileSync('supabase/migrations/202607210002_inventory_operations_hardening.sql','utf8');
+const foundation = fs.readFileSync('supabase/migrations/20260720231743_inventory_operations.sql','utf8');
+const hardening = fs.readFileSync('supabase/migrations/20260720231753_inventory_operations_hardening.sql','utf8');
 
 test('inventory operations stay on the immutable ledger', () => {
   assert.match(foundation,/create or replace function public\.transfer_inventory/);

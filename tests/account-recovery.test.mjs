@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { bootstrapErrorMessage, withTimeout } from "../src/bootstrap.js";
 
-const migrationUrl = new URL("../supabase/migrations/202607180001_account_bootstrap_recovery.sql", import.meta.url);
+const migrationUrl = new URL("../supabase/migrations/20260718000100_account_bootstrap_recovery.sql", import.meta.url);
 
 test("bootstrap timeout rejects with a user-facing recovery error", async () => {
   await assert.rejects(withTimeout(new Promise(() => {}), 5, "انتهت المهلة"), (error) => error.code === "NEXTEP_TIMEOUT" && error.message === "انتهت المهلة");

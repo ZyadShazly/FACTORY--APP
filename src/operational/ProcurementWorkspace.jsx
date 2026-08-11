@@ -1,6 +1,6 @@
 import React,{useEffect,useMemo,useState}from"react";
 import{supabase}from"../supabaseClient";
-import{formatMoney,getCurrencySettings}from"../userExperience";
+import{formatDocumentMoney,getCurrencySettings}from"../userExperience";
 import{
   ArchiveSection,Button,DetailsDrawer,Field,FoundationEmptyState,HelpText,KpiCard,KpiGrid,
   Notice,PageHeader,Panel,PrimaryActionBar,ResponsiveTable,SearchFilterBar,StatusBadge,
@@ -41,6 +41,8 @@ function ProcurementDocument({
   const supplierId=row.supplier_id||order?.supplier_id;
   const project=projects.find(item=>item.id===projectId);
   const supplier=suppliers.find(item=>item.id===supplierId);
+  const documentCurrency=(row.currency||order?.currency||getCurrencySettings().currency_code).toUpperCase();
+  const documentMoney=value=>formatDocumentMoney(value,documentCurrency);
   const config={
     request:{title:"طلب شراء",numberKey:"request_number",date:row.created_at},
     order:{title:"أمر شراء",numberKey:"order_number",date:row.order_date||row.created_at},
@@ -72,15 +74,18 @@ function ProcurementDocument({
       <div><small>المورد</small><strong>{supplier?.name||"غير مطلوب لهذا المستند"}</strong></div>
       <div><small>التاريخ</small><strong>{String(config.date||"").slice(0,10)||"—"}</strong></div>
       <div><small>رقم المستند</small><strong>{row[config.numberKey]||"—"}</strong></div>
+      <div><small>عملة المستند</small><strong>{documentCurrency}</strong></div>
+      {row.base_currency&&<div><small>العملة الأساسية / سعر الصرف</small><strong>{row.base_currency} · {Number(row.exchange_rate||0).toLocaleString("en-US")}</strong></div>}
     </section>
     <ResponsiveTable headers={["الوصف","الكمية","سعر الوحدة","الخصم","الضريبة","الإجمالي"]}>
-      {lines.map(item=><tr key={item.id}><td>{item.description}</td><td>{Number(item.quantity||0).toLocaleString("ar-EG")}</td><td>{formatMoney(item.unit_price)}</td><td>{formatMoney(item.discount_amount)}</td><td>{formatMoney(item.tax_amount)}</td><td>{formatMoney(item.line_total)}</td></tr>)}
+      {lines.map(item=><tr key={item.id}><td>{item.description}</td><td>{Number(item.quantity||0).toLocaleString("ar-EG")}</td><td>{documentMoney(item.unit_price)}</td><td>{documentMoney(item.discount_amount)}</td><td>{documentMoney(item.tax_amount)}</td><td>{documentMoney(item.line_total)}</td></tr>)}
     </ResponsiveTable>
     <section className="procurement-document-totals">
-      <div><span>الإجمالي قبل الخصم والضريبة</span><strong>{formatMoney(row.subtotal??subtotal)}</strong></div>
-      <div><span>الخصم</span><strong>{formatMoney(row.discount_amount??discount)}</strong></div>
-      <div><span>ضريبة القيمة المضافة</span><strong>{formatMoney(row.tax_amount??vat)}</strong></div>
-      <div className="is-total"><span>الإجمالي النهائي</span><strong>{formatMoney(row.total_amount??total)}</strong></div>
+      <div><span>الإجمالي قبل الخصم والضريبة</span><strong>{documentMoney(row.subtotal??subtotal)}</strong></div>
+      <div><span>الخصم</span><strong>{documentMoney(row.discount_amount??discount)}</strong></div>
+      <div><span>ضريبة القيمة المضافة</span><strong>{documentMoney(row.tax_amount??vat)}</strong></div>
+      <div className="is-total"><span>الإجمالي النهائي</span><strong>{documentMoney(row.total_amount??total)}</strong></div>
+      {row.base_currency&&row.base_total_amount!=null&&row.base_currency!==documentCurrency&&<div><span>الإجمالي بالعملة الأساسية</span><strong>{formatDocumentMoney(row.base_total_amount,row.base_currency)}</strong></div>}
     </section>
     {type==="order"&&row.status==="draft"&&<HelpText title="لماذا الأمر مسودة؟">راجع البنود والأسعار والضريبة أولًا. الاعتماد متاح من هذه المعاينة فقط حتى لا يرسل أمر غير مراجع.</HelpText>}
     {timeline.length>0&&<section className="procurement-document-timeline" aria-label="سجل الحالة"><h3>سجل الحالة والتدقيق</h3>{timeline.map(entry=><div key={entry.id}><Status value={entry.to_status||(entry.new_data?.status)||row.status}/><span>{entry.action?LABEL[entry.action]||entry.action:"تغيير الحالة"}</span><small>{new Date(entry.changed_at||entry.created_at).toLocaleString("ar-EG")}</small>{entry.reason&&<p>السبب: {entry.reason}</p>}</div>)}</section>}
@@ -104,13 +109,14 @@ export function ProcurementWorkspace({data,onNavigate}){
   const[selected,setSelected]=useState(null),[rejecting,setRejecting]=useState(null),[rejectReason,setRejectReason]=useState("");
   const[request,setRequest]=useState({display_name:"",project_id:"",material_id:"",description:"",quantity:"",unit:"قطعة",estimated_unit_cost:"",justification:""});
   const currencyCode=getCurrencySettings().currency_code;
-  const[quote,setQuote]=useState({request_id:"",supplier_id:"",unit_price:"",currency:currencyCode});
+  const[quote,setQuote]=useState({request_id:"",supplier_id:"",unit_price:"",currency:currencyCode,base_currency:currencyCode,exchange_rate:"1",rate_date:new Date().toISOString().slice(0,10)});
   const[draftOrder,setDraftOrder]=useState({quote_id:"",display_name:""});
   const[receipt,setReceipt]=useState({order_id:"",warehouse_id:"",delivery_ref:""});
+  const[receiptLines,setReceiptLines]=useState({});
   const[invoice,setInvoice]=useState({order_id:"",invoice_number:"",invoice_date:new Date().toISOString().slice(0,10)});
   const[sendReference,setSendReference]=useState(""),[orderName,setOrderName]=useState("");
 
-  const projects=data.projects||[],suppliers=data.suppliers||[],activeSuppliers=suppliers.filter(row=>!row.archived_at),materials=data.materials||[];
+  const projects=(data.projects||[]).filter(row=>row.lifecycle==="active"),suppliers=data.suppliers||[],activeSuppliers=suppliers.filter(row=>!row.archived_at),materials=data.materials||[];
   async function load({preserveFeedback=false}={}){
     setLoading(true);
     if(!preserveFeedback)setError("");
@@ -142,7 +148,12 @@ export function ProcurementWorkspace({data,onNavigate}){
   async function saveQuote(){
     const items=ws.request_items.filter(item=>item.purchase_request_id===quote.request_id);
     if(!quote.request_id||!quote.supplier_id||!items.length)return setError("اختر طلبًا معتمدًا وموردًا.");
-    await call("save_supplier_quote",{payload:{purchase_request_id:quote.request_id,supplier_id:quote.supplier_id,supplier_reference:null,quote_date:new Date().toISOString().slice(0,10),currency:quote.currency,payment_terms:null,delivery_days:null,items:items.map(item=>({purchase_request_item_id:item.id,quantity:Number(item.quantity),unit_price:Number(quote.unit_price||0),discount_amount:0,tax_amount:0}))}},"تم تسجيل عرض المورد.");
+    const currency=quote.currency.trim().toUpperCase(),baseCurrency=quote.base_currency.trim().toUpperCase(),rate=Number(quote.exchange_rate);
+    if(!/^[A-Z]{3}$/.test(currency)||!/^[A-Z]{3}$/.test(baseCurrency))return setError("أدخل كود عملة صحيحًا من 3 أحرف.");
+    if(!Number.isFinite(rate)||rate<=0)return setError("سعر الصرف يجب أن يكون رقمًا موجبًا.");
+    if(currency===baseCurrency&&rate!==1)return setError("سعر الصرف يجب أن يساوي 1 عندما تتطابق عملة المستند والعملة الأساسية.");
+    if(currency!==baseCurrency&&!quote.rate_date)return setError("تاريخ سعر الصرف مطلوب للعملة الأجنبية.");
+    await call("save_supplier_quote",{payload:{purchase_request_id:quote.request_id,supplier_id:quote.supplier_id,supplier_reference:null,quote_date:new Date().toISOString().slice(0,10),currency,base_currency:baseCurrency,exchange_rate:rate,rate_date:quote.rate_date,payment_terms:null,delivery_days:null,items:items.map(item=>({purchase_request_item_id:item.id,quantity:Number(item.quantity),unit_price:Number(quote.unit_price||0),discount_amount:0,tax_amount:0}))}},"تم تسجيل عرض المورد.");
   }
   async function createDraftOrder(){
     if(!draftOrder.quote_id||!draftOrder.display_name.trim())return setError("اختر عرض المورد واكتب اسمًا واضحًا لأمر الشراء.");
@@ -153,7 +164,19 @@ export function ProcurementWorkspace({data,onNavigate}){
     if(!receipt.order_id||!receipt.warehouse_id)return setError("اختر أمر الشراء والمخزن المستلم.");
     const items=ws.order_items.filter(item=>item.purchase_order_id===receipt.order_id&&Number(item.received_quantity)<Number(item.quantity));
     if(!items.length)return setError("لا توجد كميات متبقية للاستلام.");
-    await call("confirm_goods_receipt_to_inventory",{payload:{purchase_order_id:receipt.order_id,supplier_delivery_reference:receipt.delivery_ref,notes:null,items:items.map(item=>({purchase_order_item_id:item.id,quantity_received:Number(item.quantity)-Number(item.received_quantity),accepted_quantity:Number(item.quantity)-Number(item.received_quantity),condition:"accepted"}))},target_warehouse:receipt.warehouse_id,target_location:null},"تم تأكيد الاستلام وترحيل الكميات للمخزون.");
+    const lines=[];
+    for(const item of items){
+      const remaining=Number(item.quantity)-Number(item.received_quantity),values=receiptLines[item.id]||{};
+      const accepted=Number(values.accepted||0),rejected=Number(values.rejected||0);
+      if(!Number.isFinite(accepted)||!Number.isFinite(rejected)||accepted<0||rejected<0)return setError("كميات الاستلام يجب أن تكون أرقامًا غير سالبة.");
+      if(accepted>remaining)return setError(`الكمية المقبولة لبند ${item.description} تتجاوز المتبقي (${remaining}).`);
+      if(accepted+rejected<=0)continue;
+      lines.push({purchase_order_item_id:item.id,quantity_received:accepted+rejected,accepted_quantity:accepted,condition:rejected>0?(accepted>0?"partially_rejected":"rejected"):"accepted",notes:values.notes?.trim()||null});
+    }
+    if(!lines.length)return setError("أدخل كمية مستلمة في بند واحد على الأقل.");
+    const hasAccepted=lines.some(line=>line.accepted_quantity>0);
+    const saved=await call("confirm_goods_receipt_to_inventory",{payload:{purchase_order_id:receipt.order_id,supplier_delivery_reference:receipt.delivery_ref,notes:null,items:lines},target_warehouse:receipt.warehouse_id,target_location:null},hasAccepted?"تم تأكيد الاستلام وترحيل الكميات المقبولة للمخزون.":"تم تسجيل الشحنة المرفوضة دون إضافة رصيد للمخزون.");
+    if(saved){setReceipt(current=>({...current,order_id:"",delivery_ref:""}));setReceiptLines({})}
   }
   async function approveInvoice(){
     const order=ws.orders.find(item=>item.id===invoice.order_id),items=ws.order_items.filter(item=>item.purchase_order_id===invoice.order_id);
@@ -171,10 +194,19 @@ export function ProcurementWorkspace({data,onNavigate}){
   const approvedRequests=ws.requests.filter(row=>row.status==="approved");
   const receivedQuotes=ws.quotes.filter(row=>row.status==="received");
   const receivableOrders=ws.orders.filter(row=>["approved","sent","partially_received"].includes(row.status));
-  const invoiceableOrders=ws.orders.filter(row=>["partially_received","fully_received"].includes(row.status));
+  const invoiceableOrders=ws.orders.filter(row=>row.status==="fully_received");
+  const selectedReceiptItems=ws.order_items.filter(item=>item.purchase_order_id===receipt.order_id&&Number(item.received_quantity)<Number(item.quantity));
+
+  function chooseReceiptOrder(orderId){
+    setReceipt(current=>({...current,order_id:orderId}));
+    const lines={};
+    ws.order_items.filter(item=>item.purchase_order_id===orderId&&Number(item.received_quantity)<Number(item.quantity)).forEach(item=>{lines[item.id]={accepted:String(Number(item.quantity)-Number(item.received_quantity)),rejected:"0",notes:""}});
+    setReceiptLines(lines);
+  }
+  function updateReceiptLine(itemId,key,value){setReceiptLines(current=>({...current,[itemId]:{...(current[itemId]||{}),[key]:value}}))}
 
   const requestCard=row=><div key={row.id} style={cardStyle}><DocumentIdentity row={row} serialKey="request_number"/><span>{projectName(row.project_id)}</span><Status value={row.status}/><span style={actionsStyle}><Button tone="ghost" onClick={()=>openDocument("request",row)}>معاينة التفاصيل</Button>{row.status==="draft"&&<Button onClick={()=>call("submit_purchase_request",{target_id:row.id},"تم إرسال الطلب للاعتماد.")}>إرسال للاعتماد</Button>}</span></div>;
-  const orderCard=row=><div key={row.id} style={cardStyle}><DocumentIdentity row={row} serialKey="order_number"/><span>{supplierName(row.supplier_id)} · {formatMoney(row.total_amount)}</span><Status value={row.status}/><Button onClick={()=>openDocument("order",row)}>معاينة المستند</Button></div>;
+  const orderCard=row=><div key={row.id} style={cardStyle}><DocumentIdentity row={row} serialKey="order_number"/><span>{supplierName(row.supplier_id)} · {formatDocumentMoney(row.total_amount,row.currency)}</span><Status value={row.status}/><Button onClick={()=>openDocument("order",row)}>معاينة المستند</Button></div>;
 
   return <div className="procurement-workspace">
     <PageHeader eyebrow="المشتريات والتوريد" title="دورة المشتريات" description="كل مستند له خطوة واضحة: اطلب، راجع، اعتمد، أرسل، استلم، ثم سجّل الفاتورة."/>
@@ -208,7 +240,10 @@ export function ProcurementWorkspace({data,onNavigate}){
           <Field label="الطلب المعتمد"><select style={inputStyle} value={quote.request_id} onChange={event=>setQuote({...quote,request_id:event.target.value})}><option value="">اختر</option>{approvedRequests.map(row=><option key={row.id} value={row.id}>{recordName(row,"request_number")} · {row.request_number}</option>)}</select></Field>
           <Field label="المورد"><select style={inputStyle} value={quote.supplier_id} onChange={event=>setQuote({...quote,supplier_id:event.target.value})}><option value="">اختر</option>{activeSuppliers.map(row=><option key={row.id} value={row.id}>{row.name}</option>)}</select></Field>
           <Field label="سعر الوحدة"><input type="number" min="0" style={inputStyle} value={quote.unit_price} onChange={event=>setQuote({...quote,unit_price:event.target.value})}/></Field>
-          <Field label="العملة"><input readOnly style={inputStyle} value={quote.currency}/></Field><Button onClick={saveQuote}>حفظ العرض</Button>
+          <Field label="عملة المستند"><input maxLength="3" style={inputStyle} value={quote.currency} onChange={event=>setQuote({...quote,currency:event.target.value.toUpperCase(),exchange_rate:event.target.value.toUpperCase()===quote.base_currency?"1":quote.exchange_rate})}/></Field>
+          <Field label="العملة الأساسية"><input readOnly style={inputStyle} value={quote.base_currency}/></Field>
+          <Field label="سعر الصرف"><input type="number" min="0.000001" step="any" style={inputStyle} value={quote.exchange_rate} onChange={event=>setQuote({...quote,exchange_rate:event.target.value})}/></Field>
+          <Field label="تاريخ سعر الصرف"><input type="date" style={inputStyle} value={quote.rate_date} onChange={event=>setQuote({...quote,rate_date:event.target.value})}/></Field><Button onClick={saveQuote}>حفظ العرض</Button>
         </div></Panel>}
         {ws.capabilities.order&&<Panel title="إنشاء أمر شراء مسودة"><HelpText title="الخطوة التالية">اختيار العرض ينشئ مسودة فقط. يجب فتح المعاينة ومراجعة الأسعار والضريبة قبل الاعتماد.</HelpText><div style={formStyle}>
           <Field label="عرض المورد"><select style={inputStyle} value={draftOrder.quote_id} onChange={event=>{const quoteRow=ws.quotes.find(row=>row.id===event.target.value);const requestRow=ws.requests.find(row=>row.id===quoteRow?.purchase_request_id);setDraftOrder({quote_id:event.target.value,display_name:requestRow?.display_name||""})}}><option value="">اختر</option>{receivedQuotes.map(row=><option key={row.id} value={row.id}>{row.quote_number} · {supplierName(row.supplier_id)}</option>)}</select></Field>
@@ -223,21 +258,21 @@ export function ProcurementWorkspace({data,onNavigate}){
       </>}
       {tab==="receipts"&&<>
         {ws.capabilities.receive&&<Panel title="استلام أمر شراء وترحيله للمخزون"><div style={formStyle}>
-          <Field label="أمر الشراء"><select style={inputStyle} value={receipt.order_id} onChange={event=>setReceipt({...receipt,order_id:event.target.value})}><option value="">اختر</option>{receivableOrders.map(row=><option key={row.id} value={row.id}>{recordName(row,"order_number")} · {row.order_number}</option>)}</select></Field>
+          <Field label="أمر الشراء"><select style={inputStyle} value={receipt.order_id} onChange={event=>chooseReceiptOrder(event.target.value)}><option value="">اختر</option>{receivableOrders.map(row=><option key={row.id} value={row.id}>{recordName(row,"order_number")} · {row.order_number}</option>)}</select></Field>
           <Field label="المخزن"><select style={inputStyle} value={receipt.warehouse_id} onChange={event=>setReceipt({...receipt,warehouse_id:event.target.value})}><option value="">اختر</option>{inventory.warehouses.map(row=><option key={row.id} value={row.id}>{row.name}</option>)}</select></Field>
           <Field label="مرجع التسليم"><input style={inputStyle} value={receipt.delivery_ref} onChange={event=>setReceipt({...receipt,delivery_ref:event.target.value})}/></Field>
           <Button onClick={receiveOrder}>استلام وترحيل</Button>
-        </div></Panel>}
+        </div>{selectedReceiptItems.length>0&&<div className="procurement-receipt-lines"><HelpText title="كميات الشحنة الفعلية">عدّل المقبول عند الاستلام الجزئي، وسجّل التالف أو المرفوض منفصلًا. يُرحّل المقبول فقط إلى المخزون.</HelpText><ResponsiveTable headers={["البند","المتبقي","المقبول","المرفوض/التالف","ملاحظة الفحص"]}>{selectedReceiptItems.map(item=>{const remaining=Number(item.quantity)-Number(item.received_quantity),line=receiptLines[item.id]||{};return <tr key={item.id}><td>{item.description}</td><td>{remaining} {item.unit}</td><td><input aria-label={`الكمية المقبولة ${item.description}`} type="number" min="0" max={remaining} step="any" style={inputStyle} value={line.accepted??""} onChange={event=>updateReceiptLine(item.id,"accepted",event.target.value)}/></td><td><input aria-label={`الكمية المرفوضة ${item.description}`} type="number" min="0" step="any" style={inputStyle} value={line.rejected??"0"} onChange={event=>updateReceiptLine(item.id,"rejected",event.target.value)}/></td><td><input aria-label={`ملاحظة فحص ${item.description}`} style={inputStyle} value={line.notes??""} onChange={event=>updateReceiptLine(item.id,"notes",event.target.value)}/></td></tr>})}</ResponsiveTable></div>}</Panel>}
         <Panel title="إيصالات الاستلام"><div className="procurement-record-list">{ws.receipts.map(row=><div key={row.id} style={cardStyle}><DocumentIdentity row={row} serialKey="receipt_number"/><Status value={row.status}/><Button onClick={()=>openDocument("receipt",row)}>معاينة وطباعة</Button></div>)}{!ws.receipts.length&&<Empty title="لا توجد إيصالات استلام"/>}</div></Panel>
       </>}
       {tab==="invoices"&&<>
-        {ws.capabilities.invoice&&<Panel title="مراجعة واعتماد فاتورة المورد"><div style={formStyle}>
-          <Field label="أمر الشراء المستلم"><select style={inputStyle} value={invoice.order_id} onChange={event=>setInvoice({...invoice,order_id:event.target.value})}><option value="">اختر</option>{invoiceableOrders.map(row=><option key={row.id} value={row.id}>{recordName(row,"order_number")} · {row.order_number}</option>)}</select></Field>
+        {ws.capabilities.invoice&&<Panel title="مراجعة واعتماد فاتورة المورد"><HelpText title="شرط المطابقة">تُعتمد الفاتورة بعد اكتمال استلام كل بنود الأمر. يمنع الخادم فوترة كمية غير مستلمة أو تكرار فاتورة المورد.</HelpText><div style={formStyle}>
+          <Field label="أمر الشراء المستلم بالكامل"><select style={inputStyle} value={invoice.order_id} onChange={event=>setInvoice({...invoice,order_id:event.target.value})}><option value="">اختر</option>{invoiceableOrders.map(row=><option key={row.id} value={row.id}>{recordName(row,"order_number")} · {row.order_number}</option>)}</select></Field>
           <Field label="رقم الفاتورة"><input style={inputStyle} value={invoice.invoice_number} onChange={event=>setInvoice({...invoice,invoice_number:event.target.value})}/></Field>
           <Field label="تاريخ الفاتورة"><input type="date" style={inputStyle} value={invoice.invoice_date} onChange={event=>setInvoice({...invoice,invoice_date:event.target.value})}/></Field>
           <Button onClick={approveInvoice}>اعتماد الفاتورة</Button>
         </div></Panel>}
-        <Panel title="فواتير الموردين"><div className="procurement-record-list">{ws.invoices.map(row=><div key={row.id} style={cardStyle}><DocumentIdentity row={row} serialKey="invoice_number"/><span>{supplierName(row.supplier_id)} · {formatMoney(row.total_amount)}</span><Status value={row.status}/><Button onClick={()=>openDocument("invoice",row)}>معاينة وطباعة</Button></div>)}{!ws.invoices.length&&<Empty title="لا توجد فواتير موردين"/>}</div></Panel>
+        <Panel title="فواتير الموردين"><div className="procurement-record-list">{ws.invoices.map(row=><div key={row.id} style={cardStyle}><DocumentIdentity row={row} serialKey="invoice_number"/><span>{supplierName(row.supplier_id)} · {formatDocumentMoney(row.total_amount,row.currency)}</span><Status value={row.status}/><Button onClick={()=>openDocument("invoice",row)}>معاينة وطباعة</Button></div>)}{!ws.invoices.length&&<Empty title="لا توجد فواتير موردين"/>}</div></Panel>
       </>}
     </>}
     <DetailsDrawer open={Boolean(selected)} title={selected?`${{request:"معاينة طلب الشراء",order:"معاينة أمر الشراء",receipt:"معاينة إذن الاستلام",invoice:"معاينة فاتورة المورد"}[selected.type]}`:""} description="المعاينة هي نفس محتوى الطباعة." onClose={()=>setSelected(null)} className="procurement-preview-drawer">

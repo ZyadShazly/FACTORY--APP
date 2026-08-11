@@ -3,6 +3,7 @@ import { BarChart3, Download, Printer, RefreshCw } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { supabase } from "../supabaseClient";
 import { exportExternalLaborWorkbook, exportInventoryWorkbook, exportPayrollWorkbook, printCurrentReport } from "./professionalExports";
+import { getCurrencySettings } from "../userExperience";
 import "./reportingPrint.css";
 
 const css = {
@@ -18,11 +19,12 @@ function defaultRange() {
 }
 
 function money(value, currency) {
-  return new Intl.NumberFormat(currency?.locale || "ar-SA", {
+  const configured = getCurrencySettings();
+  return new Intl.NumberFormat(currency?.locale || configured.currency_locale, {
     style: "currency",
-    currency: currency?.code || "SAR",
-    minimumFractionDigits: currency?.decimal_places ?? 2,
-    maximumFractionDigits: currency?.decimal_places ?? 2,
+    currency: currency?.code || configured.currency_code,
+    minimumFractionDigits: currency?.decimal_places ?? configured.decimal_places,
+    maximumFractionDigits: currency?.decimal_places ?? configured.decimal_places,
   }).format(Number(value || 0));
 }
 
@@ -42,13 +44,17 @@ export function ReportingWorkspace() {
 
   const load = useCallback(async () => {
     setState({ loading: true, error: "" });
-    const { data, error } = await supabase.rpc("get_reporting_workspace", { date_from: range.from, date_to: range.to });
+    const [workspaceResult, operationalResult] = await Promise.all([
+      supabase.rpc("get_reporting_workspace", { date_from: range.from, date_to: range.to }),
+      supabase.rpc("get_operational_reporting_summary", { date_from: range.from, date_to: range.to }),
+    ]);
+    const error = workspaceResult.error || operationalResult.error;
     if (error) {
       setReport(null);
       setState({ loading: false, error: error.message || "تعذر تحميل التقارير." });
       return;
     }
-    setReport(data);
+    setReport({ ...workspaceResult.data, operational: operationalResult.data || {} });
     setState({ loading: false, error: "" });
   }, [range.from, range.to]);
 
@@ -70,6 +76,7 @@ export function ReportingWorkspace() {
   })), [report]);
 
   const s = report?.summary || {};
+  const o = report?.operational || {};
   const currency = report?.currency;
   const dateFilters = { dateFrom: range.from, dateTo: range.to };
   const exporting = Boolean(exportState.key);
@@ -109,9 +116,24 @@ export function ReportingWorkspace() {
         <Metric label="إيراد المشاريع" value={money(s.project_revenue, currency)} tone="var(--color-success)" />
         <Metric label="قيمة المخزون" value={money(s.inventory_value, currency)} />
         <Metric label="أوامر الإنتاج المفتوحة" value={s.production_orders_open || 0} />
-        <Metric label="فواتير الموردين المستحقة" value={s.supplier_invoices_due || 0} tone="var(--color-danger)" />
+        <Metric label="الرصيد المستحق للموردين" value={money(o.supplier_outstanding, currency)} tone="var(--color-danger)" />
         <Metric label="الرواتب المعلقة" value={s.payroll_pending || 0} />
         <Metric label="العهد المتأخرة" value={s.custody_overdue || 0} tone="var(--color-danger)" />
+      </div>
+
+      <div style={{ ...css.panel, marginBottom: 18 }}>
+        <h3>النشاط المالي والتجاري داخل الفترة</h3>
+        <div style={css.grid}>
+          <Metric label="المبيعات المرحلة" value={money(o.period_sales, currency)} tone="var(--color-success)" />
+          <Metric label="الإيجارات غير الملغاة" value={money(o.period_rentals, currency)} tone="var(--color-success)" />
+          <Metric label="المصروفات غير الملغاة" value={money(o.period_expenses, currency)} tone="var(--color-danger)" />
+          <Metric label="تحصيلات العملاء" value={money(o.period_customer_receipts, currency)} />
+          <Metric label="مدفوعات الموردين" value={money(o.period_supplier_payments, currency)} />
+          <Metric label="صافي الرواتب المعتمدة/المدفوعة" value={money(o.payroll_net_final, currency)} />
+          <Metric label="الرصيد المستحق من العملاء" value={money(o.customer_outstanding, currency)} />
+          <Metric label="دفعات عملاء غير مخصصة" value={money(o.customer_unallocated_advances, currency)} />
+          <Metric label="دفعات موردين غير مخصصة" value={money(o.supplier_unallocated_advances, currency)} />
+        </div>
       </div>
 
       <div style={{ ...css.panel, marginBottom: 18 }}>

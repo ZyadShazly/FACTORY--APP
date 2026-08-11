@@ -2,8 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 
-const migration=fs.readFileSync("supabase/migrations/202607280001_production_pilot_completion.sql","utf8");
-const employeeMigration=fs.readFileSync("supabase/migrations/20260721100000_employee_management_workflow.sql","utf8");
+const migration=fs.readFileSync("supabase/migrations/20260728000100_production_pilot_completion.sql","utf8");
+const employeeMigration=fs.readFileSync("supabase/migrations/20260721095523_employee_management_workflow.sql","utf8");
 const ui=fs.readFileSync("src/operational/ProductionWorkspace.jsx","utf8");
 const css=fs.readFileSync("src/operational/productionWorkspace.css","utf8");
 

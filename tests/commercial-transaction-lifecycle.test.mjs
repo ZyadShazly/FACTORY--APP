@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 
-const migration=fs.readFileSync("supabase/migrations/20260803071500_commercial_transaction_lifecycle.sql","utf8");
+const migration=fs.readFileSync("supabase/migrations/20260803071443_commercial_transaction_lifecycle.sql","utf8");
 const ui=fs.readFileSync("src/AppMonolith.jsx","utf8");
 
 test("sales and rentals preserve immutable history",()=>{
@@ -35,13 +35,15 @@ test("new invalid financial rows are blocked without rewriting the legacy anomal
 });
 
 test("UI excludes cancelled transactions from balances and stock and keeps audit history",()=>{
-  assert.match(ui,/data\.sales\.filter\(\(s\) => s\.product_id === productId && s\.status !== "cancelled"\)/);
+  assert.match(ui,/aggregateInventoryByProduct/);
   assert.match(ui,/data\.sales\.filter\(\(s\) => s\.customer_id === customerId && s\.status !== "cancelled"\)/);
   assert.match(ui,/data\.rentals\.filter\(\(r\) => r\.customer_id === customerId && r\.status !== "cancelled"\)/);
   assert.match(ui,/ArchiveSection title="المبيعات الملغاة"/);
   assert.match(ui,/ArchiveSection title="سجل الإيجارات المكتملة والملغاة"/);
   assert.match(ui,/supabase\.rpc\("cancel_sale"/);
   assert.match(ui,/supabase\.rpc\("mark_rental_returned"/);
+  assert.match(ui,/title="تسجيل استرجاع الإيجار"/);
+  assert.match(ui,/scope: "rentals:return"[\s\S]*runCriticalMutation/);
   assert.match(ui,/supabase\.rpc\("cancel_rental"/);
   assert.doesNotMatch(ui,/deleteRow\("(?:sales|rentals)"/);
 });

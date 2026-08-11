@@ -9,17 +9,17 @@ import {
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
 } from "recharts";
-import { ACTION_PERMISSIONS, actionPermissions, Toast } from "./v22/shared";
+import { ACTION_PERMISSIONS, actionPermissions, ConfirmDialog } from "./v22/shared";
 import { ProjectsTab, ProjectFilesHub } from "./v22/projects";
 import { EmployeesTab } from "./v22/payroll";
 import { PayrollReviewTab as PayrollTab } from "./v22/PayrollReviewTab";
 import { DailyLaborTab } from "./v22/dailyLabor";
 import { AuditLogTab, PERMISSION_LABELS } from "./v22/audit";
 import { demoData, demoProfile } from "./v22/demoData";
-import { syncMutation } from "./v22/mutations";
+import { runCriticalMutation, syncMutation } from "./v22/mutations";
 import { dataTableKeysForRole, resolveAllowedTab, TABLES } from "./realtime";
 import { buildNavigationGroups, loadNavigationState, NAV_GROUPS, NAV_GROUP_STORAGE_KEY } from "./navigation";
-import { canAdministerTarget, canAssignRole, identityProtectionReason, isAdministrativeRole, PRODUCTION_ALLOWED_PAGES, SELF_SIGNUP_ROLES, SYSTEM_ROLES } from "./identity";
+import { canAssignRole, identityProtectionReason, isAdministrativeRole, MANAGER_ASSIGNABLE_ROLES, normalizeAccountPhone, PRODUCTION_ALLOWED_PAGES, SYSTEM_ROLES } from "./identity";
 import { withTimeout } from "./bootstrap";
 import { createTableFetcher, EMPTY_DATA } from "./app/dataBootstrap";
 import { buildRealtimeChannelPlan, nextRealtimeState } from "./app/realtimeBootstrap";
@@ -34,7 +34,13 @@ import { InventoryWorkspace } from "./operational/InventoryWorkspace";
 import { MaterialsCatalogWorkspace } from "./operational/MaterialsCatalogWorkspace";
 import { ProductionWorkspace } from "./operational/ProductionWorkspace";
 import { ProcurementWorkspace } from "./operational/ProcurementWorkspace";
+import { CommercialAdvancesPanel } from "./operational/CommercialAdvancesPanel";
+import { useInventoryWorkspace } from "./operational/useInventoryWorkspace";
 import { ArchiveSection } from "./ui/foundation";
+import { aggregateInventoryByProduct, canonicalFinishedProductAlerts, canonicalMaterialAlerts } from "./domain/inventoryBalances";
+import { readWorkspaceLocation, workspaceUrl } from "./app/urlNavigation";
+import { customerBalances, supplierBalances, transactionClassLabel } from "./domain/commercialBalances";
+import { configureCurrency, formatMoney } from "./userExperience";
 
 const V22_DEMO = (import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEMO === "true") && new URLSearchParams(window.location.search).get("demo") === "v22";
 const DEMO_ROLE = ["owner", "manager", "accountant", "production"].includes(new URLSearchParams(window.location.search).get("role")) ? new URLSearchParams(window.location.search).get("role") : "owner";
@@ -61,7 +67,6 @@ const fmt = (n) => (isFinite(n) ? n : 0).toLocaleString("en-US", { minimumFracti
 const todayStr = () => new Date().toISOString().slice(0, 10);
 
 const ROLES = SYSTEM_ROLES;
-const SIGNUP_ROLES = SELF_SIGNUP_ROLES;
 const NAV_BY_ROLE = {
   manager: ["dashboard", "projects", "projectFiles", "inventory", "purchases", "expenses", "materials", "products", "production", "sales", "rentals", "suppliers", "customers", "employees", "payroll", "dailyLabor", "reports", "auditLog", "team"],
   accountant: ["projects", "projectFiles", "inventory", "purchases", "expenses", "materials", "products", "production", "sales", "rentals", "suppliers", "customers", "employees", "payroll", "dailyLabor"],
@@ -72,7 +77,7 @@ const PAGE_LABELS = {
   projects: "المشاريع", projectFiles: "ملفات المشاريع", employees: "الموظفون", workCalendar: "تقويم العمل والعطلات", payroll: "المرتبات", dailyLabor: "العمالة اليومية", auditLog: "سجل التدقيق",
   dashboard: "لوحة التحكم", inventory: "المخزون", purchases: "المشتريات", expenses: "المصروفات", materials: "المواد الخام", products: "المنتجات والتكلفة",
   production: "أوامر الإنتاج", assets: "الأصول والعِدّة", sales: "المبيعات", rentals: "الإيجارات",
-  suppliers: "الموردين", customers: "العملاء", reports: "التقارير", team: "الفريق والصلاحيات", settings: "الإعدادات", assetAlerts: "تنبيهات الأصول",
+  suppliers: "الموردين", customers: "العملاء", reports: "التقارير", team: "الفريق والصلاحيات", settings: "الإعدادات", assetAlerts: "تنبيهات الأصول", assetMaintenanceOrders: "أوامر صيانة الأصول",
 };
 function permissionsForProfile(profile) {
   const actions = actionPermissions(profile);
@@ -144,24 +149,6 @@ const fetchTableRows = createTableFetcher({
 });
 
 /* ------------------------------ دوال الحسابات ------------------------------ */
-function materialConsumedQty(materialId, data) {
-  let total = 0;
-  for (const o of data.productionOrders) {
-    const p = data.products.find((x) => x.id === o.product_id);
-    if (!p) continue;
-    const row = (p.bom || []).find((r) => r.material_id === materialId);
-    if (row) total += row.qty * o.qty * (1 + num(o.waste_percentage) / 100);
-  }
-  return total;
-}
-function materialPurchasedQty(materialId, data) {
-  return data.materialPurchases.filter((p) => p.material_id === materialId).reduce((s, p) => s + p.qty, 0);
-}
-function materialStock(materialId, data) {
-  const m = data.materials.find((x) => x.id === materialId);
-  if (!m) return 0;
-  return num(m.initial_stock) + materialPurchasedQty(materialId, data) - materialConsumedQty(materialId, data);
-}
 function bomUnitCost(product, data) {
   return (product.bom || []).reduce((s, r) => {
     const m = data.materials.find((x) => x.id === r.material_id);
@@ -171,39 +158,30 @@ function bomUnitCost(product, data) {
 function productUnitCost(product, data) {
   return bomUnitCost(product, data) + num(product.labor_cost) + num(product.overhead_cost);
 }
-function producedQty(productId, data) {
-  return data.productionOrders.filter((o) => o.product_id === productId).reduce((s, o) => s + o.qty, 0);
-}
-function soldQty(productId, data) {
-  return data.sales.filter((s) => s.product_id === productId && s.status !== "cancelled").reduce((s, o) => s + o.qty, 0);
-}
-function activeRentedQty(productId, data) {
-  return data.rentals.filter((r) => r.product_id === productId && r.status === "active").reduce((s, r) => s + r.qty, 0);
-}
-function finishedStock(productId, data) { return producedQty(productId, data) - soldQty(productId, data) - activeRentedQty(productId, data); }
 function avgProductionUnitCost(productId, data) {
-  const os = data.productionOrders.filter((o) => o.product_id === productId);
+  const os = data.productionOrders.filter((o) => o.product_id === productId && o.status === "completed");
   const q = os.reduce((s, o) => s + o.qty, 0);
   const c = os.reduce((s, o) => s + o.total_cost, 0);
   return q > 0 ? c / q : 0;
 }
 function supplierPurchaseTotal(supplierId, data) {
-  return data.materialPurchases.filter((p) => p.supplier_id === supplierId).reduce((s, p) => s + p.qty * p.unit_cost, 0);
+  return data.materialPurchases.filter((p) => p.supplier_id === supplierId).reduce((s, p) => s + p.qty * p.unit_cost, 0)
+    + (data.supplierInvoices || []).filter((invoice) => invoice.supplier_id === supplierId && ["approved", "paid"].includes(invoice.status)).reduce((sum, invoice) => sum + num(invoice.total_amount), 0);
 }
 function supplierPaymentTotal(supplierId, data) {
-  return data.supplierPayments.filter((p) => p.supplier_id === supplierId).reduce((s, p) => s + p.amount, 0);
+  return supplierBalances(supplierId, data).cashPaid;
 }
-function supplierBalance(supplierId, data) { return supplierPurchaseTotal(supplierId, data) - supplierPaymentTotal(supplierId, data); }
+function supplierBalance(supplierId, data) { return supplierBalances(supplierId, data).due; }
 function customerSaleTotal(customerId, data) {
   return data.sales.filter((s) => s.customer_id === customerId && s.status !== "cancelled").reduce((s, o) => s + o.total, 0);
 }
 function customerReceiptTotal(customerId, data) {
-  return data.customerReceipts.filter((r) => r.customer_id === customerId).reduce((s, r) => s + r.amount, 0);
+  return customerBalances(customerId, data).cashReceived;
 }
 function customerRentalTotal(customerId, data) {
   return data.rentals.filter((r) => r.customer_id === customerId && r.status !== "cancelled").reduce((s, r) => s + r.rental_fee, 0);
 }
-function customerBalance(customerId, data) { return customerSaleTotal(customerId, data) + customerRentalTotal(customerId, data) - customerReceiptTotal(customerId, data); }
+function customerBalance(customerId, data) { return customerBalances(customerId, data).due; }
 
 /* ------------------------------- عناصر عامة ------------------------------- */
 function Card({ children, style, className = "", ...rest }) {
@@ -239,13 +217,16 @@ function SectionTitle({ eyebrow, title, icon, description }) {
 }
 function Banner({ type = "error", children }) {
   const isErr = type === "error";
+  const isWarning = type === "warning";
+  const tone = isErr ? C.red : isWarning ? "var(--color-warning)" : C.green;
   return (
-    <div style={{ display: "flex", alignItems: "flex-start", gap: 8, background: isErr ? "var(--color-danger-soft)" : "var(--color-success-soft)", border: `1px solid ${isErr ? C.red : C.green}`, color: isErr ? C.red : C.green, borderRadius: 8, padding: "10px 12px", fontSize: 13, marginTop: 10 }}>
-      {isErr ? <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} /> : <CheckCircle2 size={16} style={{ flexShrink: 0, marginTop: 2 }} />}
+    <div style={{ display: "flex", alignItems: "flex-start", gap: 8, background: isErr ? "var(--color-danger-soft)" : isWarning ? "var(--color-warning-soft)" : "var(--color-success-soft)", border: `1px solid ${tone}`, color: tone, borderRadius: 8, padding: "10px 12px", fontSize: 13, marginTop: 10 }}>
+      {isErr || isWarning ? <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} /> : <CheckCircle2 size={16} style={{ flexShrink: 0, marginTop: 2 }} />}
       <span>{children}</span>
     </div>
   );
 }
+const operationFeedbackType = (message) => String(message || "").includes("لكن تعذر تحديث الشاشة") ? "warning" : "success";
 function Table({ headers, children }) {
   return (
     <div className="legacy-table-wrap" style={{ overflowX: "auto" }}>
@@ -266,50 +247,32 @@ function SearchBox({ value, onChange, placeholder }) {
   );
 }
 
-/* ----------------------------- شاشة الدخول والتسجيل ----------------------------- */
+/* ----------------------------- شاشة الدخول ----------------------------- */
 function authErrorMessage(error) {
   const message = String(error?.message || error || "").toLowerCase();
-  if (message.includes("invalid login credentials")) return "بيانات الدخول غير صحيحة. راجع الإيميل وكلمة السر.";
-  if (message.includes("email not confirmed")) return "لازم تأكد الإيميل الأول، وبعدها سجّل دخول.";
-  if (message.includes("user already registered")) return "الحساب موجود بالفعل. استخدم تسجيل الدخول.";
+  if (message.includes("invalid login credentials")) return "بيانات الدخول غير صحيحة. راجع رقم الهاتف أو البريد وكلمة السر.";
   if (message.includes("password") && message.includes("least")) return "كلمة السر أقصر من الحد المطلوب.";
   if (message.includes("failed to fetch") || message.includes("network") || message.includes("timeout")) return "تعذر الاتصال بالخادم. راجع الإنترنت وحاول مرة أخرى.";
   return error?.message || "تعذر إتمام العملية. حاول مرة أخرى.";
 }
 
 function AuthGate({ notice = "" }) {
-  const [mode, setMode] = useState("login");
-  const [fullName, setFullName] = useState("");
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState(SIGNUP_ROLES[0]);
   const [err, setErr] = useState("");
-  const [info, setInfo] = useState("");
   const [busy, setBusy] = useState(false);
 
   async function submit() {
-    setErr(""); setInfo("");
-    if (!email.trim() || !password) return setErr("اكتب الإيميل وكلمة السر");
+    setErr("");
+    if (!identifier.trim() || !password) return setErr("اكتب رقم الهاتف أو البريد وكلمة السر");
+    const login = identifier.includes("@")
+      ? { email: identifier.trim().toLowerCase(), password }
+      : { phone: normalizeAccountPhone(identifier), password };
+    if ("phone" in login && !login.phone) return setErr("اكتب رقم الهاتف بالصيغة الدولية، مثال: +9665XXXXXXXX");
     setBusy(true);
     try {
-      if (mode === "login") {
-        const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
-        if (error) setErr(authErrorMessage(error));
-      } else {
-        if (!fullName.trim()) return setErr("اكتب اسمك");
-        const { data: signData, error } = await supabase.auth.signUp({
-          email: email.trim(),
-          password,
-          options: { data: { full_name: fullName.trim(), role } },
-        });
-        if (error) return setErr(authErrorMessage(error));
-        if (signData?.session) {
-          const profileResult = await supabase.rpc("complete_my_profile");
-          if (profileResult.error) setErr(authErrorMessage(profileResult.error));
-        } else {
-          setInfo("تم إنشاء الحساب. افتح الإيميل وأكّد الحساب ثم سجّل دخول.");
-        }
-      }
+      const { error } = await supabase.auth.signInWithPassword(login);
+      if (error) setErr(authErrorMessage(error));
     } catch (error) {
       setErr(authErrorMessage(error));
     } finally {
@@ -323,46 +286,62 @@ function AuthGate({ notice = "" }) {
         <img src="/logo.png" alt="NEXTEP" style={{ width: 300, maxWidth: "82vw", height: 110, objectFit: "contain", display: "block" }} />
       </div>
       <Card style={{ width: 340 }}>
-        <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-          <button onClick={() => setMode("login")} style={{ flex: 1, padding: "8px", borderRadius: 8, border: "none", cursor: "pointer", background: mode === "login" ? C.wood : "transparent", color: mode === "login" ? "#fff" : C.muted, fontWeight: 700 }}>تسجيل الدخول</button>
-          <button onClick={() => setMode("signup")} style={{ flex: 1, padding: "8px", borderRadius: 8, border: "none", cursor: "pointer", background: mode === "signup" ? C.wood : "transparent", color: mode === "signup" ? "#fff" : C.muted, fontWeight: 700 }}>حساب جديد</button>
-        </div>
+        <h2 style={{ margin: "0 0 16px", textAlign: "center" }}>تسجيل الدخول</h2>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {mode === "signup" && (
-            <Field label="الاسم">
-              <Input value={fullName} onChange={(e) => setFullName(e.target.value)} />
-            </Field>
-          )}
-          <Field label="الإيميل">
-            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+          <Field label="رقم الهاتف أو البريد">
+            <Input value={identifier} onChange={(e) => setIdentifier(e.target.value)} placeholder="+9665XXXXXXXX" autoComplete="username" />
           </Field>
           <Field label="كلمة السر">
-            <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+            <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />
           </Field>
-          {mode === "signup" && (
-            <Field label="صفتك في المصنع">
-              <Select value={role} onChange={(e) => setRole(e.target.value)}>
-                {SIGNUP_ROLES.map((k) => <option key={k} value={k}>{ROLES[k].label}</option>)}
-              </Select>
-            </Field>
-          )}
         </div>
 
         <div style={{ marginTop: 16 }}>
           <Btn onClick={submit} disabled={busy} style={{ width: "100%", justifyContent: "center" }}>
-            {busy ? "..." : mode === "login" ? "دخول" : "إنشاء الحساب"}
+            {busy ? "..." : "دخول"}
           </Btn>
         </div>
         {err && <Banner type="error">{err}</Banner>}
         {notice && <Banner type="error">{notice}</Banner>}
-        {info && <Banner type="success">{info}</Banner>}
       </Card>
       <div style={{ fontSize: 11.5, color: C.muted, marginTop: 16, maxWidth: 340, textAlign: "center" }}>
-        كل من يسجّل حساب جديد يظهر لباقي المستخدمين تلقائيًا، والبيانات مشتركة بين الجميع.
+        الحسابات ينشئها مالك النظام أو مدير النظام فقط. تواصل مع المسؤول إذا لم يكن لديك حساب.
       </div>
     </div>
   );
+}
+
+function PasswordChangeGate({ profile, onComplete, onSignOut }) {
+  const [password, setPassword] = useState("");
+  const [confirmation, setConfirmation] = useState("");
+  const [message, setMessage] = useState({ type: "", text: "" });
+  const [busy, setBusy] = useState(false);
+
+  async function submit() {
+    setMessage({ type: "", text: "" });
+    if (password.length < 10) return setMessage({ type: "error", text: "كلمة السر الجديدة يجب ألا تقل عن 10 أحرف." });
+    if (password !== confirmation) return setMessage({ type: "error", text: "تأكيد كلمة السر غير مطابق." });
+    setBusy(true);
+    const completionResult = await supabase.functions.invoke("admin-manage-user", { body: { action: "change_password", new_password: password } });
+    if (completionResult.error || !completionResult.data?.ok) {
+      setBusy(false);
+      return setMessage({ type: "error", text: completionResult.data?.error || authErrorMessage(completionResult.error) });
+    }
+    await onComplete();
+    setBusy(false);
+  }
+
+  return <div dir="rtl" style={{ fontFamily: "Tajawal, sans-serif", background: C.bg, minHeight: "100vh", display: "grid", placeItems: "center", color: C.text, padding: 24 }}>
+    <Card style={{ width: 390, maxWidth: "100%" }}>
+      <h2 style={{ marginTop: 0 }}>تغيير كلمة السر المؤقتة</h2>
+      <p style={{ color: C.muted }}>مرحبًا {profile.full_name}. يلزم اختيار كلمة سر خاصة بك قبل فتح النظام.</p>
+      <Field label="كلمة السر الجديدة"><Input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="new-password" /></Field>
+      <Field label="تأكيد كلمة السر"><Input type="password" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} autoComplete="new-password" /></Field>
+      <div style={{ display: "flex", gap: 8, marginTop: 16 }}><Btn disabled={busy} onClick={submit}>{busy ? "جارِ الحفظ..." : "حفظ وفتح النظام"}</Btn><Btn variant="ghost" onClick={onSignOut}>تسجيل الخروج</Btn></div>
+      {message.text && <Banner type={message.type}>{message.text}</Banner>}
+    </Card>
+  </div>;
 }
 
 /* --------------------------------- التطبيق --------------------------------- */
@@ -371,11 +350,31 @@ export default function App() {
     supabase, demo: V22_DEMO, demoProfile: ACTIVE_DEMO_PROFILE,
   });
   const [data, setData] = useState(V22_DEMO ? demoData : null);
-  const [tab, setTab] = useState(V22_DEMO ? (ASSET_QR_MODE ? "assets" : "projects") : (ASSET_QR_MODE ? "assets" : null));
+  const initialLocation = readWorkspaceLocation(window.location.search);
+  const [tab, setTab] = useState(V22_DEMO ? (ASSET_QR_MODE ? "assets" : initialLocation.page || "projects") : (ASSET_QR_MODE ? "assets" : initialLocation.page));
+  const [routeProjectId, setRouteProjectId] = useState(initialLocation.projectId);
   const [dataWarnings, setDataWarnings] = useState([]);
-  const [mutationFeedback, setMutationFeedback] = useState({ type: "success", message: "" });
   const [realtimeStatus, setRealtimeStatus] = useState(V22_DEMO ? (DEMO_CONNECTION_STATE === "offline" ? "RECONNECTING" : "DEMO") : "CONNECTING");
   const [openNavGroups, setOpenNavGroups] = useState(loadNavigationState);
+  const [currencyLoadError, setCurrencyLoadError] = useState("");
+  const [, setCurrencyRevision] = useState(0);
+
+  useEffect(() => {
+    if (V22_DEMO || !session || !profile) return;
+    let active = true;
+    void supabase.rpc("get_system_settings").then(({ data: settings, error }) => {
+      if (!active) return;
+      if (error) {
+        console.error("[Currency] settings bootstrap failed", error);
+        setCurrencyLoadError("تعذر تحميل العملة العامة؛ قد تظهر مبالغ بتنسيق محفوظ سابقًا حتى إعادة المحاولة.");
+        return;
+      }
+      configureCurrency(settings || {});
+      setCurrencyRevision((current) => current + 1);
+      setCurrencyLoadError("");
+    });
+    return () => { active = false; };
+  }, [session?.user?.id, profile?.id]);
 
   useEffect(() => {
     try {
@@ -384,6 +383,16 @@ export default function App() {
       console.warn("[Navigation] Could not persist sidebar state", error);
     }
   }, [openNavGroups]);
+
+  useEffect(() => {
+    const onPopState = () => {
+      const location = readWorkspaceLocation(window.location.search);
+      setTab(location.page);
+      setRouteProjectId(location.projectId);
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
 
   const selectedGroupId = useMemo(() => NAV_GROUPS.find((group) => group.pages.includes(tab))?.id, [tab]);
   useEffect(() => {
@@ -401,7 +410,7 @@ export default function App() {
   const refetchTable = useCallback(async (key) => {
     if (V22_DEMO) return;
     const table = TABLES[key];
-    const fetchResult = await fetchTableRows(key, table);
+    const fetchResult = await fetchTableRows(key, table, profile?.role);
     if (!fetchResult.error) {
       setData((prev) => ({ ...(prev || EMPTY_DATA), [key]: fetchResult.data || [] }));
       setDataWarnings((current) => current.filter((item) => item !== key));
@@ -409,7 +418,11 @@ export default function App() {
       setDataWarnings((current) => current.includes(key) ? current : [...current, key]);
     }
     return fetchResult;
-  }, []);
+  }, [profile?.role]);
+  const refetchTables = useCallback(async (...keys) => {
+    const results = await Promise.all(keys.map((key) => refetchTable(key)));
+    return { data: results.map((result) => result?.data || []), error: results.find((result) => result?.error)?.error || null };
+  }, [refetchTable]);
 
   useEffect(() => {
     if (V22_DEMO) return;
@@ -428,7 +441,7 @@ export default function App() {
     (async () => {
       const results = await Promise.all(
         activeTableEntries.map(async ([key, table]) => {
-          const fetchResult = await fetchTableRows(key, table);
+          const fetchResult = await fetchTableRows(key, table, profile.role);
           return { key, fetchResult };
         })
       );
@@ -581,6 +594,15 @@ export default function App() {
     setTab((currentTab) => resolveAllowedTab(currentTab, permissions.pages || []));
   }, [permissions]);
 
+  const navigate = useCallback((page, options = {}) => {
+    const next = { page, projectId: options.projectId || null };
+    const nextUrl = workspaceUrl(next);
+    if (options.replace) window.history.replaceState(next, "", nextUrl);
+    else window.history.pushState(next, "", nextUrl);
+    setTab(page);
+    setRouteProjectId(next.projectId);
+  }, []);
+
   if (ASSET_CONFIRMATION_MODE) return <AssetExternalConfirmation/>;
   if (V22_DEMO && DEMO_ACCOUNT_STATE === "missing") return <BootstrapFailure missingProfile message="تم تسجيل الدخول، لكن ملف الحساب الإداري غير موجود." session={{ user: { id: "00000000-0000-0000-0000-000000000099", email: "missing-profile@nextep.demo" } }} onRetry={() => {}} onSignOut={() => {}}/>;
   if (bootstrapStatus === "checking-session" || bootstrapStatus === "loading-profile") return <BootstrapLoading text={bootstrapStatus === "loading-profile" ? "جارِ تحميل بيانات حسابك..." : "جارِ التحقق من الجلسة..."}/>;
@@ -588,6 +610,7 @@ export default function App() {
   if (bootstrapStatus === "missing-profile") return <BootstrapFailure missingProfile message={bootstrapError} session={session} onRetry={retryBootstrap} onSignOut={() => signOut()}/>;
   if (!session) return <AuthGate notice={authNotice} />;
   if (!profile) return <BootstrapFailure message="تعذر تحديد حالة الحساب." session={session} onRetry={retryBootstrap} onSignOut={() => signOut()}/>;
+  if (profile.must_change_password) return <PasswordChangeGate profile={profile} onComplete={() => fetchProfile(session.user.id)} onSignOut={() => signOut()} />;
   if (!data) return <BootstrapLoading text="جارِ تحميل بيانات مساحة العمل..." />;
 
   const role = profile.role;
@@ -621,46 +644,28 @@ export default function App() {
   const activeGroup = navigationGroups.find((group) => group.items.some((item) => item.id === activeTab));
   const activePage = NAV.find((item) => item.id === activeTab);
 
-  async function insertRow(key, payload) {
-    const mutationResult = await supabase.from(TABLES[key]).insert(payload);
-    const result = await syncMutation({ scope: `${key}:create`, mutationResult, refetch: () => refetchTable(key) });
-    setMutationFeedback(result.error ? { type: "error", message: result.error.message } : { type: "success", message: "تم الحفظ بنجاح" });
-    return result.error?.message || null;
-  }
-  async function deleteRow(key, id) {
-    const mutationResult = await supabase.from(TABLES[key]).delete().eq("id", id);
-    const result = await syncMutation({ scope: `${key}:delete`, mutationResult, refetch: () => refetchTable(key) });
-    setMutationFeedback(result.error ? { type: "error", message: result.error.message } : { type: "success", message: "تم الحذف بنجاح" });
-    return result.error?.message || null;
-  }
-  async function updateRow(key, id, patch) {
-    const mutationResult = await supabase.from(TABLES[key]).update(patch).eq("id", id);
-    const result = await syncMutation({ scope: `${key}:update`, mutationResult, refetch: () => refetchTable(key) });
-    setMutationFeedback(result.error ? { type: "error", message: result.error.message } : { type: "success", message: "تم حفظ التعديل بنجاح" });
-    return result.error?.message || null;
-  }
-
   const retryVisibleData = () => Promise.all(dataTableKeysForRole(role, Boolean(permissions.assets_view)).map((key) => refetchTable(key)));
 
   return (
-    <AppShell navigationGroups={navigationGroups} openGroups={openNavGroups} setOpenGroups={setOpenNavGroups} activeGroup={activeGroup} activePage={activePage} activeTab={activeTab} profile={profile} roleLabel={ROLES[role]?.label} realtimeStatus={realtimeStatus} warnings={dataWarnings} onNavigate={setTab} onRetryData={retryVisibleData} onSignOut={() => signOut()}>
+    <AppShell navigationGroups={navigationGroups} openGroups={openNavGroups} setOpenGroups={setOpenNavGroups} activeGroup={activeGroup} activePage={activePage} activeTab={activeTab} profile={profile} roleLabel={ROLES[role]?.label} realtimeStatus={realtimeStatus} warnings={dataWarnings} onNavigate={navigate} onRetryData={retryVisibleData} onSignOut={() => signOut()}>
         {!activeTab && <div className="module-state no-permission"><ShieldCheck size={30}/><strong>لا توجد صلاحية للوصول</strong><p>لا توجد صفحات مسموحة لهذا الحساب حاليًا. تواصل مع مدير النظام لتحديث صلاحياتك.</p></div>}
         {dataWarnings.length > 0 && <div className="module-state error compact"><AlertCircle size={20}/><div><strong>تعذر تحديث بعض البيانات</strong><p>{dataWarnings.map((key) => PAGE_LABELS[key] || key).join("، ")} — قد تكون البيانات المعروضة غير مكتملة.</p></div><button type="button" onClick={retryVisibleData}>إعادة المحاولة</button></div>}
+        {currencyLoadError && <div className="module-state error compact"><AlertCircle size={20}/><div><strong>إعداد العملة غير متزامن</strong><p>{currencyLoadError}</p></div></div>}
         {!["CONNECTED", "DEMO"].includes(realtimeStatus) && <div className="module-state offline compact"><AlertCircle size={20}/><div><strong>{realtimeStatus === "RECONNECTING" ? "جارِ إعادة الاتصال" : "الاتصال اللحظي غير جاهز"}</strong><p>يمكنك متابعة القراءة، وستتم مزامنة التغييرات تلقائيًا عند عودة الاتصال.</p></div><button type="button" onClick={retryVisibleData}>المحاولة الآن</button></div>}
-        {activeTab === "dashboard" && <Dashboard data={data} navigate={setTab} permissions={permissions} />}
-        {activeTab === "projects" && <ProjectsTab data={data} profile={profile} permissions={permissions} refresh={refetchTable} />}
+        {activeTab === "dashboard" && <Dashboard data={data} navigate={navigate} permissions={permissions} />}
+        {activeTab === "projects" && <ProjectsTab data={data} profile={profile} permissions={permissions} refresh={refetchTable} initialProjectId={routeProjectId} onProjectRoute={(projectId) => navigate("projects", { projectId, replace: !projectId })} />}
         {activeTab === "projectFiles" && <ProjectFilesHub data={data} permissions={permissions} refresh={refetchTable} />}
-        {activeTab === "inventory" && <InventoryTab canViewFinancials={permissions.view_financials} onNavigate={setTab} allowedPages={permissions.pages || []} />}
-        {activeTab === "purchases" && <ProcurementWorkspace data={data} onNavigate={setTab} />}
-        {activeTab === "expenses" && <ExpensesTab data={data} insertRow={insertRow} profileRole={role} refresh={() => refetchTable("expenses")} />}
-        {activeTab === "materials" && <MaterialsTab data={data} canDelete={permissions.can_delete} insertRow={insertRow} deleteRow={deleteRow} updateRow={updateRow} onNavigate={setTab} />}
-        {activeTab === "products" && <ProductsTab data={data} canCreate={permissions.can_create_products} canEdit={permissions.can_edit_products} canArchive={permissions.can_delete && permissions.can_edit_products} hideProfitInfo={!permissions.view_financials} insertRow={insertRow} updateRow={updateRow} />}
+        {activeTab === "inventory" && <InventoryTab canViewFinancials={permissions.view_financials} onNavigate={navigate} allowedPages={permissions.pages || []} />}
+        {activeTab === "purchases" && <ProcurementWorkspace data={data} onNavigate={navigate} />}
+        {activeTab === "expenses" && <ExpensesTab data={data} profileRole={role} refresh={() => refetchTable("expenses")} />}
+        {activeTab === "materials" && <MaterialsTab data={data} canManage={isAdministrativeRole(role)} refresh={() => refetchTable("materials")} onNavigate={navigate} />}
+        {activeTab === "products" && <ProductsTab data={data} canCreate={permissions.can_create_products} canEdit={permissions.can_edit_products} canArchive={permissions.can_delete && permissions.can_edit_products} hideProfitInfo={!permissions.view_financials} refresh={() => refetchTable("products")} />}
         {activeTab === "production" && <ProductionTab data={data} profileRole={role} canViewFinancials={permissions.view_financials} />}
         {activeTab === "assets" && permissions.assets_view && <AssetsPage data={data} profile={profile} permissions={permissions} refresh={refetchTable} />}
-        {activeTab === "sales" && <SalesTab data={data} insertRow={insertRow} refresh={() => refetchTable("sales")} canManage={isAdministrativeRole(role)} />}
-        {activeTab === "rentals" && <RentalsTab data={data} insertRow={insertRow} refresh={() => refetchTable("rentals")} canManage={isAdministrativeRole(role)} />}
-        {activeTab === "suppliers" && <SuppliersTab data={data} insertRow={insertRow} updateRow={updateRow} canManage={isAdministrativeRole(role)} />}
-        {activeTab === "customers" && <CustomersTab data={data} insertRow={insertRow} updateRow={updateRow} canManage={isAdministrativeRole(role)} />}
+        {activeTab === "sales" && <SalesTab data={data} refresh={() => refetchTable("sales")} canManage={isAdministrativeRole(role)} />}
+        {activeTab === "rentals" && <RentalsTab data={data} refresh={() => refetchTable("rentals")} canManage={isAdministrativeRole(role)} />}
+        {activeTab === "suppliers" && <SuppliersTab data={data} refresh={() => refetchTables("suppliers", "supplierPayments")} canManage={isAdministrativeRole(role)} />}
+        {activeTab === "customers" && <CustomersTab data={data} refresh={() => refetchTables("customers", "customerReceipts")} canManage={isAdministrativeRole(role)} />}
         {activeTab === "employees" && role !== "production" && <EmployeesTab data={data} profile={profile} refresh={refetchTable} />}
         {activeTab === "workCalendar" && permissions.payroll_calendar_view && <WorkCalendarTab data={data} profile={profile} permissions={permissions} refresh={refetchTable} />}
         {activeTab === "payroll" && permissions.payroll_view && data.payroll.some((row) => row.status === "draft" && row.calendar_stale) && <div className="module-state error compact"><AlertCircle size={20}/><div><strong>مسودة الراتب تحتاج إعادة حساب</strong><p>تغير تقويم العمل بعد إنشاء المسودة. تمنع قاعدة البيانات اعتمادها حتى إعادة الحساب أو استخدام صلاحية التجاوز الموثقة.</p></div></div>}
@@ -669,8 +674,7 @@ export default function App() {
         {activeTab === "reports" && permissions.view_financials && <ReportsTab data={data} />}
         {activeTab === "auditLog" && permissions.audit_log_view && <AuditLogTab data={data} />}
         {activeTab === "team" && <TeamTab profiles={data.profiles} employees={data.employees} refresh={refetchTable} currentProfile={profile} />}
-        {activeTab === "settings" && <SettingsPage currentProfile={profile} onRepaired={() => refetchTable("profiles")} />}
-      <Toast type={mutationFeedback.type} message={mutationFeedback.message} onDismiss={() => setMutationFeedback((current) => ({ ...current, message: "" }))} />
+        {activeTab === "settings" && <SettingsPage currentProfile={profile} onRepaired={() => refetchTable("profiles")} onCurrencySaved={(settings) => { configureCurrency(settings); setCurrencyRevision((current) => current + 1); setCurrencyLoadError(""); }} />}
     </AppShell>
   );
 }
@@ -688,28 +692,38 @@ function DashboardSection({ title, description, action, children, className = ""
 }
 
 function Dashboard({ data, navigate, permissions }) {
+  const { workspace: inventoryWorkspace, error: inventoryError, updatedAt: inventoryUpdatedAt } = useInventoryWorkspace("dashboard");
+
   const stats = useMemo(() => {
     const today = todayStr();
     const monthKey = today.slice(0, 7);
-    const activeProjects = data.projects.filter((project) => !["delivered", "cancelled"].includes(project.status));
+    const activeProjects = data.projects.filter((project) => !["completed", "closed", "cancelled"].includes(project.lifecycle));
     const delayedProjects = activeProjects.filter((project) => project.delivery_date && project.delivery_date < today);
-    const averageProgress = activeProjects.length ? activeProjects.reduce((sum, project) => sum + num(project.progress), 0) / activeProjects.length : 0;
-    const lowMaterials = data.materials.map((material) => ({ ...material, stock: materialStock(material.id, data) })).filter((material) => material.stock <= 10).sort((a, b) => a.stock - b.stock);
-    const lowProducts = data.products.filter((product) => !product.archived_at).map((product) => ({ ...product, stock: finishedStock(product.id, data) })).filter((product) => product.stock <= 5).sort((a, b) => a.stock - b.stock);
+    const averageProgress = activeProjects.length ? activeProjects.reduce((sum, project) => sum + num(project.effective_progress_percentage ?? project.progress), 0) / activeProjects.length : 0;
+    const materialAlerts = inventoryWorkspace ? canonicalMaterialAlerts(inventoryWorkspace) : { low: [], unlinked: [] };
+    const lowMaterials = materialAlerts.low;
+    const productAlerts = inventoryWorkspace ? canonicalFinishedProductAlerts(inventoryWorkspace, data.products) : { low: [], unlinked: [] };
+    const lowProducts = productAlerts.low;
     const postedSales = data.sales.filter((sale) => sale.status !== "cancelled");
     const revenue = postedSales.reduce((sum, sale) => sum + num(sale.total), 0);
+    const saleIssueCosts = new Map();
+    (inventoryWorkspace?.movements || []).filter((movement) => movement.movement_type === "sale_issue" && movement.sale_id).forEach((movement) => {
+      saleIssueCosts.set(movement.sale_id, (saleIssueCosts.get(movement.sale_id) || 0) + Math.abs(num(movement.quantity_delta)) * num(movement.unit_cost));
+    });
     const cogs = postedSales.reduce((sum, sale) => {
+      if (saleIssueCosts.has(sale.id)) return sum + saleIssueCosts.get(sale.id);
       const product = data.products.find((row) => row.id === sale.product_id);
       return sum + (product ? num(sale.qty) * (avgProductionUnitCost(product.id, data) || productUnitCost(product, data)) : 0);
     }, 0);
+    const todayProductionReceipts = (inventoryWorkspace?.movements || []).filter((movement) => movement.movement_type === "production_receipt" && String(movement.posted_at || "").slice(0, 10) === today);
     return {
       activeProjects: activeProjects.length,
       delayedProjects: delayedProjects.length,
       averageProgress,
       ordersThisMonth: data.productionOrders.filter((order) => (order.order_date || "").slice(0, 7) === monthKey).length,
-      todayProduction: data.productionOrders.filter((order) => order.order_date === today).reduce((sum, order) => sum + num(order.qty), 0),
-      lowMaterials,
-      lowProducts,
+      todayProduction: todayProductionReceipts.reduce((sum, movement) => sum + num(movement.quantity_delta), 0),
+      lowMaterials, unlinkedMaterials: materialAlerts.unlinked,
+      lowProducts, unlinkedProducts: productAlerts.unlinked,
       todaySales: postedSales.filter((sale) => sale.sale_date === today).reduce((sum, sale) => sum + num(sale.total), 0),
       profit: revenue - cogs,
       receivables: data.customers.reduce((sum, customer) => sum + customerBalance(customer.id, data), 0),
@@ -719,7 +733,7 @@ function Dashboard({ data, navigate, permissions }) {
       activeAssetAssignments: data.assetAssignments.filter((row) => ["pending_receiver_confirmation", "issued", "partially_returned", "settlement_pending"].includes(row.status)).length,
       assetAlertCount: data.assetAlerts.length,
     };
-  }, [data]);
+  }, [data, inventoryWorkspace]);
 
   const recentActivities = [...data.projectActivities].sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || ""))).slice(0, 6);
   const canGo = (page) => permissions.pages.includes(page);
@@ -737,14 +751,14 @@ function Dashboard({ data, navigate, permissions }) {
       <DashboardSection title="التشغيل والإنتاج" description="حركة الإنتاج وحالة المخزون" action={quickAction("production", "فتح الإنتاج")}>
         <DashboardMetric label="إنتاج اليوم" value={`${fmt(stats.todayProduction)} وحدة`} tone="info" />
         <DashboardMetric label="أوامر هذا الشهر" value={stats.ordersThisMonth} />
-        <DashboardMetric label="أصناف منخفضة" value={stats.lowMaterials.length + stats.lowProducts.length} tone={(stats.lowMaterials.length + stats.lowProducts.length) ? "warning" : "success"} />
+        <DashboardMetric label="تنبيهات مخزون" value={stats.lowMaterials.length + stats.unlinkedMaterials.length + stats.lowProducts.length + stats.unlinkedProducts.length} tone={(stats.lowMaterials.length + stats.unlinkedMaterials.length + stats.lowProducts.length + stats.unlinkedProducts.length) ? "warning" : "success"} />
         {canGo("assets") && <DashboardMetric label="عهد أصول نشطة" value={stats.activeAssetAssignments} tone={stats.activeAssetAssignments ? "info" : "success"} />}
       </DashboardSection>
 
       {permissions.view_financials && <DashboardSection title="المالية" description="السيولة والربحية والتحصيلات" action={quickAction("reports", "فتح التقارير")}>
-        <DashboardMetric label="مبيعات اليوم" value={`${fmt(stats.todaySales)} ج.م`} tone="success" />
-        <DashboardMetric label="صافي الربح التقديري" value={`${fmt(stats.profit)} ج.م`} tone={stats.profit >= 0 ? "success" : "danger"} />
-        <DashboardMetric label="مستحق من العملاء" value={`${fmt(stats.receivables)} ج.م`} tone="gold" />
+        <DashboardMetric label="مبيعات اليوم" value={formatMoney(stats.todaySales)} tone="success" />
+        <DashboardMetric label="مجمل ربح المبيعات" value={formatMoney(stats.profit)} tone={stats.profit >= 0 ? "success" : "danger"} />
+        <DashboardMetric label="مستحق من العملاء" value={formatMoney(stats.receivables)} tone="gold" />
       </DashboardSection>}
 
       {canGo("employees") && <DashboardSection title="الموارد البشرية" description="القوة العاملة ودورة الرواتب" action={quickAction("employees", "فتح الموظفين")}>
@@ -755,10 +769,14 @@ function Dashboard({ data, navigate, permissions }) {
 
       <DashboardSection title="التنبيهات" description="العناصر التي تحتاج تدخلاً سريعًا" className="dashboard-wide" action={quickAction("inventory", "فتح المخزون")}>
         <div className="dashboard-alerts">
-          {stats.lowMaterials.slice(0, 3).map((item) => <div className="dashboard-alert" key={`material-${item.id}`}><AlertCircle size={17} /><span><strong>{item.name}</strong> — الرصيد {fmt(item.stock)} {item.unit}</span></div>)}
-          {stats.lowProducts.slice(0, 3).map((item) => <div className="dashboard-alert" key={`product-${item.id}`}><AlertCircle size={17} /><span><strong>{item.name}</strong> — المتاح {fmt(item.stock)} وحدة</span></div>)}
+          {inventoryUpdatedAt && <div className="dashboard-clear"><CheckCircle2 size={18}/> المصدر: دفتر حركات المخزون · آخر تحديث {inventoryUpdatedAt.toLocaleTimeString("ar-EG")}</div>}
+          {stats.lowMaterials.slice(0, 3).map((item) => <div className="dashboard-alert" key={`material-${item.id}`}><AlertCircle size={17} /><span><strong>{item.name}</strong> — الرصيد {fmt(item.quantityOnHand)} {item.unit} عبر {item.warehouseNames.length} مخزن</span></div>)}
+          {stats.unlinkedMaterials.slice(0, 3).map((item) => <div className="dashboard-alert" key={`unlinked-material-${item.id}`}><AlertCircle size={17} /><span><strong>{item.name}</strong> — جودة بيانات: المادة غير مربوطة بصنف مخزون، ولا يوجد تقدير رصيد.</span></div>)}
+          {inventoryError && <div className="dashboard-alert"><AlertCircle size={17}/><span>{inventoryError}</span></div>}
+          {stats.lowProducts.slice(0, 3).map((item) => <div className="dashboard-alert" key={`product-${item.id}`}><AlertCircle size={17} /><span><strong>{item.name}</strong> — المتاح {fmt(item.quantityOnHand)} {item.unit}</span></div>)}
+          {stats.unlinkedProducts.slice(0, 3).map((item) => <div className="dashboard-alert" key={`unlinked-product-${item.id}`}><AlertCircle size={17} /><span><strong>{item.name}</strong> — المنتج غير مربوط بصنف مخزون تام، ولا يوجد تقدير رصيد.</span></div>)}
           {stats.assetAlertCount > 0 && <div className="dashboard-alert"><AlertCircle size={17}/><span><strong>تنبيهات الأصول والعِدّة</strong> — {stats.assetAlertCount} عنصر يحتاج متابعة</span></div>}
-          {!stats.lowMaterials.length && !stats.lowProducts.length && !stats.assetAlertCount && <div className="dashboard-clear"><CheckCircle2 size={18} /> لا توجد تنبيهات مخزون أو أصول حرجة حاليًا.</div>}
+          {!inventoryError && !stats.unlinkedMaterials.length && !stats.unlinkedProducts.length && !stats.lowMaterials.length && !stats.lowProducts.length && !stats.assetAlertCount && <div className="dashboard-clear"><CheckCircle2 size={18} /> لا توجد تنبيهات مخزون أو أصول حرجة حاليًا.</div>}
         </div>
       </DashboardSection>
 
@@ -780,21 +798,24 @@ const InventoryTab=InventoryWorkspace;
 const MaterialsTab=MaterialsCatalogWorkspace;
 
 /* --------------------------------- Products --------------------------------- */
-function ProductsTab({ data, canCreate, canEdit, canArchive, hideProfitInfo, insertRow, updateRow }) {
-  const blank = { name: "", sku: "", laborCost: "", overheadCost: "", sellingPrice: "", itemType: "sale" };
+function ProductsTab({ data, canCreate, canEdit, canArchive, hideProfitInfo, refresh }) {
+  const { workspace: inventoryWorkspace, error: inventoryError } = useInventoryWorkspace("products");
+  const finishedBalances = useMemo(() => aggregateInventoryByProduct(inventoryWorkspace || {}), [inventoryWorkspace]);
+  const blank = { name: "", sku: "", laborCost: "", overheadCost: "", sellingPrice: "", itemType: "sale", commandId: "" };
   const [form, setForm] = useState(blank);
   const [bom, setBom] = useState([]);
   const [bomRow, setBomRow] = useState({ materialId: "", qty: "" });
   const [editingId, setEditingId] = useState(null);
   const [err, setErr] = useState("");
   const [search, setSearch] = useState("");
+  const [archiveAction, setArchiveAction] = useState(null);
 
   function addBomRow() { if (!bomRow.materialId || num(bomRow.qty) <= 0) return; setBom([...bom, { material_id: bomRow.materialId, qty: num(bomRow.qty) }]); setBomRow({ materialId: "", qty: "" }); }
   function removeBomRow(i) { setBom(bom.filter((_, idx) => idx !== i)); }
   function startEdit(p) {
     if (!canEdit) return;
     setEditingId(p.id);
-    setForm({ name: p.name, sku: p.sku || "", laborCost: String(p.labor_cost), overheadCost: String(p.overhead_cost), sellingPrice: String(p.selling_price), itemType: p.item_type || "sale" });
+    setForm({ name: p.name, sku: p.sku || "", laborCost: String(p.labor_cost), overheadCost: String(p.overhead_cost), sellingPrice: String(p.selling_price), itemType: p.item_type || "sale", commandId: "" });
     setBom(p.bom || []);
   }
   function cancelEdit() { setEditingId(null); setForm(blank); setBom([]); setErr(""); }
@@ -804,24 +825,39 @@ function ProductsTab({ data, canCreate, canEdit, canArchive, hideProfitInfo, ins
     if (!editingId && !canCreate) return setErr("ليس لديك صلاحية إضافة المنتجات");
     if (!form.name.trim()) return setErr("اكتب اسم المنتج");
     if (bom.length === 0) return setErr("أضف مكوّن واحد على الأقل لتركيبة المنتج");
+    const commandId = form.commandId || globalThis.crypto.randomUUID();
+    if (!form.commandId) setForm((current) => ({ ...current, commandId }));
     const payload = { name: form.name.trim(), sku: form.sku.trim(), bom, labor_cost: num(form.laborCost), overhead_cost: num(form.overheadCost), selling_price: num(form.sellingPrice), item_type: form.itemType };
-    const e = editingId ? await updateRow("products", editingId, payload) : await insertRow("products", payload);
-    if (e) return setErr(e);
+    const result = await runCriticalMutation({
+      scope: editingId ? "products:update" : "products:create",
+      mutate: () => supabase.rpc("save_product", { target_id: editingId, payload, command_id: commandId }),
+      verify: async () => {
+        const verification = editingId
+          ? await supabase.from("products").select("id").eq("id", editingId).single()
+          : await supabase.from("products").select("id").eq("command_id", commandId).single();
+        return verification.error ? verification : Boolean(verification.data?.id);
+      },
+      refetch: refresh,
+    });
+    if (result.error) return setErr(result.mutationSaved ? "تم إرسال المنتج، لكن تعذر التحقق. حدّث الصفحة قبل إعادة المحاولة." : result.error.message);
     setForm(blank); setBom([]); setEditingId(null); setErr("");
   }
   async function archiveProduct(product) {
-    const reason = window.prompt(`سبب أرشفة المنتج "${product.name}"؟`);
-    if (!reason?.trim()) return;
-    if (!window.confirm("سيُمنع المنتج من العمليات الجديدة مع الاحتفاظ بكل تاريخه. متابعة؟")) return;
-    const error = await updateRow("products", product.id, { archived_at: new Date().toISOString(), archived_reason: reason.trim() });
-    if (error) return setErr(error);
-    if (editingId === product.id) cancelEdit();
-    setErr("");
+    setArchiveAction({ row: product, archive: true, reason: "", busy: false, error: "" });
   }
   async function restoreProduct(product) {
-    if (!window.confirm(`استعادة المنتج "${product.name}" للعمليات الجديدة؟`)) return;
-    const error = await updateRow("products", product.id, { archived_at: null, archived_reason: null });
-    if (error) setErr(error); else setErr("");
+    setArchiveAction({ row: product, archive: false, reason: "", busy: false, error: "" });
+  }
+  async function confirmProductArchive() {
+    const action = archiveAction;
+    if (action.archive && !action.reason.trim()) return setArchiveAction((current) => ({ ...current, error: "سبب الأرشفة مطلوب" }));
+    setArchiveAction((current) => ({ ...current, busy: true, error: "" }));
+    const { error } = await supabase.rpc("set_product_archived", { target_id: action.row.id, archive: action.archive, reason: action.reason.trim() || null });
+    if (error) return setArchiveAction((current) => ({ ...current, busy: false, error: error.message }));
+    const refreshed = await refresh();
+    if (editingId === action.row.id) cancelEdit();
+    setArchiveAction(null);
+    if (refreshed?.error) setErr("تم حفظ حالة المنتج، لكن تعذر تحديث الشاشة."); else setErr("");
   }
 
   const activeProducts = data.products.filter((product) => !product.archived_at);
@@ -833,7 +869,8 @@ function ProductsTab({ data, canCreate, canEdit, canArchive, hideProfitInfo, ins
 
   return (
     <div>
-      <SectionTitle eyebrow="تكلفة المنتج" title="المنتجات وتركيبة التكلفة" icon={<Layers size={14} />} />
+      <SectionTitle eyebrow={hideProfitInfo?"دليل التصنيع":"تكلفة المنتج"} title={hideProfitInfo?"المنتجات وتركيبة التصنيع":"المنتجات وتركيبة التكلفة"} icon={<Layers size={14} />} />
+      {inventoryError && <Banner>{inventoryError}</Banner>}
       {(canCreate || (editingId && canEdit)) && <Card style={{ marginBottom: 18 }}>
         <div style={{ fontWeight: 700, marginBottom: 12 }}>{editingId ? "تعديل منتج" : "منتج جديد"}</div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
@@ -862,8 +899,8 @@ function ProductsTab({ data, canCreate, canEdit, canArchive, hideProfitInfo, ins
           <div style={{ marginBottom: 12 }}>
             <Table headers={["المادة", "الكمية", "التكلفة", ""]}>
               {bom.map((r, i) => { const m = data.materials.find((x) => x.id === r.material_id); return (
-                <tr key={i}><Td>{m?.name}</Td><Td>{r.qty} {m?.unit}</Td><Td>{fmt((m?.unit_cost || 0) * r.qty)} ج.م</Td>
-                  <Td><button onClick={() => removeBomRow(i)} style={{ background: "none", border: "none", cursor: "pointer", color: C.red }}><Trash2 size={14} /></button></Td></tr>
+                <tr key={i}><Td>{m?.name}</Td><Td>{r.qty} {m?.unit}</Td><Td>{formatMoney((m?.unit_cost || 0) * r.qty)}</Td>
+                  <Td><button aria-label={`حذف ${m?.name||"المادة"} من التركيبة`} title="حذف من التركيبة" onClick={() => removeBomRow(i)} style={{ background: "none", border: "none", cursor: "pointer", color: C.red }}><Trash2 size={14} /></button></Td></tr>
               ); })}
             </Table>
           </div>
@@ -878,7 +915,7 @@ function ProductsTab({ data, canCreate, canEdit, canArchive, hideProfitInfo, ins
       <Card>
         <SearchBox value={search} onChange={setSearch} placeholder="ابحث باسم المنتج..." />
         {filtered.length === 0 ? <Empty text="لا توجد نتائج" /> : (
-          <Table headers={["المنتج", "النوع", "تكلفة الخامات", "عمالة", "تكاليف غير مباشرة", "إجمالي التكلفة/وحدة", ...(hideProfitInfo ? [] : ["سعر البيع", "الهامش"]), "المخزون التام", ""]}>
+          <Table headers={["المنتج", "النوع", ...(hideProfitInfo ? [] : ["تكلفة الخامات", "عمالة", "تكاليف غير مباشرة", "إجمالي التكلفة/وحدة", "سعر البيع", "الهامش"]), "المخزون التام", ""]}>
             {filtered.map((p) => {
               const matCost = bomUnitCost(p, data);
               const unitCost = productUnitCost(p, data);
@@ -887,15 +924,15 @@ function ProductsTab({ data, canCreate, canEdit, canArchive, hideProfitInfo, ins
                 <tr key={p.id}>
                   <Td>{p.name}</Td>
                   <Td>{ITEM_TYPE_LABEL[p.item_type] || "للبيع"}</Td>
-                  <Td>{fmt(matCost)} ج.م</Td><Td>{fmt(p.labor_cost)} ج.م</Td><Td>{fmt(p.overhead_cost)} ج.م</Td>
-                  <Td style={{ fontWeight: 700, color: C.brass }}>{fmt(unitCost)} ج.م</Td>
                   {!hideProfitInfo && (<>
-                    <Td>{fmt(p.selling_price)} ج.م</Td>
+                    <Td>{formatMoney(matCost)}</Td><Td>{formatMoney(p.labor_cost)}</Td><Td>{formatMoney(p.overhead_cost)}</Td>
+                    <Td style={{ fontWeight: 700, color: C.brass }}>{formatMoney(unitCost)}</Td>
+                    <Td>{formatMoney(p.selling_price)}</Td>
                     <Td style={{ color: margin == null ? C.muted : margin >= 0 ? C.green : C.red }}>{margin == null ? "—" : `${margin.toFixed(1)}%`}</Td>
                   </>)}
-                  <Td>{finishedStock(p.id, data)}</Td>
+                  <Td>{finishedBalances.has(p.id) ? fmt(finishedBalances.get(p.id).quantityOnHand) : "—"}</Td>
                   <Td style={{ display: "flex", gap: 10 }}>
-                    {canEdit && <button onClick={() => startEdit(p)} style={{ background: "none", border: "none", cursor: "pointer", color: C.brass }}><Pencil size={15} /></button>}
+                    {canEdit && <button aria-label={`تعديل ${p.name}`} title="تعديل المنتج" onClick={() => startEdit(p)} style={{ background: "none", border: "none", cursor: "pointer", color: C.brass }}><Pencil size={15} /></button>}
                     {canArchive && <button aria-label={`أرشفة ${p.name}`} onClick={() => archiveProduct(p)} style={{ background: "none", border: "none", cursor: "pointer", color: C.red }}><Archive size={15} /></button>}
                   </Td>
                 </tr>
@@ -907,6 +944,7 @@ function ProductsTab({ data, canCreate, canEdit, canArchive, hideProfitInfo, ins
       <ArchiveSection title="المنتجات المؤرشفة" count={archivedProducts.length} helpText="محفوظة للتاريخ ولا تظهر في البيع أو الإيجار أو أوامر الإنتاج الجديدة.">
         {filteredArchived.length === 0 ? <Empty text="لا توجد منتجات مؤرشفة مطابقة" /> : <Table headers={["المنتج", "SKU", "النوع", "سبب الأرشفة", "تاريخ الأرشفة", ""]}>{filteredArchived.map((p) => <tr key={p.id}><Td>{p.name}</Td><Td>{p.sku || "—"}</Td><Td>{ITEM_TYPE_LABEL[p.item_type] || "للبيع"}</Td><Td>{p.archived_reason || "—"}</Td><Td>{p.archived_at ? new Date(p.archived_at).toLocaleDateString("ar-EG") : "—"}</Td><Td>{canArchive && <button aria-label={`استعادة ${p.name}`} onClick={() => restoreProduct(p)} style={{background:"none",border:"none",cursor:"pointer",color:C.green}}><RotateCcw size={15}/></button>}</Td></tr>)}</Table>}
       </ArchiveSection>
+      <ConfirmDialog open={Boolean(archiveAction)} title={archiveAction?.archive ? "أرشفة المنتج" : "استعادة المنتج"} description={archiveAction?.archive ? "سيُمنع المنتج من العمليات الجديدة مع الاحتفاظ بكل تاريخه." : "سيعود المنتج للظهور في العمليات الجديدة."} confirmLabel={archiveAction?.archive ? "أرشفة" : "استعادة"} danger={archiveAction?.archive} reasonRequired={archiveAction?.archive} reason={archiveAction?.reason || ""} busy={archiveAction?.busy} error={archiveAction?.error} onReasonChange={(reason) => setArchiveAction((current) => ({ ...current, reason, error: "" }))} onConfirm={confirmProductArchive} onCancel={() => setArchiveAction(null)} />
     </div>
   );
 }
@@ -915,9 +953,12 @@ function ProductsTab({ data, canCreate, canEdit, canArchive, hideProfitInfo, ins
 const ProductionTab=ProductionWorkspace;
 
 /* ----------------------------------- Sales ---------------------------------- */
-function SalesTab({ data, insertRow, refresh, canManage }) {
-  const [form, setForm] = useState({ productId: "", customerId: "", qty: "", unitPrice: "", date: todayStr() });
+function SalesTab({ data, refresh, canManage }) {
+  const { workspace: inventoryWorkspace, error: inventoryError, reload: reloadInventory } = useInventoryWorkspace("sales");
+  const finishedBalances = useMemo(() => aggregateInventoryByProduct(inventoryWorkspace || {}), [inventoryWorkspace]);
+  const [form, setForm] = useState({ productId: "", customerId: "", qty: "", unitPrice: "", date: todayStr(), commandId: "" });
   const [err, setErr] = useState(""); const [ok, setOk] = useState("");
+  const [cancelAction, setCancelAction] = useState(null);
   const selectedProduct = data.products.find((p) => p.id === form.productId);
 
   async function submit() {
@@ -926,26 +967,42 @@ function SalesTab({ data, insertRow, refresh, canManage }) {
     if (!form.customerId) return setErr("اختر العميل");
     const qty = num(form.qty);
     if (qty <= 0) return setErr("أدخل كمية أكبر من صفر");
-    const stock = finishedStock(form.productId, data);
-    if (stock < qty) return setErr(`المخزون التام المتاح ${stock} وحدة فقط`);
+    const stock = finishedBalances.get(form.productId)?.quantityOnHand;
+    if (stock != null && stock < qty) return setErr(`المخزون التام المتاح ${stock} وحدة فقط`);
     const unitPrice = num(form.unitPrice) || selectedProduct.selling_price;
-    if (unitPrice < 0) return setErr("سعر الوحدة لا يمكن أن يكون سالبًا");
-    const total = unitPrice * qty;
-    const e = await insertRow("sales", { product_id: form.productId, customer_id: form.customerId, qty, unit_price: unitPrice, total, sale_date: form.date });
-    if (e) return setErr(e);
-    setOk("تم تسجيل عملية البيع وتحديث مخزون المنتج التام وحساب العميل");
-    setForm({ productId: "", customerId: "", qty: "", unitPrice: "", date: todayStr() });
+    if (!Number.isFinite(unitPrice) || unitPrice <= 0) return setErr("سعر الوحدة يجب أن يكون أكبر من صفر");
+    const commandId = form.commandId || globalThis.crypto.randomUUID();
+    if (!form.commandId) setForm((current) => ({ ...current, commandId }));
+    const result = await runCriticalMutation({
+      scope: "sales:post",
+      mutate: () => supabase.rpc("post_sale", {
+        target_product: form.productId, target_customer: form.customerId, sale_quantity: qty,
+        sale_unit_price: unitPrice, sold_on: form.date, sale_note: null, command_id: commandId,
+      }),
+      verify: async () => {
+        const verification = await supabase.from("sales").select("id,status").eq("command_id", commandId).single();
+        return verification.error ? verification : verification.data?.status === "posted";
+      },
+      refetch: () => Promise.all([refresh(), reloadInventory()]),
+    });
+    if (result.error) return setErr(result.mutationSaved
+      ? "تم إرسال البيع، لكن تعذر التحقق أو تحديث الشاشة. حدّث الصفحة؛ لا تُنشئ أمرًا جديدًا لنفس العملية."
+      : result.error.message);
+    setOk(result.refreshError ? "تم تسجيل البيع وخصم المخزون، لكن تعذر تحديث الشاشة. حدّث الصفحة بأمان." : "تم تسجيل البيع وخصم مخزون المنتج التام وتحديث حساب العميل");
+    setForm({ productId: "", customerId: "", qty: "", unitPrice: "", date: todayStr(), commandId: "" });
   }
 
-  async function cancelSale(row) {
-    const reason = window.prompt("سبب إلغاء عملية البيع؟ سيبقى السجل محفوظًا وسيعود رصيد المنتج للحساب.");
-    if (!reason?.trim()) return;
-    if (!window.confirm("تأكيد إلغاء البيع مع الحفاظ على السجل التاريخي؟")) return;
+  async function confirmCancelSale() {
+    const { row, reason } = cancelAction;
+    setCancelAction((current)=>({...current,busy:true,error:""}));
     setErr(""); setOk("");
-    const mutationResult = await supabase.rpc("cancel_sale", { target_sale_id: row.id, reason: reason.trim() });
-    const result = await syncMutation({ scope: "sales:cancel", mutationResult, refetch: refresh });
-    if (result.error) return setErr(result.error.message);
-    setOk("تم إلغاء البيع، واستُبعد من الرصيد والإيراد مع حفظ أثر المراجعة.");
+    const result = await runCriticalMutation({ scope:"sales:cancel", mutate:()=>supabase.rpc("cancel_sale",{target_sale_id:row.id,reason:reason.trim()}), verify:async()=>{
+      const verification=await supabase.from("sales").select("status,cancelled_at").eq("id",row.id).single();
+      return verification.error?verification:verification.data?.status==="cancelled";
+    }, refetch:()=>Promise.all([refresh(),reloadInventory()]) });
+    if (result.error) return setCancelAction((current)=>({...current,busy:false,error:result.mutationSaved?"وصل أمر الإلغاء للخادم، لكن تعذر التحقق. حدّث الشاشة قبل إعادة المحاولة.":result.error.message}));
+    setCancelAction(null);
+    setOk(result.refreshError ? "تم إلغاء البيع وحفظه، لكن تعذر تحديث الشاشة. حدّث الصفحة دون إعادة الإلغاء." : "تم إلغاء البيع، واستُبعد من الرصيد والإيراد مع حفظ أثر المراجعة.");
   }
 
   const postedSales = data.sales.filter((sale) => sale.status !== "cancelled");
@@ -955,10 +1012,11 @@ function SalesTab({ data, insertRow, refresh, canManage }) {
   return (
     <div>
       <SectionTitle eyebrow="التوزيع" title="المبيعات" icon={<ShoppingCart size={14} />} />
+      {inventoryError && <Banner type="error">{inventoryError}</Banner>}
       <Card style={{ marginBottom: 18 }}>
         <div style={{ fontWeight: 700, marginBottom: 12 }}>عملية بيع جديدة</div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <Field label="المنتج"><Select value={form.productId} onChange={(e) => setForm({ ...form, productId: e.target.value })}><option value="">اختر المنتج</option>{data.products.filter((p) => !p.archived_at && (p.item_type || "sale") !== "rental").map((p) => <option key={p.id} value={p.id}>{p.name} (متاح: {finishedStock(p.id, data)})</option>)}</Select></Field>
+          <Field label="المنتج"><Select value={form.productId} onChange={(e) => setForm({ ...form, productId: e.target.value })}><option value="">اختر المنتج</option>{data.products.filter((p) => !p.archived_at && (p.item_type || "sale") !== "rental").map((p) => <option key={p.id} value={p.id}>{p.name} (متاح: {finishedBalances.has(p.id) ? fmt(finishedBalances.get(p.id).quantityOnHand) : "—"})</option>)}</Select></Field>
           <Field label="العميل"><Select value={form.customerId} onChange={(e) => setForm({ ...form, customerId: e.target.value })}><option value="">اختر العميل</option>{data.customers.filter((c) => !c.archived_at).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</Select></Field>
           <Field label="الكمية"><Input type="number" value={form.qty} onChange={(e) => setForm({ ...form, qty: e.target.value })} /></Field>
           <Field label="سعر الوحدة"><Input type="number" value={form.unitPrice} onChange={(e) => setForm({ ...form, unitPrice: e.target.value })} placeholder={selectedProduct ? `افتراضي: ${fmt(selectedProduct.selling_price)}` : ""} /></Field>
@@ -966,28 +1024,33 @@ function SalesTab({ data, insertRow, refresh, canManage }) {
         </div>
         <div style={{ marginTop: 12 }}><Btn onClick={submit}><Plus size={15} /> تسجيل البيع</Btn></div>
         {err && <Banner type="error">{err}</Banner>}
-        {ok && <Banner type="success">{ok}</Banner>}
+        {ok && <Banner type={operationFeedbackType(ok)}>{ok}</Banner>}
       </Card>
       <Card>
         {postedSales.length === 0 ? <Empty text="لا توجد مبيعات مسجلة بعد" /> : (
           <Table headers={["التاريخ", "المنتج", "العميل", "الكمية", "سعر الوحدة", "الإجمالي", "الحالة", ""]}>
             {[...postedSales].reverse().map((s) => { const p = data.products.find((x) => x.id === s.product_id); const c = data.customers.find((x) => x.id === s.customer_id); return (
-              <tr key={s.id}><Td>{s.sale_date}</Td><Td>{p?.name || "—"}</Td><Td>{c?.name || "—"}</Td><Td>{s.qty}</Td><Td>{fmt(s.unit_price)} ج.م</Td><Td style={{ fontWeight: 700, color: invalidLegacySale(s) ? C.red : C.green }}>{fmt(s.total)} ج.م</Td><Td>{invalidLegacySale(s) ? <span style={{color:C.red,fontWeight:700}}>سجل قديم يحتاج مراجعة</span> : "مرحّل"}</Td><Td>{canManage && <button aria-label="إلغاء البيع" onClick={() => cancelSale(s)} style={{background:"none",border:"none",cursor:"pointer",color:C.red}}><X size={15}/></button>}</Td></tr>
+              <tr key={s.id}><Td>{s.sale_date}</Td><Td>{p?.name || "—"}</Td><Td>{c?.name || "—"}</Td><Td>{s.qty}</Td><Td>{formatMoney(s.unit_price)}</Td><Td style={{ fontWeight: 700, color: invalidLegacySale(s) ? C.red : C.green }}>{formatMoney(s.total)}</Td><Td>{invalidLegacySale(s) ? <span style={{color:C.red,fontWeight:700}}>سجل قديم يحتاج مراجعة</span> : "مرحّل"}</Td><Td>{canManage && <button aria-label="إلغاء البيع" title="إلغاء البيع وعكس أثره" onClick={() => setCancelAction({row:s,reason:"",busy:false,error:""})} style={{background:"none",border:"none",cursor:"pointer",color:C.red}}><X size={15}/></button>}</Td></tr>
             ); })}
           </Table>
         )}
       </Card>
       <ArchiveSection title="المبيعات الملغاة" count={cancelledSales.length} helpText="السجلات الملغاة محفوظة للمراجعة، ولا تدخل في المخزون أو الإيراد أو رصيد العميل.">
-        {cancelledSales.length === 0 ? <Empty text="لا توجد مبيعات ملغاة" /> : <Table headers={["التاريخ", "المنتج", "العميل", "الإجمالي", "سبب الإلغاء", "وقت الإلغاء"]}>{[...cancelledSales].reverse().map((s) => <tr key={s.id}><Td>{s.sale_date}</Td><Td>{data.products.find((p) => p.id === s.product_id)?.name || "—"}</Td><Td>{data.customers.find((c) => c.id === s.customer_id)?.name || "—"}</Td><Td>{fmt(s.total)} ج.م</Td><Td>{s.cancellation_reason || "—"}</Td><Td>{s.cancelled_at ? new Date(s.cancelled_at).toLocaleString("ar-EG") : "—"}</Td></tr>)}</Table>}
+        {cancelledSales.length === 0 ? <Empty text="لا توجد مبيعات ملغاة" /> : <Table headers={["التاريخ", "المنتج", "العميل", "الإجمالي", "سبب الإلغاء", "وقت الإلغاء"]}>{[...cancelledSales].reverse().map((s) => <tr key={s.id}><Td>{s.sale_date}</Td><Td>{data.products.find((p) => p.id === s.product_id)?.name || "—"}</Td><Td>{data.customers.find((c) => c.id === s.customer_id)?.name || "—"}</Td><Td>{formatMoney(s.total)}</Td><Td>{s.cancellation_reason || "—"}</Td><Td>{s.cancelled_at ? new Date(s.cancelled_at).toLocaleString("ar-EG") : "—"}</Td></tr>)}</Table>}
       </ArchiveSection>
+      <ConfirmDialog open={Boolean(cancelAction)} title="إلغاء عملية البيع" description="سيبقى السجل محفوظًا، وسيُعكس أثره على المخزون ورصيد العميل مرة واحدة فقط." confirmLabel="إلغاء وعكس" danger reasonRequired reason={cancelAction?.reason||""} busy={cancelAction?.busy} error={cancelAction?.error} onReasonChange={(reason)=>setCancelAction((current)=>({...current,reason,error:""}))} onConfirm={confirmCancelSale} onCancel={()=>setCancelAction(null)}/>
     </div>
   );
 }
 
 /* --------------------------------- Rentals ----------------------------------- */
-function RentalsTab({ data, insertRow, refresh, canManage }) {
-  const [form, setForm] = useState({ productId: "", customerId: "", qty: "", rentalFee: "", startDate: todayStr(), expectedReturn: "" });
+function RentalsTab({ data, refresh, canManage }) {
+  const { workspace: inventoryWorkspace, error: inventoryError, reload: reloadInventory } = useInventoryWorkspace("rentals");
+  const finishedBalances = useMemo(() => aggregateInventoryByProduct(inventoryWorkspace || {}), [inventoryWorkspace]);
+  const [form, setForm] = useState({ productId: "", customerId: "", qty: "", rentalFee: "", startDate: todayStr(), expectedReturn: "", commandId: "" });
   const [err, setErr] = useState(""); const [ok, setOk] = useState("");
+  const [cancelAction, setCancelAction] = useState(null);
+  const [returnAction, setReturnAction] = useState(null);
 
   async function submit() {
     setErr(""); setOk("");
@@ -995,38 +1058,70 @@ function RentalsTab({ data, insertRow, refresh, canManage }) {
     if (!form.customerId) return setErr("اختر العميل");
     const qty = num(form.qty);
     if (qty <= 0) return setErr("أدخل كمية أكبر من صفر");
-    const stock = finishedStock(form.productId, data);
-    if (stock < qty) return setErr(`المتاح ${stock} وحدة فقط (بعد خصم اللي مؤجر حاليًا)`);
+    const stock = finishedBalances.get(form.productId)?.quantityOnHand;
+    if (stock != null && stock < qty) return setErr(`المتاح ${stock} وحدة فقط (بعد خصم اللي مؤجر حاليًا)`);
     if (num(form.rentalFee) < 0) return setErr("قيمة الإيجار لا يمكن أن تكون سالبة");
     if (form.expectedReturn && form.expectedReturn < form.startDate) return setErr("تاريخ الاسترجاع المتوقع لا يمكن أن يسبق تاريخ البداية");
-    const e = await insertRow("rentals", {
-      product_id: form.productId, customer_id: form.customerId, qty,
-      rental_fee: num(form.rentalFee), start_date: form.startDate,
-      expected_return_date: form.expectedReturn || null, status: "active",
+    const commandId = form.commandId || globalThis.crypto.randomUUID();
+    if (!form.commandId) setForm((current) => ({ ...current, commandId }));
+    const result = await runCriticalMutation({
+      scope: "rentals:post",
+      mutate: () => supabase.rpc("post_rental", {
+        target_product: form.productId, target_customer: form.customerId, rental_quantity: qty,
+        total_rental_fee: num(form.rentalFee), starts_on: form.startDate,
+        expected_return_on: form.expectedReturn || null, rental_note: null, command_id: commandId,
+      }),
+      verify: async () => {
+        const verification = await supabase.from("rentals").select("id,status").eq("command_id", commandId).single();
+        return verification.error ? verification : verification.data?.status === "active";
+      },
+      refetch: () => Promise.all([refresh(), reloadInventory()]),
     });
-    if (e) return setErr(e);
-    setOk("تم تسجيل الإيجار وخصم الكمية من المتاح");
-    setForm({ productId: "", customerId: "", qty: "", rentalFee: "", startDate: todayStr(), expectedReturn: "" });
+    if (result.error) return setErr(result.mutationSaved
+      ? "تم إرسال الإيجار، لكن تعذر التحقق أو تحديث الشاشة. حدّث الصفحة؛ لا تُنشئ أمرًا جديدًا لنفس العملية."
+      : result.error.message);
+    setOk(result.refreshError ? "تم تسجيل الإيجار وخصم المخزون، لكن تعذر تحديث الشاشة. حدّث الصفحة بأمان." : "تم تسجيل الإيجار وخصم الكمية من مخزون المنتجات التامة");
+    setForm({ productId: "", customerId: "", qty: "", rentalFee: "", startDate: todayStr(), expectedReturn: "", commandId: "" });
   }
-  async function markReturned(r) {
+  async function confirmReturnRental() {
+    const { row, returnDate } = returnAction;
+    if (!returnDate) return setReturnAction((current) => ({ ...current, error: "تاريخ الاسترجاع مطلوب." }));
+    if (returnDate < row.start_date || returnDate > todayStr()) return setReturnAction((current) => ({ ...current, error: "تاريخ الاسترجاع يجب أن يكون بين تاريخ بداية الإيجار واليوم." }));
+    setReturnAction((current) => ({ ...current, busy: true, error: "" }));
     setErr(""); setOk("");
-    const mutationResult = await supabase.rpc("mark_rental_returned", { target_rental_id: r.id, target_return_date: todayStr() });
-    const result = await syncMutation({ scope: "rentals:return", mutationResult, refetch: refresh });
-    if (result.error) return setErr(result.error.message);
-    setOk("تم تسجيل إرجاع الصنف بنجاح");
+    const result = await runCriticalMutation({
+      scope: "rentals:return",
+      mutate: () => supabase.rpc("mark_rental_returned", { target_rental_id: row.id, target_return_date: returnDate }),
+      verify: async () => {
+        const verification = await supabase.from("rentals").select("status,return_date").eq("id", row.id).single();
+        return verification.error ? verification : verification.data?.status === "returned";
+      },
+      refetch: () => Promise.all([refresh(), reloadInventory()]),
+    });
+    if (result.error) return setReturnAction((current) => ({
+      ...current, busy: false,
+      error: result.mutationSaved
+        ? "وصل تسجيل الاسترجاع للخادم، لكن تعذر التحقق. حدّث الشاشة قبل إعادة المحاولة."
+        : result.error.message,
+    }));
+    setReturnAction(null);
+    setOk(result.refreshError
+      ? "تم تسجيل الاسترجاع وإعادة الكمية للمخزون، لكن تعذر تحديث الشاشة. حدّث الصفحة دون إعادة العملية."
+      : "تم تسجيل الاسترجاع وإعادة الكمية للمخزون بنجاح.");
   }
 
   const rentalProducts = data.products.filter((p) => !p.archived_at && (p.item_type || "sale") !== "sale");
 
-  async function cancelRental(r) {
-    const reason = window.prompt("سبب إلغاء الإيجار؟ سيبقى السجل محفوظًا وستعود الكمية للمتاح.");
-    if (!reason?.trim()) return;
-    if (!window.confirm("تأكيد إلغاء الإيجار مع الحفاظ على السجل التاريخي؟")) return;
+  async function confirmCancelRental() {
+    const { row, reason } = cancelAction;
+    setCancelAction((current)=>({...current,busy:true,error:""}));
     setErr(""); setOk("");
-    const mutationResult = await supabase.rpc("cancel_rental", { target_rental_id: r.id, reason: reason.trim() });
-    const result = await syncMutation({ scope: "rentals:cancel", mutationResult, refetch: refresh });
-    if (result.error) return setErr(result.error.message);
-    setOk("تم إلغاء الإيجار واستبعاده من الرصيد والمتاح مع حفظ أثر المراجعة.");
+    const result=await runCriticalMutation({scope:"rentals:cancel",mutate:()=>supabase.rpc("cancel_rental",{target_rental_id:row.id,reason:reason.trim()}),verify:async()=>{
+      const verification=await supabase.from("rentals").select("status,cancelled_at").eq("id",row.id).single();
+      return verification.error?verification:verification.data?.status==="cancelled";
+    },refetch:()=>Promise.all([refresh(),reloadInventory()])});
+    if(result.error)return setCancelAction((current)=>({...current,busy:false,error:result.mutationSaved?"وصل أمر الإلغاء للخادم، لكن تعذر التحقق. حدّث الشاشة قبل إعادة المحاولة.":result.error.message}));
+    setCancelAction(null);setOk(result.refreshError?"تم إلغاء الإيجار، لكن تعذر تحديث الشاشة. حدّث الصفحة دون إعادة الإلغاء.":"تم إلغاء الإيجار واستبعاده من الرصيد والمتاح مع حفظ أثر المراجعة.");
   }
 
   const activeRentals = data.rentals.filter((rental) => rental.status === "active");
@@ -1035,10 +1130,11 @@ function RentalsTab({ data, insertRow, refresh, canManage }) {
   return (
     <div>
       <SectionTitle eyebrow="التأجير" title="الإيجارات" icon={<CalendarClock size={14} />} />
+      {inventoryError && <Banner type="error">{inventoryError}</Banner>}
       <Card style={{ marginBottom: 18 }}>
         <div style={{ fontWeight: 700, marginBottom: 12 }}>عملية إيجار جديدة</div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <Field label="الصنف"><Select value={form.productId} onChange={(e) => setForm({ ...form, productId: e.target.value })}><option value="">اختر الصنف</option>{rentalProducts.map((p) => <option key={p.id} value={p.id}>{p.name} (متاح: {finishedStock(p.id, data)})</option>)}</Select></Field>
+          <Field label="الصنف"><Select value={form.productId} onChange={(e) => setForm({ ...form, productId: e.target.value })}><option value="">اختر الصنف</option>{rentalProducts.map((p) => <option key={p.id} value={p.id}>{p.name} (متاح: {finishedBalances.has(p.id) ? fmt(finishedBalances.get(p.id).quantityOnHand) : "—"})</option>)}</Select></Field>
           <Field label="العميل"><Select value={form.customerId} onChange={(e) => setForm({ ...form, customerId: e.target.value })}><option value="">اختر العميل</option>{data.customers.filter((c) => !c.archived_at).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</Select></Field>
           <Field label="الكمية"><Input type="number" value={form.qty} onChange={(e) => setForm({ ...form, qty: e.target.value })} /></Field>
           <Field label="قيمة الإيجار الإجمالية"><Input type="number" value={form.rentalFee} onChange={(e) => setForm({ ...form, rentalFee: e.target.value })} /></Field>
@@ -1047,7 +1143,7 @@ function RentalsTab({ data, insertRow, refresh, canManage }) {
         </div>
         <div style={{ marginTop: 12 }}><Btn onClick={submit}><Plus size={15} /> تسجيل الإيجار</Btn></div>
         {err && <Banner type="error">{err}</Banner>}
-        {ok && <Banner type="success">{ok}</Banner>}
+        {ok && <Banner type={operationFeedbackType(ok)}>{ok}</Banner>}
       </Card>
       <Card>
         {activeRentals.length === 0 ? <Empty text="لا توجد عمليات إيجار نشطة" /> : (
@@ -1058,9 +1154,9 @@ function RentalsTab({ data, insertRow, refresh, canManage }) {
               return (
                 <tr key={r.id}>
                   <Td>{p?.name || "—"}</Td><Td>{c?.name || "—"}</Td><Td>{r.qty}</Td>
-                  <Td>{fmt(r.rental_fee)} ج.م</Td><Td>{r.start_date}</Td><Td>{r.expected_return_date || "—"}</Td>
+                  <Td>{formatMoney(r.rental_fee)}</Td><Td>{r.start_date}</Td><Td>{r.expected_return_date || "—"}</Td>
                   <Td style={{ color: C.brass, fontWeight: 700 }}>مؤجر حاليًا</Td>
-                  <Td><div style={{display:"flex",gap:8,alignItems:"center"}}><Btn variant="ghost" onClick={() => markReturned(r)} style={{ fontSize: 12, padding: "5px 10px" }}>تسجيل الاسترجاع</Btn>{canManage && <button aria-label="إلغاء الإيجار" onClick={() => cancelRental(r)} style={{background:"none",border:"none",cursor:"pointer",color:C.red}}><X size={15}/></button>}</div></Td>
+                  <Td><div style={{display:"flex",gap:8,alignItems:"center"}}><Btn variant="ghost" onClick={() => setReturnAction({row:r,returnDate:todayStr(),busy:false,error:""})} style={{ fontSize: 12, padding: "5px 10px" }}>تسجيل الاسترجاع</Btn>{canManage && <button aria-label="إلغاء الإيجار" title="إلغاء الإيجار وعكس أثره" onClick={() => setCancelAction({row:r,reason:"",busy:false,error:""})} style={{background:"none",border:"none",cursor:"pointer",color:C.red}}><X size={15}/></button>}</div></Td>
                 </tr>
               );
             })}
@@ -1068,49 +1164,83 @@ function RentalsTab({ data, insertRow, refresh, canManage }) {
         )}
       </Card>
       <ArchiveSection title="سجل الإيجارات المكتملة والملغاة" count={rentalHistory.length} helpText="الإرجاعات والإلغاءات نهائية ومحفوظة للمراجعة، ولا تزاحم الإيجارات النشطة.">
-        {rentalHistory.length === 0 ? <Empty text="لا يوجد سجل إيجارات سابق" /> : <Table headers={["الصنف", "العميل", "الكمية", "القيمة", "الحالة", "التاريخ النهائي", "السبب"]}>{[...rentalHistory].reverse().map((r) => <tr key={r.id}><Td>{data.products.find((p) => p.id === r.product_id)?.name || "—"}</Td><Td>{data.customers.find((c) => c.id === r.customer_id)?.name || "—"}</Td><Td>{r.qty}</Td><Td>{fmt(r.rental_fee)} ج.م</Td><Td style={{color:r.status === "returned" ? C.green : C.red,fontWeight:700}}>{r.status === "returned" ? "تم الاسترجاع" : "ملغي"}</Td><Td>{r.status === "returned" ? r.return_date || "—" : r.cancelled_at ? new Date(r.cancelled_at).toLocaleString("ar-EG") : "—"}</Td><Td>{r.cancellation_reason || "—"}</Td></tr>)}</Table>}
+        {rentalHistory.length === 0 ? <Empty text="لا يوجد سجل إيجارات سابق" /> : <Table headers={["الصنف", "العميل", "الكمية", "القيمة", "الحالة", "التاريخ النهائي", "السبب"]}>{[...rentalHistory].reverse().map((r) => <tr key={r.id}><Td>{data.products.find((p) => p.id === r.product_id)?.name || "—"}</Td><Td>{data.customers.find((c) => c.id === r.customer_id)?.name || "—"}</Td><Td>{r.qty}</Td><Td>{formatMoney(r.rental_fee)}</Td><Td style={{color:r.status === "returned" ? C.green : C.red,fontWeight:700}}>{r.status === "returned" ? "تم الاسترجاع" : "ملغي"}</Td><Td>{r.status === "returned" ? r.return_date || "—" : r.cancelled_at ? new Date(r.cancelled_at).toLocaleString("ar-EG") : "—"}</Td><Td>{r.cancellation_reason || "—"}</Td></tr>)}</Table>}
       </ArchiveSection>
+      <ConfirmDialog open={Boolean(returnAction)} title="تسجيل استرجاع الإيجار" description="سيُغلق الإيجار وتعود الكمية إلى المخزون المتاح. لا يمكن التراجع عن الاسترجاع من هذه الشاشة." confirmLabel="تأكيد الاسترجاع" busy={returnAction?.busy} error={returnAction?.error} onConfirm={confirmReturnRental} onCancel={()=>setReturnAction(null)}>
+        <Field label="تاريخ الاسترجاع"><Input type="date" min={returnAction?.row?.start_date || undefined} max={todayStr()} value={returnAction?.returnDate || ""} onChange={(event)=>setReturnAction((current)=>({...current,returnDate:event.target.value,error:""}))}/></Field>
+      </ConfirmDialog>
+      <ConfirmDialog open={Boolean(cancelAction)} title="إلغاء عملية الإيجار" description="سيبقى السجل محفوظًا وستعود الكمية للمتاح. الطلب المكرر لن يطبق الإلغاء مرتين." confirmLabel="إلغاء وعكس" danger reasonRequired reason={cancelAction?.reason||""} busy={cancelAction?.busy} error={cancelAction?.error} onReasonChange={(reason)=>setCancelAction((current)=>({...current,reason,error:""}))} onConfirm={confirmCancelRental} onCancel={()=>setCancelAction(null)}/>
     </div>
   );
 }
 
 /* -------------------------------- Suppliers --------------------------------- */
-function SuppliersTab({ data, insertRow, updateRow, canManage }) {
+function SuppliersTab({ data, refresh, canManage }) {
   const [name, setName] = useState(""); const [phone, setPhone] = useState("");
   const [editingId, setEditingId] = useState(null);
-  const [payment, setPayment] = useState({ supplierId: "", amount: "", date: todayStr() });
+  const [saveCommandId, setSaveCommandId] = useState("");
+  const [payment, setPayment] = useState({ supplierId: "", amount: "", date: todayStr(), commandId: "" });
   const [err, setErr] = useState(""); const [expanded, setExpanded] = useState(null);
   const [search, setSearch] = useState("");
+  const [pendingPayment, setPendingPayment] = useState(null); const [paymentBusy, setPaymentBusy] = useState(false);
+  const [archiveAction, setArchiveAction] = useState(null);
+  const [supplierInvoices, setSupplierInvoices] = useState([]);
+  const supplierData = useMemo(() => ({ ...data, supplierInvoices }), [data, supplierInvoices]);
 
-  function startEdit(s) { setEditingId(s.id); setName(s.name); setPhone(s.phone || ""); }
-  function cancelEdit() { setEditingId(null); setName(""); setPhone(""); setErr(""); }
+  const loadSupplierInvoices = useCallback(async () => {
+    const result = await supabase.rpc("get_supplier_invoices_visible");
+    if (result.error) { setErr(result.error.message); return result; }
+    setSupplierInvoices(result.data || []); return result;
+  }, []);
+  useEffect(() => { void loadSupplierInvoices(); }, [loadSupplierInvoices]);
+  async function refreshSupplierData() { const [base, invoices] = await Promise.all([refresh(), loadSupplierInvoices()]); return { error: base?.error || invoices?.error || null }; }
+
+  function startEdit(s) { setEditingId(s.id); setName(s.name); setPhone(s.phone || ""); setSaveCommandId(""); }
+  function cancelEdit() { setEditingId(null); setName(""); setPhone(""); setSaveCommandId(""); setErr(""); }
   async function submitSupplier() {
     if (!name.trim()) return setErr("اكتب اسم المورد");
-    const payload = { name: name.trim(), phone: phone.trim() };
-    const e = editingId ? await updateRow("suppliers", editingId, payload) : await insertRow("suppliers", payload);
-    if (e) return setErr(e);
-    setName(""); setPhone(""); setEditingId(null); setErr("");
+    const commandId = saveCommandId || globalThis.crypto.randomUUID();
+    if (!saveCommandId) setSaveCommandId(commandId);
+    const result = await runCriticalMutation({ scope: editingId ? "suppliers:update" : "suppliers:create", mutate: () => supabase.rpc("save_supplier", { target_id: editingId, supplier_name: name.trim(), supplier_phone: phone.trim() || null, command_id: commandId }), verify: async () => {
+      const verification = editingId ? await supabase.from("suppliers").select("id").eq("id", editingId).single() : await supabase.from("suppliers").select("id").eq("command_id", commandId).single();
+      return verification.error ? verification : Boolean(verification.data?.id);
+    }, refetch: refreshSupplierData });
+    if (result.error) return setErr(result.mutationSaved ? "تم إرسال المورد، لكن تعذر التحقق. حدّث الصفحة قبل إعادة المحاولة." : result.error.message);
+    setName(""); setPhone(""); setEditingId(null); setSaveCommandId(""); setErr("");
+  }
+  async function commitPayment(payload = payment) {
+    setPaymentBusy(true); setErr("");
+    const commandId = payload.commandId || globalThis.crypto.randomUUID();
+    if (!payload.commandId) { setPayment((current) => ({ ...current, commandId })); setPendingPayment((current) => current ? ({ ...current, commandId }) : current); }
+    const result = await supabase.rpc("record_supplier_payment", { target_supplier: payload.supplierId, payment_amount: num(payload.amount), paid_on: payload.date, payment_note: null, command_id: commandId });
+    if (result.error) { setPaymentBusy(false); return setErr(result.error.message); }
+    const refreshed = await refreshSupplierData();
+    setPaymentBusy(false); setPendingPayment(null);
+    if (refreshed?.error) return setErr("تم حفظ الدفعة، لكن تعذر تحديث الشاشة. حدّث الصفحة بأمان؛ لا تعِد تسجيل الدفعة.");
+    setPayment({ supplierId: "", amount: "", date: todayStr(), commandId: "" });
   }
   async function addPayment() {
     if (!payment.supplierId) return setErr("اختر المورد");
     if (num(payment.amount) <= 0) return setErr("أدخل مبلغ أكبر من صفر");
-    const e = await insertRow("supplierPayments", { supplier_id: payment.supplierId, amount: num(payment.amount), payment_date: payment.date });
-    if (e) return setErr(e);
-    setPayment({ supplierId: "", amount: "", date: todayStr() }); setErr("");
+    const due = supplierBalances(payment.supplierId, supplierData).due;
+    if (num(payment.amount) > due) return setPendingPayment({ ...payment, due, advance: num(payment.amount) - due });
+    await commitPayment();
   }
   async function archiveSupplier(supplier) {
-    const reason = window.prompt(`سبب أرشفة المورد "${supplier.name}"؟`);
-    if (!reason?.trim()) return;
-    if (!window.confirm("سيُمنع المورد من المعاملات الجديدة مع الاحتفاظ بكل تاريخه. متابعة؟")) return;
-    const e = await updateRow("suppliers", supplier.id, { archived_at: new Date().toISOString(), archived_reason: reason.trim() });
-    if (e) return setErr(e);
-    if (editingId === supplier.id) cancelEdit();
-    setErr("");
+    setArchiveAction({ row: supplier, archive: true, reason: "", busy: false, error: "" });
   }
   async function restoreSupplier(supplier) {
-    if (!window.confirm(`استعادة المورد "${supplier.name}" للمعاملات الجديدة؟`)) return;
-    const e = await updateRow("suppliers", supplier.id, { archived_at: null, archived_reason: null });
-    if (e) setErr(e); else setErr("");
+    setArchiveAction({ row: supplier, archive: false, reason: "", busy: false, error: "" });
+  }
+  async function confirmSupplierArchive() {
+    const action = archiveAction;
+    if (action.archive && !action.reason.trim()) return setArchiveAction((current) => ({ ...current, error: "سبب الأرشفة مطلوب" }));
+    setArchiveAction((current) => ({ ...current, busy: true, error: "" }));
+    const { error } = await supabase.rpc("set_commercial_party_archived", { party_type: "supplier", target_id: action.row.id, archive: action.archive, reason: action.reason.trim() || null });
+    if (error) return setArchiveAction((current) => ({ ...current, busy: false, error: error.message }));
+    await refreshSupplierData();
+    if (editingId === action.row.id) cancelEdit();
+    setArchiveAction(null); setErr("");
   }
   const activeSuppliers = data.suppliers.filter((supplier) => !supplier.archived_at);
   const archivedSuppliers = data.suppliers.filter((supplier) => supplier.archived_at);
@@ -1135,29 +1265,29 @@ function SuppliersTab({ data, insertRow, updateRow, canManage }) {
       <Card style={{ marginBottom: 18 }}>
         <div style={{ fontWeight: 700, marginBottom: 12 }}>تسجيل دفعة لمورد</div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <Field label="المورد"><Select value={payment.supplierId} onChange={(e) => setPayment({ ...payment, supplierId: e.target.value })}><option value="">اختر المورد</option>{activeSuppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</Select></Field>
-          <Field label="المبلغ"><Input type="number" value={payment.amount} onChange={(e) => setPayment({ ...payment, amount: e.target.value })} /></Field>
-          <Field label="التاريخ"><Input type="date" value={payment.date} onChange={(e) => setPayment({ ...payment, date: e.target.value })} /></Field>
+          <Field label="المورد"><Select value={payment.supplierId} onChange={(e) => setPayment({ ...payment, supplierId: e.target.value, commandId:"" })}><option value="">اختر المورد</option>{activeSuppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</Select></Field>
+          <Field label="المبلغ"><Input type="number" value={payment.amount} onChange={(e) => setPayment({ ...payment, amount: e.target.value, commandId:"" })} /></Field>
+          <Field label="التاريخ"><Input type="date" value={payment.date} onChange={(e) => setPayment({ ...payment, date: e.target.value, commandId:"" })} /></Field>
         </div>
-        <div style={{ marginTop: 12 }}><Btn onClick={addPayment}><Wallet size={15} /> تسجيل الدفعة</Btn></div>
+        <div style={{ marginTop: 12 }}><Btn disabled={paymentBusy} onClick={addPayment}><Wallet size={15} /> {paymentBusy ? "جارِ التسجيل..." : "تسجيل الدفعة"}</Btn></div>
         {err && <Banner>{err}</Banner>}
       </Card>
       <Card>
         <SearchBox value={search} onChange={setSearch} placeholder="ابحث باسم المورد..." />
         {filtered.length === 0 ? <Empty text="لا توجد نتائج" /> : (
-          <Table headers={["المورد", "الهاتف", "إجمالي المشتريات", "إجمالي المدفوع", "الرصيد المستحق", ""]}>
-            {filtered.map((s) => { const bal = supplierBalance(s.id, data); return (
+          <Table headers={["المورد", "الهاتف", "إجمالي المشتريات", "إجمالي المدفوع", "المستحق", "السلفة", ""]}>
+            {filtered.map((s) => { const balances = supplierBalances(s.id, supplierData); const bal = balances.due; return (
               <React.Fragment key={s.id}>
                 <tr>
-                  <Td>{s.name}</Td><Td>{s.phone || "—"}</Td><Td>{fmt(supplierPurchaseTotal(s.id, data))} ج.م</Td><Td>{fmt(supplierPaymentTotal(s.id, data))} ج.م</Td>
-                  <Td style={{ fontWeight: 700, color: bal > 0 ? C.red : C.green }}>{fmt(bal)} ج.م</Td>
+                  <Td>{s.name}</Td><Td>{s.phone || "—"}</Td><Td>{formatMoney(supplierPurchaseTotal(s.id, supplierData))}</Td><Td>{formatMoney(supplierPaymentTotal(s.id, supplierData))}</Td>
+                  <Td style={{ fontWeight: 700, color: bal > 0 ? C.red : C.green }}>{formatMoney(bal)}</Td><Td style={{fontWeight:700,color:C.green}}>{formatMoney(balances.advance)}{balances.legacyUnclassified>0&&<small style={{display:"block",color:C.red}}>يوجد {balances.legacyUnclassified} حركة قديمة غير مصنفة</small>}</Td>
                   <Td style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                    <button onClick={() => startEdit(s)} style={{ background: "none", border: "none", cursor: "pointer", color: C.brass }}><Pencil size={15} /></button>
+                    <button aria-label={`تعديل ${s.name}`} title="تعديل المورد" onClick={() => startEdit(s)} style={{ background: "none", border: "none", cursor: "pointer", color: C.brass }}><Pencil size={15} /></button>
                     {canManage && <button aria-label={`أرشفة ${s.name}`} onClick={() => archiveSupplier(s)} style={{ background: "none", border: "none", cursor: "pointer", color: C.red }}><Archive size={15} /></button>}
                     <button onClick={() => setExpanded(expanded === s.id ? null : s.id)} style={{ background: "none", border: "none", color: C.brass, cursor: "pointer", fontSize: 12.5 }}>{expanded === s.id ? "إخفاء الحركات" : "عرض الحركات"}</button>
                   </Td>
                 </tr>
-                {expanded === s.id && <tr><Td colSpan={6} style={{ background: C.panelAlt }}><SupplierLedger supplierId={s.id} data={data} /></Td></tr>}
+                {expanded === s.id && <tr><Td colSpan={7} style={{ background: C.panelAlt }}><SupplierLedger supplierId={s.id} data={supplierData} /><CommercialAdvancesPanel partyType="supplier" partyId={s.id} canReverse={canManage} onChanged={refreshSupplierData}/></Td></tr>}
               </React.Fragment>
             ); })}
           </Table>
@@ -1170,54 +1300,77 @@ function SuppliersTab({ data, insertRow, updateRow, canManage }) {
           </Table>
         )}
       </ArchiveSection>
+      <ConfirmDialog open={Boolean(pendingPayment)} title="تسجيل سلفة مورد" description={pendingPayment ? `المستحق ${formatMoney(pendingPayment.due)}، وسيُصنف المبلغ الزائد ${formatMoney(pendingPayment.advance)} كسلفة مورد متاحة للتخصيص لاحقًا.` : ""} confirmLabel="تسجيل الدفعة والسلفة" danger={false} busy={paymentBusy} onConfirm={() => pendingPayment && commitPayment(pendingPayment)} onCancel={() => !paymentBusy && setPendingPayment(null)} />
+      <ConfirmDialog open={Boolean(archiveAction)} title={archiveAction?.archive ? "أرشفة المورد" : "استعادة المورد"} description={archiveAction?.archive ? "سيُمنع المورد من المعاملات الجديدة مع الاحتفاظ بكل تاريخه." : "سيعود المورد للظهور في المعاملات الجديدة."} confirmLabel={archiveAction?.archive ? "أرشفة" : "استعادة"} danger={archiveAction?.archive} reasonRequired={archiveAction?.archive} reason={archiveAction?.reason || ""} busy={archiveAction?.busy} error={archiveAction?.error} onReasonChange={(reason) => setArchiveAction((current) => ({ ...current, reason, error: "" }))} onConfirm={confirmSupplierArchive} onCancel={() => setArchiveAction(null)} />
     </div>
   );
 }
 function SupplierLedger({ supplierId, data }) {
   const purchases = data.materialPurchases.filter((p) => p.supplier_id === supplierId).map((p) => ({ date: p.purchase_date, type: "شراء", amount: p.qty * p.unit_cost, note: data.materials.find((m) => m.id === p.material_id)?.name }));
-  const payments = data.supplierPayments.filter((p) => p.supplier_id === supplierId).map((p) => ({ date: p.payment_date, type: "دفعة", amount: -p.amount, note: p.note }));
-  const rows = [...purchases, ...payments].sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+  const invoices = (data.supplierInvoices || []).filter((invoice) => invoice.supplier_id === supplierId && ["approved", "paid"].includes(invoice.status)).map((invoice) => ({ date: invoice.invoice_date, type: "فاتورة مورد", amount: invoice.total_amount, note: invoice.invoice_number }));
+  const payments = data.supplierPayments.filter((p) => p.supplier_id === supplierId).map((p) => ({ date: p.payment_date, type: transactionClassLabel(p), amount: -p.amount, note: p.note }));
+  const rows = [...purchases, ...invoices, ...payments].sort((a, b) => (a.date || "").localeCompare(b.date || ""));
   if (rows.length === 0) return <div style={{ color: C.muted, fontSize: 13 }}>لا توجد حركات مسجلة</div>;
-  return <Table headers={["التاريخ", "النوع", "البيان", "المبلغ"]}>{rows.map((r, i) => <tr key={i}><Td>{r.date}</Td><Td style={{ color: r.type === "شراء" ? C.red : C.green }}>{r.type}</Td><Td>{r.note || "—"}</Td><Td>{fmt(Math.abs(r.amount))} ج.م</Td></tr>)}</Table>;
+  return <Table headers={["التاريخ", "النوع", "البيان", "المبلغ"]}>{rows.map((r, i) => <tr key={i}><Td>{r.date}</Td><Td style={{ color: r.type === "شراء" ? C.red : C.green }}>{r.type}</Td><Td>{r.note || "—"}</Td><Td>{formatMoney(Math.abs(r.amount))}</Td></tr>)}</Table>;
 }
 
 /* -------------------------------- Customers --------------------------------- */
-function CustomersTab({ data, insertRow, updateRow, canManage }) {
+function CustomersTab({ data, refresh, canManage }) {
   const [name, setName] = useState(""); const [phone, setPhone] = useState("");
   const [editingId, setEditingId] = useState(null);
-  const [receipt, setReceipt] = useState({ customerId: "", amount: "", date: todayStr() });
+  const [saveCommandId, setSaveCommandId] = useState("");
+  const [receipt, setReceipt] = useState({ customerId: "", amount: "", date: todayStr(), commandId: "" });
   const [err, setErr] = useState(""); const [expanded, setExpanded] = useState(null);
   const [search, setSearch] = useState("");
+  const [pendingReceipt, setPendingReceipt] = useState(null); const [receiptBusy, setReceiptBusy] = useState(false);
+  const [archiveAction, setArchiveAction] = useState(null);
 
-  function startEdit(c) { setEditingId(c.id); setName(c.name); setPhone(c.phone || ""); }
-  function cancelEdit() { setEditingId(null); setName(""); setPhone(""); setErr(""); }
+  function startEdit(c) { setEditingId(c.id); setName(c.name); setPhone(c.phone || ""); setSaveCommandId(""); }
+  function cancelEdit() { setEditingId(null); setName(""); setPhone(""); setSaveCommandId(""); setErr(""); }
   async function submitCustomer() {
     if (!name.trim()) return setErr("اكتب اسم العميل");
-    const payload = { name: name.trim(), phone: phone.trim() };
-    const e = editingId ? await updateRow("customers", editingId, payload) : await insertRow("customers", payload);
-    if (e) return setErr(e);
-    setName(""); setPhone(""); setEditingId(null); setErr("");
+    const commandId = saveCommandId || globalThis.crypto.randomUUID();
+    if (!saveCommandId) setSaveCommandId(commandId);
+    const result = await runCriticalMutation({ scope: editingId ? "customers:update" : "customers:create", mutate: () => supabase.rpc("save_customer", { target_id: editingId, customer_name: name.trim(), customer_phone: phone.trim() || null, command_id: commandId }), verify: async () => {
+      const verification = editingId ? await supabase.from("customers").select("id").eq("id", editingId).single() : await supabase.from("customers").select("id").eq("command_id", commandId).single();
+      return verification.error ? verification : Boolean(verification.data?.id);
+    }, refetch: refresh });
+    if (result.error) return setErr(result.mutationSaved ? "تم إرسال العميل، لكن تعذر التحقق. حدّث الصفحة قبل إعادة المحاولة." : result.error.message);
+    setName(""); setPhone(""); setEditingId(null); setSaveCommandId(""); setErr("");
+  }
+  async function commitReceipt(payload = receipt) {
+    setReceiptBusy(true); setErr("");
+    const commandId = payload.commandId || globalThis.crypto.randomUUID();
+    if (!payload.commandId) { setReceipt((current) => ({ ...current, commandId })); setPendingReceipt((current) => current ? ({ ...current, commandId }) : current); }
+    const result = await supabase.rpc("record_customer_receipt", { target_customer: payload.customerId, receipt_amount: num(payload.amount), received_on: payload.date, receipt_note: null, command_id: commandId });
+    if (result.error) { setReceiptBusy(false); return setErr(result.error.message); }
+    const refreshed = await refresh();
+    setReceiptBusy(false); setPendingReceipt(null);
+    if (refreshed?.error) return setErr("تم حفظ التحصيل، لكن تعذر تحديث الشاشة. حدّث الصفحة بأمان؛ لا تعِد تسجيل التحصيل.");
+    setReceipt({ customerId: "", amount: "", date: todayStr(), commandId: "" });
   }
   async function addReceipt() {
     if (!receipt.customerId) return setErr("اختر العميل");
     if (num(receipt.amount) <= 0) return setErr("أدخل مبلغ أكبر من صفر");
-    const e = await insertRow("customerReceipts", { customer_id: receipt.customerId, amount: num(receipt.amount), receipt_date: receipt.date });
-    if (e) return setErr(e);
-    setReceipt({ customerId: "", amount: "", date: todayStr() }); setErr("");
+    const due = customerBalances(receipt.customerId, data).due;
+    if (num(receipt.amount) > due) return setPendingReceipt({ ...receipt, due, advance: num(receipt.amount) - due });
+    await commitReceipt();
   }
   async function archiveCustomer(customer) {
-    const reason = window.prompt(`سبب أرشفة العميل "${customer.name}"؟`);
-    if (!reason?.trim()) return;
-    if (!window.confirm("سيُمنع العميل من المعاملات الجديدة مع الاحتفاظ بكل تاريخه. متابعة؟")) return;
-    const e = await updateRow("customers", customer.id, { archived_at: new Date().toISOString(), archived_reason: reason.trim() });
-    if (e) return setErr(e);
-    if (editingId === customer.id) cancelEdit();
-    setErr("");
+    setArchiveAction({ row: customer, archive: true, reason: "", busy: false, error: "" });
   }
   async function restoreCustomer(customer) {
-    if (!window.confirm(`استعادة العميل "${customer.name}" للمعاملات الجديدة؟`)) return;
-    const e = await updateRow("customers", customer.id, { archived_at: null, archived_reason: null });
-    if (e) setErr(e); else setErr("");
+    setArchiveAction({ row: customer, archive: false, reason: "", busy: false, error: "" });
+  }
+  async function confirmCustomerArchive() {
+    const action = archiveAction;
+    if (action.archive && !action.reason.trim()) return setArchiveAction((current) => ({ ...current, error: "سبب الأرشفة مطلوب" }));
+    setArchiveAction((current) => ({ ...current, busy: true, error: "" }));
+    const { error } = await supabase.rpc("set_commercial_party_archived", { party_type: "customer", target_id: action.row.id, archive: action.archive, reason: action.reason.trim() || null });
+    if (error) return setArchiveAction((current) => ({ ...current, busy: false, error: error.message }));
+    await refresh();
+    if (editingId === action.row.id) cancelEdit();
+    setArchiveAction(null); setErr("");
   }
   const activeCustomers = data.customers.filter((customer) => !customer.archived_at);
   const archivedCustomers = data.customers.filter((customer) => customer.archived_at);
@@ -1242,29 +1395,29 @@ function CustomersTab({ data, insertRow, updateRow, canManage }) {
       <Card style={{ marginBottom: 18 }}>
         <div style={{ fontWeight: 700, marginBottom: 12 }}>تسجيل تحصيل من عميل</div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <Field label="العميل"><Select value={receipt.customerId} onChange={(e) => setReceipt({ ...receipt, customerId: e.target.value })}><option value="">اختر العميل</option>{activeCustomers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</Select></Field>
-          <Field label="المبلغ"><Input type="number" value={receipt.amount} onChange={(e) => setReceipt({ ...receipt, amount: e.target.value })} /></Field>
-          <Field label="التاريخ"><Input type="date" value={receipt.date} onChange={(e) => setReceipt({ ...receipt, date: e.target.value })} /></Field>
+          <Field label="العميل"><Select value={receipt.customerId} onChange={(e) => setReceipt({ ...receipt, customerId: e.target.value, commandId:"" })}><option value="">اختر العميل</option>{activeCustomers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</Select></Field>
+          <Field label="المبلغ"><Input type="number" value={receipt.amount} onChange={(e) => setReceipt({ ...receipt, amount: e.target.value, commandId:"" })} /></Field>
+          <Field label="التاريخ"><Input type="date" value={receipt.date} onChange={(e) => setReceipt({ ...receipt, date: e.target.value, commandId:"" })} /></Field>
         </div>
-        <div style={{ marginTop: 12 }}><Btn onClick={addReceipt}><Wallet size={15} /> تسجيل التحصيل</Btn></div>
+        <div style={{ marginTop: 12 }}><Btn disabled={receiptBusy} onClick={addReceipt}><Wallet size={15} /> {receiptBusy ? "جارِ التسجيل..." : "تسجيل التحصيل"}</Btn></div>
         {err && <Banner>{err}</Banner>}
       </Card>
       <Card>
         <SearchBox value={search} onChange={setSearch} placeholder="ابحث باسم العميل..." />
         {filtered.length === 0 ? <Empty text="لا توجد نتائج" /> : (
-          <Table headers={["العميل", "الهاتف", "إجمالي المبيعات والإيجارات", "إجمالي التحصيل", "الرصيد المستحق", ""]}>
-            {filtered.map((c) => { const bal = customerBalance(c.id, data); return (
+          <Table headers={["العميل", "الهاتف", "إجمالي المبيعات والإيجارات", "إجمالي التحصيل", "المستحق", "السلفة", ""]}>
+            {filtered.map((c) => { const balances = customerBalances(c.id, data); const bal = balances.due; return (
               <React.Fragment key={c.id}>
                 <tr>
-                  <Td>{c.name}</Td><Td>{c.phone || "—"}</Td><Td>{fmt(customerSaleTotal(c.id, data) + customerRentalTotal(c.id, data))} ج.م</Td><Td>{fmt(customerReceiptTotal(c.id, data))} ج.م</Td>
-                  <Td style={{ fontWeight: 700, color: bal > 0 ? C.brass : C.green }}>{fmt(bal)} ج.م</Td>
+                  <Td>{c.name}</Td><Td>{c.phone || "—"}</Td><Td>{formatMoney(customerSaleTotal(c.id, data) + customerRentalTotal(c.id, data))}</Td><Td>{formatMoney(customerReceiptTotal(c.id, data))}</Td>
+                  <Td style={{ fontWeight: 700, color: bal > 0 ? C.brass : C.green }}>{formatMoney(bal)}</Td><Td style={{fontWeight:700,color:C.green}}>{formatMoney(balances.advance)}{balances.legacyUnclassified>0&&<small style={{display:"block",color:C.red}}>يوجد {balances.legacyUnclassified} حركة قديمة غير مصنفة</small>}</Td>
                   <Td style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                    <button onClick={() => startEdit(c)} style={{ background: "none", border: "none", cursor: "pointer", color: C.brass }}><Pencil size={15} /></button>
+                    <button aria-label={`تعديل ${c.name}`} title="تعديل العميل" onClick={() => startEdit(c)} style={{ background: "none", border: "none", cursor: "pointer", color: C.brass }}><Pencil size={15} /></button>
                     {canManage && <button aria-label={`أرشفة ${c.name}`} onClick={() => archiveCustomer(c)} style={{ background: "none", border: "none", cursor: "pointer", color: C.red }}><Archive size={15} /></button>}
                     <button onClick={() => setExpanded(expanded === c.id ? null : c.id)} style={{ background: "none", border: "none", color: C.brass, cursor: "pointer", fontSize: 12.5 }}>{expanded === c.id ? "إخفاء الحركات" : "عرض الحركات"}</button>
                   </Td>
                 </tr>
-                {expanded === c.id && <tr><Td colSpan={6} style={{ background: C.panelAlt }}><CustomerLedger customerId={c.id} data={data} /></Td></tr>}
+                {expanded === c.id && <tr><Td colSpan={7} style={{ background: C.panelAlt }}><CustomerLedger customerId={c.id} data={data} /><CommercialAdvancesPanel partyType="customer" partyId={c.id} canReverse={canManage} onChanged={refresh}/></Td></tr>}
               </React.Fragment>
             ); })}
           </Table>
@@ -1277,88 +1430,51 @@ function CustomersTab({ data, insertRow, updateRow, canManage }) {
           </Table>
         )}
       </ArchiveSection>
+      <ConfirmDialog open={Boolean(pendingReceipt)} title="تسجيل سلفة عميل" description={pendingReceipt ? `المستحق ${formatMoney(pendingReceipt.due)}، وسيُصنف المبلغ الزائد ${formatMoney(pendingReceipt.advance)} كسلفة عميل متاحة للتخصيص لاحقًا.` : ""} confirmLabel="تسجيل التحصيل والسلفة" busy={receiptBusy} onConfirm={() => pendingReceipt && commitReceipt(pendingReceipt)} onCancel={() => !receiptBusy && setPendingReceipt(null)} />
+      <ConfirmDialog open={Boolean(archiveAction)} title={archiveAction?.archive ? "أرشفة العميل" : "استعادة العميل"} description={archiveAction?.archive ? "سيُمنع العميل من المعاملات الجديدة مع الاحتفاظ بكل تاريخه." : "سيعود العميل للظهور في المعاملات الجديدة."} confirmLabel={archiveAction?.archive ? "أرشفة" : "استعادة"} danger={archiveAction?.archive} reasonRequired={archiveAction?.archive} reason={archiveAction?.reason || ""} busy={archiveAction?.busy} error={archiveAction?.error} onReasonChange={(reason) => setArchiveAction((current) => ({ ...current, reason, error: "" }))} onConfirm={confirmCustomerArchive} onCancel={() => setArchiveAction(null)} />
     </div>
   );
 }
 function CustomerLedger({ customerId, data }) {
   const sales = data.sales.filter((s) => s.customer_id === customerId).map((s) => ({ date: s.sale_date, type: s.status === "cancelled" ? "بيع ملغي" : "بيع", amount: s.status === "cancelled" ? 0 : s.total, note: `${data.products.find((p) => p.id === s.product_id)?.name || "—"}${s.status === "cancelled" ? ` — ${s.cancellation_reason || "ملغي"}` : ""}` }));
   const rentals = data.rentals.filter((r) => r.customer_id === customerId).map((r) => ({ date: r.start_date, type: r.status === "cancelled" ? "إيجار ملغي" : "إيجار", amount: r.status === "cancelled" ? 0 : r.rental_fee, note: `${data.products.find((p) => p.id === r.product_id)?.name || "—"}${r.status === "cancelled" ? ` — ${r.cancellation_reason || "ملغي"}` : ""}` }));
-  const receipts = data.customerReceipts.filter((r) => r.customer_id === customerId).map((r) => ({ date: r.receipt_date, type: "تحصيل", amount: -r.amount, note: r.note }));
+  const receipts = data.customerReceipts.filter((r) => r.customer_id === customerId).map((r) => ({ date: r.receipt_date, type: transactionClassLabel(r), amount: -r.amount, note: r.note }));
   const rows = [...sales, ...rentals, ...receipts].sort((a, b) => (a.date || "").localeCompare(b.date || ""));
   if (rows.length === 0) return <div style={{ color: C.muted, fontSize: 13 }}>لا توجد حركات مسجلة</div>;
-  return <Table headers={["التاريخ", "النوع", "البيان", "المبلغ"]}>{rows.map((r, i) => <tr key={i}><Td>{r.date}</Td><Td style={{ color: r.type === "تحصيل" ? C.green : C.brass }}>{r.type}</Td><Td>{r.note || "—"}</Td><Td>{fmt(Math.abs(r.amount))} ج.م</Td></tr>)}</Table>;
+  return <Table headers={["التاريخ", "النوع", "البيان", "المبلغ"]}>{rows.map((r, i) => <tr key={i}><Td>{r.date}</Td><Td style={{ color: r.type === "تحصيل" ? C.green : C.brass }}>{r.type}</Td><Td>{r.note || "—"}</Td><Td>{formatMoney(Math.abs(r.amount))}</Td></tr>)}</Table>;
 }
 
-
-/* -------------------------------- Purchases -------------------------------- */
-function PurchasesTab({ data, insertRow, deleteRow, canDelete }) {
-  const [form, setForm] = useState({ materialId: "", supplierId: "", qty: "", unitCost: "", date: todayStr() });
-  const [err, setErr] = useState("");
-  const [ok, setOk] = useState("");
-
-  async function submit() {
-    setErr(""); setOk("");
-    if (!form.materialId) return setErr("اختر المادة الخام");
-    if (num(form.qty) <= 0) return setErr("أدخل كمية أكبر من صفر");
-    if (num(form.unitCost) < 0) return setErr("سعر الوحدة غير صحيح");
-    const e = await insertRow("materialPurchases", {
-      material_id: form.materialId,
-      supplier_id: form.supplierId || null,
-      qty: num(form.qty),
-      unit_cost: num(form.unitCost),
-      purchase_date: form.date,
-    });
-    if (e) return setErr(e);
-    setOk("تم تسجيل المشتريات وزيادة المخزون بنجاح");
-    setForm({ materialId: "", supplierId: "", qty: "", unitCost: "", date: todayStr() });
-  }
-
-  async function remove(row) {
-    if (!window.confirm("متأكد من حذف عملية الشراء؟ سيتم تخفيض المخزون.")) return;
-    const e = await deleteRow("materialPurchases", row.id);
-    if (e) setErr(e);
-  }
-
-  const total = data.materialPurchases.reduce((sum, p) => sum + num(p.qty) * num(p.unit_cost), 0);
-  return <div>
-    <SectionTitle eyebrow="التوريد" title="المشتريات" icon={<ClipboardList size={14} />} />
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14, marginBottom: 18 }}>
-      <Card><div style={{ color: C.muted, fontSize: 13 }}>إجمالي قيمة المشتريات</div><div style={{ color: C.brass, fontSize: 23, fontWeight: 800, marginTop: 8 }}>{fmt(total)} ج.م</div></Card>
-      <Card><div style={{ color: C.muted, fontSize: 13 }}>عدد عمليات الشراء</div><div style={{ color: C.green, fontSize: 23, fontWeight: 800, marginTop: 8 }}>{data.materialPurchases.length}</div></Card>
-    </div>
-    <Card style={{ marginBottom: 18 }}>
-      <div style={{ fontWeight: 800, marginBottom: 12 }}>عملية شراء جديدة</div>
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-        <Field label="المادة"><Select value={form.materialId} onChange={(e) => setForm({ ...form, materialId: e.target.value })}><option value="">اختر المادة</option>{data.materials.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}</Select></Field>
-        <Field label="المورد"><Select value={form.supplierId} onChange={(e) => setForm({ ...form, supplierId: e.target.value })}><option value="">بدون مورد محدد</option>{data.suppliers.filter((s) => !s.archived_at).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</Select></Field>
-        <Field label="الكمية"><Input type="number" min="0" step="any" value={form.qty} onChange={(e) => setForm({ ...form, qty: e.target.value })} /></Field>
-        <Field label="سعر الوحدة"><Input type="number" min="0" step="any" value={form.unitCost} onChange={(e) => setForm({ ...form, unitCost: e.target.value })} /></Field>
-        <Field label="التاريخ"><Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></Field>
-      </div>
-      <div style={{ marginTop: 12 }}><Btn onClick={submit}><Plus size={15}/> تسجيل الشراء</Btn></div>
-      {err && <Banner type="error">{err}</Banner>}{ok && <Banner type="success">{ok}</Banner>}
-    </Card>
-    <Card>{data.materialPurchases.length === 0 ? <Empty text="لا توجد مشتريات مسجلة" /> : <Table headers={["التاريخ","المادة","المورد","الكمية","سعر الوحدة","الإجمالي",""]}>{[...data.materialPurchases].reverse().map((p) => {
-      const m = data.materials.find((x) => x.id === p.material_id); const sup = data.suppliers.find((x) => x.id === p.supplier_id);
-      return <tr key={p.id}><Td>{p.purchase_date}</Td><Td>{m?.name || "—"}</Td><Td>{sup?.name || "—"}</Td><Td>{p.qty} {m?.unit || ""}</Td><Td>{fmt(p.unit_cost)} ج.م</Td><Td style={{fontWeight:700}}>{fmt(num(p.qty)*num(p.unit_cost))} ج.م</Td><Td>{canDelete && <button onClick={() => remove(p)} style={{background:"none",border:"none",cursor:"pointer",color:C.red}}><Trash2 size={15}/></button>}</Td></tr>
-    })}</Table>}</Card>
-  </div>;
-}
 
 /* -------------------------------- Expenses --------------------------------- */
-function ExpensesTab({ data, insertRow, profileRole, refresh }) {
+function ExpensesTab({ data, profileRole, refresh }) {
   const categories = ["كهرباء", "إيجار", "رواتب", "نقل", "صيانة", "إنترنت", "تسويق", "أخرى"];
-  const [form, setForm] = useState({ category: categories[0], amount: "", date: todayStr(), notes: "", projectId: "" });
+  const [form, setForm] = useState({ category: categories[0], amount: "", date: todayStr(), notes: "", projectId: "", commandId: "" });
   const [err, setErr] = useState(""); const [ok, setOk] = useState("");
   const [busyId, setBusyId] = useState(null);
+  const [cancellingExpense, setCancellingExpense] = useState(null);
+  const [cancelReason, setCancelReason] = useState("");
   async function submit() {
     setErr(""); setOk("");
     if (num(form.amount) <= 0) return setErr("أدخل مبلغ أكبر من صفر");
-    const { data: authData } = await supabase.auth.getUser();
-    const e = await insertRow("expenses", { category: form.category, amount: num(form.amount), expense_date: form.date, notes: form.notes.trim() || null, project_id: form.projectId || null, created_by: authData?.user?.id || null });
-    if (e) return setErr(e);
-    setOk("تم تسجيل المصروف بنجاح");
-    setForm({ category: categories[0], amount: "", date: todayStr(), notes: "", projectId: "" });
+    const commandId = form.commandId || globalThis.crypto.randomUUID();
+    if (!form.commandId) setForm((current) => ({ ...current, commandId }));
+    const result = await runCriticalMutation({
+      scope: "expenses:post",
+      mutate: () => supabase.rpc("post_expense", {
+        expense_category: form.category, expense_amount: num(form.amount), spent_on: form.date,
+        expense_notes: form.notes.trim() || null, target_project: form.projectId || null, command_id: commandId,
+      }),
+      verify: async () => {
+        const verification = await supabase.from("expenses").select("id,cancelled_at").eq("command_id", commandId).single();
+        return verification.error ? verification : !verification.data?.cancelled_at;
+      },
+      refetch: refresh,
+    });
+    if (result.error) return setErr(result.mutationSaved
+      ? "تم إرسال المصروف، لكن تعذر التحقق أو تحديث الشاشة. حدّث الصفحة دون إنشاء مصروف جديد."
+      : result.error.message);
+    setOk(result.refreshError ? "تم تسجيل المصروف، لكن تعذر تحديث الشاشة. حدّث الصفحة بأمان." : "تم تسجيل المصروف بنجاح");
+    setForm({ category: categories[0], amount: "", date: todayStr(), notes: "", projectId: "", commandId: "" });
   }
   async function runFinancialAction(name, row, reason = null) {
     setErr(""); setOk(""); setBusyId(row.id);
@@ -1367,38 +1483,42 @@ function ExpensesTab({ data, insertRow, profileRole, refresh }) {
       : { target_expense_id: row.id, reason };
     const { error } = await supabase.rpc(name, args);
     setBusyId(null);
-    if (error) return setErr(error.message);
+    if (error) { setErr(error.message); return false; }
     await refresh();
     setOk(name === "cancel_expense" ? "تم إلغاء المصروف مع الحفاظ على سجله" : "تم إرسال المصروف لمراجعة التكلفة الفعلية");
+    return true;
   }
   async function cancel(row) {
-    const reason = window.prompt("اكتب سبب إلغاء المصروف");
-    if (reason === null) return;
-    if (!reason.trim()) return setErr("سبب الإلغاء مطلوب");
-    await runFinancialAction("cancel_expense", row, reason.trim());
+    setCancelReason(""); setCancellingExpense(row);
+  }
+  async function confirmExpenseCancellation() {
+    if (!cancelReason.trim()) return setErr("سبب الإلغاء مطلوب");
+    const saved = await runFinancialAction("cancel_expense", cancellingExpense, cancelReason.trim());
+    if (saved) { setCancellingExpense(null); setCancelReason(""); }
   }
   const activeExpenses = data.expenses.filter((expense) => !expense.cancelled_at);
   const total = activeExpenses.reduce((sum, e) => sum + num(e.amount), 0);
   return <div>
+    <ConfirmDialog open={Boolean(cancellingExpense)} title="إلغاء المصروف" description="سيبقى المصروف ظاهرًا في السجل وتُحفظ حركة الإلغاء وسببها للتدقيق." confirmLabel="إلغاء المصروف" danger busy={busyId===cancellingExpense?.id} reasonRequired reason={cancelReason} onReasonChange={setCancelReason} error={cancellingExpense&&err?err:""} onConfirm={confirmExpenseCancellation} onCancel={()=>{setCancellingExpense(null);setCancelReason("")}}/>
     <SectionTitle eyebrow="المالية" title="المصروفات" icon={<ReceiptText size={14} />} />
-    <Card style={{ marginBottom: 18 }}><div style={{ color: C.muted, fontSize: 13 }}>إجمالي المصروفات المسجلة</div><div style={{ color: C.red, fontSize: 24, fontWeight: 800, marginTop: 8 }}>{fmt(total)} ج.م</div></Card>
+    <Card style={{ marginBottom: 18 }}><div style={{ color: C.muted, fontSize: 13 }}>إجمالي المصروفات المسجلة</div><div style={{ color: C.red, fontSize: 24, fontWeight: 800, marginTop: 8 }}>{formatMoney(total)}</div></Card>
     <Card style={{ marginBottom: 18 }}>
       <div style={{ fontWeight: 800, marginBottom: 12 }}>مصروف جديد</div>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
         <Field label="البند"><Select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>{categories.map((c) => <option key={c} value={c}>{c}</option>)}</Select></Field>
-        <Field label="المشروع (اختياري للمصروف العام)"><Select value={form.projectId} onChange={(e) => setForm({ ...form, projectId: e.target.value })}><option value="">مصروف عام بدون مشروع</option>{data.projects.filter((p) => !["closed"].includes(p.lifecycle)).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select></Field>
+        <Field label="المشروع (اختياري للمصروف العام)"><Select value={form.projectId} onChange={(e) => setForm({ ...form, projectId: e.target.value })}><option value="">مصروف عام بدون مشروع</option>{data.projects.filter((p) => !["closed","cancelled"].includes(p.lifecycle)).map((p) => <option key={p.id} value={p.id}>{p.project_code} · {p.project_name}</option>)}</Select></Field>
         <Field label="المبلغ"><Input type="number" min="0" step="any" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} /></Field>
         <Field label="التاريخ"><Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></Field>
         <Field label="ملاحظات"><Input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></Field>
       </div>
       <div style={{ marginTop: 12 }}><Btn onClick={submit}><Plus size={15}/> تسجيل المصروف</Btn></div>
-      {err && <Banner type="error">{err}</Banner>}{ok && <Banner type="success">{ok}</Banner>}
+      {err && <Banner type="error">{err}</Banner>}{ok && <Banner type={operationFeedbackType(ok)}>{ok}</Banner>}
     </Card>
     <Card>{data.expenses.length === 0 ? <Empty text="لا توجد مصروفات مسجلة" /> : <Table headers={["التاريخ","البند","المشروع","الحالة","الملاحظات","المبلغ","الإجراءات"]}>{[...data.expenses].reverse().map((e) => {
       const project = data.projects.find((p) => p.id === e.project_id);
       const status = e.cancelled_at ? "ملغي" : ({not_posted:"غير مرحّل",submitted:"قيد المراجعة",posted:"مرحّل",rejected:"مرفوض",reversed:"معكوس"}[e.cost_posting_status] || e.cost_posting_status);
-      const canCancel = ["owner","manager"].includes(profileRole) && !e.cancelled_at;
-      return <tr key={e.id} style={{opacity:e.cancelled_at?0.65:1}}><Td>{e.expense_date}</Td><Td>{e.category}</Td><Td>{project?.name || "عام"}</Td><Td>{status}</Td><Td>{e.cancellation_reason || e.notes || "—"}</Td><Td style={{fontWeight:700,color:C.red}}>{fmt(e.amount)} ج.م</Td><Td><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{e.project_id && e.cost_posting_status === "not_posted" && !e.cancelled_at && <Btn disabled={busyId===e.id} onClick={() => runFinancialAction("prepare_operational_source_actual_cost", e)}>إرسال للتكلفة</Btn>}{canCancel && <Btn variant="danger" disabled={busyId===e.id} onClick={() => cancel(e)}>إلغاء</Btn>}</div></Td></tr>;
+      const canCancel = !e.cancelled_at && (profileRole === "owner" || (profileRole === "manager" && e.cost_posting_status !== "posted"));
+      return <tr key={e.id} style={{opacity:e.cancelled_at?0.65:1}}><Td>{e.expense_date}</Td><Td>{e.category}</Td><Td>{project ? `${project.project_code} · ${project.project_name}` : "عام"}</Td><Td>{status}</Td><Td>{e.cancellation_reason || e.notes || "—"}</Td><Td style={{fontWeight:700,color:C.red}}>{formatMoney(e.amount)}</Td><Td><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{e.project_id && e.cost_posting_status === "not_posted" && !e.cancelled_at && <Btn disabled={busyId===e.id} onClick={() => runFinancialAction("prepare_operational_source_actual_cost", e)}>إرسال للتكلفة</Btn>}{canCancel && <Btn variant="danger" disabled={busyId===e.id} onClick={() => cancel(e)}>إلغاء</Btn>}</div></Td></tr>;
     })}</Table>}</Card>
   </div>;
 }
@@ -1427,16 +1547,19 @@ const PERMISSION_SECTIONS = [
 
 function TeamTab({ profiles, employees, refresh, currentProfile }) {
   const [pending, setPending] = useState({});
+  const [newAccount, setNewAccount] = useState({ fullName: "", phone: "", temporaryPassword: "", role: MANAGER_ASSIGNABLE_ROLES[0] });
   const [message, setMessage] = useState({ type: "", text: "" });
   const [openSections, setOpenSections] = useState({});
+  const [creatingAccount, setCreatingAccount] = useState(false);
   const [savingUserId, setSavingUserId] = useState(null);
-  const [deletingUserId, setDeletingUserId] = useState(null);
   const [linkingUserId, setLinkingUserId] = useState(null);
+  const [updatingPhoneUserId, setUpdatingPhoneUserId] = useState(null);
   const [linkReasons, setLinkReasons] = useState({});
+  const [phoneReasons, setPhoneReasons] = useState({});
 
   useEffect(() => {
     const initial = {};
-    for (const profile of profiles || []) initial[profile.id] = { role: profile.role, status: profile.status || "active", employee_id: profile.employee_id || "", ...permissionsForProfile(profile) };
+    for (const profile of profiles || []) initial[profile.id] = { role: profile.role, status: profile.status || "active", employee_id: profile.employee_id || "", phone: profile.phone || "", ...permissionsForProfile(profile) };
     setPending(initial);
     console.info("[permissions] currentState", initial);
   }, [profiles]);
@@ -1492,6 +1615,31 @@ function TeamTab({ profiles, employees, refresh, currentProfile }) {
     };
   }
 
+  async function createManagedAccount() {
+    const phone = normalizeAccountPhone(newAccount.phone);
+    if (!newAccount.fullName.trim()) return setMessage({ type: "error", text: "اكتب اسم مستخدم الحساب." });
+    if (!phone) return setMessage({ type: "error", text: "اكتب رقم الهاتف بالصيغة الدولية، مثال: +9665XXXXXXXX." });
+    if (newAccount.temporaryPassword.length < 10) return setMessage({ type: "error", text: "كلمة السر المؤقتة يجب ألا تقل عن 10 أحرف." });
+    if (!canAssignRole(currentProfile.role, newAccount.role)) return setMessage({ type: "error", text: "لا يسمح دورك بإنشاء هذا النوع من الحسابات." });
+    setMessage({ type: "", text: "" });
+    setCreatingAccount(true);
+    const result = await supabase.functions.invoke("admin-manage-user", { body: {
+      action: "create",
+      full_name: newAccount.fullName.trim(),
+      phone,
+      temporary_password: newAccount.temporaryPassword,
+      role: newAccount.role,
+    } });
+    if (result.error || !result.data?.ok) {
+      setCreatingAccount(false);
+      return setMessage({ type: "error", text: result.data?.error || result.error?.message || "تعذر إنشاء الحساب المُدار." });
+    }
+    await load();
+    setNewAccount({ fullName: "", phone: "", temporaryPassword: "", role: MANAGER_ASSIGNABLE_ROLES[0] });
+    setCreatingAccount(false);
+    setMessage({ type: "success", text: "تم إنشاء الحساب. سلّم كلمة السر المؤقتة للمستخدم عبر قناة آمنة؛ سيُطلب تغييرها عند أول دخول." });
+  }
+
   async function savePermissions(userId) {
     const current = pending[userId];
     if (!current) return;
@@ -1517,21 +1665,22 @@ function TeamTab({ profiles, employees, refresh, currentProfile }) {
     setMessage({ type: "success", text: "تم حفظ الدور والصلاحيات بأمان." });
   }
 
-  async function deleteProfile(profile) {
-    const protectionReason = identityProtectionReason(currentProfile, profile);
-    if (protectionReason) return setMessage({ type: "error", text: protectionReason });
-    if (!window.confirm(`حذف حساب ${profile.full_name || profile.email || "المستخدم"} من النظام؟`)) return;
+  async function updateManagedPhone(profileId) {
+    const phone = normalizeAccountPhone(pending[profileId]?.phone);
+    const reason = (phoneReasons[profileId] || "").trim();
+    if (!phone) return setMessage({ type: "error", text: "اكتب رقم الهاتف بالصيغة الدولية." });
+    if (!reason) return setMessage({ type: "error", text: "اكتب سبب تغيير رقم الدخول لسجل التدقيق." });
     setMessage({ type: "", text: "" });
-    setDeletingUserId(profile.id);
-    const mutationResult = await supabase.rpc("admin_delete_profile", { target_user_id: profile.id });
-    console.info("[profiles:delete] mutationResult", mutationResult);
-    if (mutationResult.error || !mutationResult.data?.ok) {
-      setDeletingUserId(null);
-      return setMessage({ type: "error", text: mutationResult.error?.message || mutationResult.data?.error || "تعذر حذف الحساب." });
+    setUpdatingPhoneUserId(profileId);
+    const result = await supabase.functions.invoke("admin-manage-user", { body: { action: "update_phone", user_id: profileId, phone, reason } });
+    if (result.error || !result.data?.ok) {
+      setUpdatingPhoneUserId(null);
+      return setMessage({ type: "error", text: result.data?.error || result.error?.message || "تعذر تغيير رقم الدخول." });
     }
     await load();
-    setDeletingUserId(null);
-    setMessage({ type: "success", text: "تم حذف الحساب من النظام بأمان." });
+    setPhoneReasons((previous) => ({ ...previous, [profileId]: "" }));
+    setUpdatingPhoneUserId(null);
+    setMessage({ type: "success", text: "تم تغيير رقم الدخول وتسجيل العملية في سجل التدقيق." });
   }
 
   async function saveEmployeeLink(profileId) {
@@ -1561,6 +1710,16 @@ function TeamTab({ profiles, employees, refresh, currentProfile }) {
   return <div>
     <SectionTitle eyebrow="الهوية والوصول" title="الفريق والصلاحيات" icon={<ShieldCheck size={14} />} description="إدارة الأدوار والصلاحيات وفق تسلسل إداري محمي ومسجل بالكامل." />
     {message.text && <Banner type={message.type}>{message.text}</Banner>}
+    <Card className="managed-account-create">
+      <div><strong>إنشاء حساب مُدار</strong><p>لا يوجد تسجيل ذاتي. أنشئ الحساب برقم دولي وكلمة سر مؤقتة؛ ولا تُحفظ كلمة السر داخل قاعدة بيانات التطبيق.</p></div>
+      <div className="team-controls">
+        <Field label="الاسم"><Input value={newAccount.fullName} onChange={(event) => setNewAccount((current) => ({ ...current, fullName: event.target.value }))} /></Field>
+        <Field label="رقم الهاتف"><Input value={newAccount.phone} onChange={(event) => setNewAccount((current) => ({ ...current, phone: event.target.value }))} placeholder="+9665XXXXXXXX" /></Field>
+        <Field label="كلمة السر المؤقتة"><Input type="password" value={newAccount.temporaryPassword} onChange={(event) => setNewAccount((current) => ({ ...current, temporaryPassword: event.target.value }))} autoComplete="new-password" /></Field>
+        <Field label="الدور"><Select value={newAccount.role} onChange={(event) => setNewAccount((current) => ({ ...current, role: event.target.value }))}>{Object.entries(ROLES).filter(([roleKey]) => canAssignRole(currentProfile.role, roleKey)).map(([roleKey, role]) => <option key={roleKey} value={roleKey}>{role.label}</option>)}</Select></Field>
+      </div>
+      <Btn disabled={creatingAccount} onClick={createManagedAccount}>{creatingAccount ? "جارِ إنشاء الحساب..." : "إنشاء الحساب"}</Btn>
+    </Card>
     <div className="permissions-toolbar">
       <Btn variant="ghost" onClick={() => setOpenSections(Object.fromEntries(PERMISSION_SECTIONS.map((section) => [section.id, true])))}>فتح الكل</Btn>
       <Btn variant="ghost" onClick={() => setOpenSections({})}>إغلاق الكل</Btn>
@@ -1568,13 +1727,13 @@ function TeamTab({ profiles, employees, refresh, currentProfile }) {
     </div>
     <div className="team-grid">
       {profiles.map((profile) => {
-        const current = pending[profile.id] || { role: profile.role, status: profile.status || "active", employee_id: profile.employee_id || "", ...permissionsForProfile(profile) };
+        const current = pending[profile.id] || { role: profile.role, status: profile.status || "active", employee_id: profile.employee_id || "", phone: profile.phone || "", ...permissionsForProfile(profile) };
         const protectionReason = identityProtectionReason(currentProfile, profile);
         const protectedFields = Boolean(protectionReason);
         const automaticAccess = isAdministrativeRole(current.role);
         return <Card className={`team-card role-${current.role}`} key={profile.id}>
           <div className="team-card-head">
-            <div className="team-identity"><div className="team-avatar">{(profile.full_name || profile.email || "؟").trim().charAt(0)}</div><div><strong>{profile.full_name || "بدون اسم"}</strong><span>{profile.email || `${profile.id.slice(0, 8)}…`}</span></div></div>
+            <div className="team-identity"><div className="team-avatar">{(profile.full_name || profile.email || "؟").trim().charAt(0)}</div><div><strong>{profile.full_name || "بدون اسم"}</strong><span>{profile.phone || profile.email || `${profile.id.slice(0, 8)}…`}{profile.must_change_password ? " — كلمة سر مؤقتة" : ""}</span></div></div>
             <span className={`role-badge ${current.role}`}>{ROLES[current.role]?.label || current.role}</span>
           </div>
           <div className="team-controls">
@@ -1592,6 +1751,12 @@ function TeamTab({ profiles, employees, refresh, currentProfile }) {
           {protectionReason && <div className="protected-note"><ShieldCheck size={17} /><span><strong>حقول محمية</strong>{protectionReason}</span></div>}
           {current.role === "owner" && <div className="automatic-access-note"><ShieldCheck size={18} /><span><strong>صلاحيات مالك النظام تلقائية</strong>يمتلك جميع صلاحيات النظام من الدور مباشرة ولا يعتمد على Checkboxes مخزنة.</span></div>}
           {current.role === "manager" && <div className="automatic-access-note manager"><ShieldCheck size={18} /><span><strong>صلاحيات تشغيلية كاملة</strong>مدير النظام لا يعتمد على Checkboxes، ولا يمكن لمدير آخر إدارته أو تعديل Audit Log.</span></div>}
+          {!protectedFields && profile.phone && <div className="identity-link-box">
+            <strong>رقم تسجيل الدخول</strong><p>تغيير الرقم يحدّث حساب المصادقة والملف معًا، ويحتاج سببًا موثقًا.</p>
+            <Field label="رقم الهاتف"><Input value={current.phone || ""} onChange={(event) => patchUser(profile.id, { phone: event.target.value })} /></Field>
+            <Field label="سبب التغيير"><Input value={phoneReasons[profile.id] || ""} onChange={(event) => setPhoneReasons((previous) => ({ ...previous, [profile.id]: event.target.value }))} /></Field>
+            <Btn variant="ghost" disabled={updatingPhoneUserId === profile.id || normalizeAccountPhone(current.phone) === profile.phone} onClick={() => updateManagedPhone(profile.id)}>{updatingPhoneUserId === profile.id ? "جارِ التحديث..." : "تحديث رقم الدخول"}</Btn>
+          </div>}
           {currentProfile.role === "owner" && <div className="identity-link-box">
             <strong>ربط الحساب بموظف</strong>
             <p>هذا هو الرابط المعياري المستخدم في تأكيد هوية مستلم العهدة، ولا يعتمد على الاسم أو الهاتف.</p>
@@ -1634,7 +1799,6 @@ function TeamTab({ profiles, employees, refresh, currentProfile }) {
           </div>}
           <div className="team-card-actions">
             <Btn disabled={protectedFields || savingUserId === profile.id} onClick={() => savePermissions(profile.id)}>{savingUserId === profile.id ? "جارِ الحفظ..." : "حفظ الدور والصلاحيات"}</Btn>
-            {canAdministerTarget(currentProfile, profile) && <Btn variant="danger" disabled={deletingUserId === profile.id} onClick={() => deleteProfile(profile)}><Trash2 size={15}/>{deletingUserId === profile.id ? "جارِ الحذف..." : "حذف الحساب"}</Btn>}
           </div>
         </Card>;
       })}

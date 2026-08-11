@@ -5,7 +5,8 @@ import { configureCurrency, userFacingError } from "../userExperience";
 
 const DEFAULT_CURRENCY = { currency_code: "EGP", currency_symbol: "ج.م", currency_locale: "ar-EG", decimal_places: 2 };
 
-export function SettingsPage({ currentProfile, onRepaired }) {
+export function SettingsPage({ currentProfile, onRepaired, onCurrencySaved }) {
+  const canManageCurrency = currentProfile?.role === "owner";
   const [userId, setUserId] = useState("");
   const [fullName, setFullName] = useState("");
   const [role, setRole] = useState("production");
@@ -53,6 +54,7 @@ export function SettingsPage({ currentProfile, onRepaired }) {
     else {
       setCurrency(result.data || currency);
       configureCurrency(result.data || currency);
+      onCurrencySaved?.(result.data || currency);
       setFeedback({ type: "success", message: "تم حفظ العملة العامة وتطبيقها على شاشات النظام." });
     }
     setBusy(false);
@@ -62,14 +64,14 @@ export function SettingsPage({ currentProfile, onRepaired }) {
     <section className="page-header"><div className="page-header-copy"><div className="page-eyebrow"><ShieldCheck size={15}/><span>الإدارة</span></div><h2>الإعدادات</h2><p>أدوات النظام الإدارية الآمنة والإعدادات العامة.</p></div></section>
     {feedback && <div className={`settings-feedback ${feedback.type}`}>{feedback.type === "error" ? <AlertCircle size={17}/> : <CheckCircle2 size={17}/>}<span>{feedback.message}</span></div>}
     <section className="settings-grid">
-      <article className="settings-card"><div className="settings-card-title"><Wrench size={20}/><div><h3>العملة العامة</h3><p>تستخدم في كل المبالغ والتقارير الجديدة داخل النظام.</p></div></div>
-        <form onSubmit={saveCurrency} className="recovery-form">
+      <article className="settings-card"><div className="settings-card-title"><Wrench size={20}/><div><h3>العملة العامة</h3><p>تستخدم في كل المبالغ والتقارير الجديدة. بعد وجود تاريخ مالي، يتطلب تغيير الكود Migration ومصالحة مراجعة؛ يظل تعديل الرمز والتنسيق متاحًا.</p></div></div>
+        {canManageCurrency ? <form onSubmit={saveCurrency} className="recovery-form">
           <label>كود العملة<input required maxLength="3" dir="ltr" value={currency.currency_code || ""} onChange={(e) => setCurrency({ ...currency, currency_code: e.target.value.toUpperCase() })}/></label>
           <label>رمز العملة<input required value={currency.currency_symbol || ""} onChange={(e) => setCurrency({ ...currency, currency_symbol: e.target.value })}/></label>
           <label>التنسيق المحلي<input required dir="ltr" value={currency.currency_locale || ""} onChange={(e) => setCurrency({ ...currency, currency_locale: e.target.value })}/></label>
           <label>المنازل العشرية<select value={currency.decimal_places ?? 2} onChange={(e) => setCurrency({ ...currency, decimal_places: Number(e.target.value) })}><option value="0">0</option><option value="2">2</option><option value="3">3</option></select></label>
           <button type="submit" disabled={busy}>{busy ? "جارِ الحفظ..." : "حفظ العملة"}</button>
-        </form>
+        </form> : <div className="recovery-form" role="note"><p>إعداد العملة للقراءة فقط. تغيير إعداد مالي عام متاح لمالك النظام فقط.</p><dl><div><dt>الكود</dt><dd>{currency.currency_code}</dd></div><div><dt>الرمز</dt><dd>{currency.currency_symbol}</dd></div><div><dt>التنسيق</dt><dd dir="ltr">{currency.currency_locale}</dd></div><div><dt>المنازل العشرية</dt><dd>{currency.decimal_places}</dd></div></dl></div>}
       </article>
       <article className="settings-card"><div className="settings-card-title"><Wrench size={20}/><div><h3>استرداد حساب ناقص</h3><p>ينشئ Profile مفقودًا لمستخدم Auth موجود، من خلال مسار محمي ومسجل في Audit Log.</p></div></div>
         <form onSubmit={repairAccount} className="recovery-form">

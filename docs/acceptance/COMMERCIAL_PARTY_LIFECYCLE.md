@@ -42,7 +42,7 @@ remaining EP05 product, sales, rental, invoice, or payment lifecycle work.
 
 ## Verification contract
 
-- Migration: `20260803070000_commercial_party_lifecycle.sql`
+- Migration: `20260803070353_commercial_party_lifecycle.sql`
 - Regression test: `commercial-party-lifecycle.test.mjs`
 - Full repository test, production build, GitHub Quality Gate, Vercel, live
   migration verification, and post-deploy row-count reconciliation are required

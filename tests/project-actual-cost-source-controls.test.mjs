@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
-const sql = fs.readFileSync('supabase/migrations/202607190008_project_actual_cost_source_controls.sql', 'utf8');
+const sql = fs.readFileSync('supabase/migrations/20260719124445_project_actual_cost_source_controls.sql', 'utf8');
 
 test('manual adjustments are owner-only', () => {
   assert.match(sql, /Only Owner may create manual actual cost adjustments/);

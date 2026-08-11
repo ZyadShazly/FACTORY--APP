@@ -3,7 +3,7 @@ import fs from "node:fs";
 import test from "node:test";
 
 const component = fs.readFileSync(new URL("../src/reporting/ReportingWorkspace.jsx", import.meta.url), "utf8");
-const migration = fs.readFileSync(new URL("../supabase/migrations/202607200007_reporting_analytics_foundation.sql", import.meta.url), "utf8");
+const migration = fs.readFileSync(new URL("../supabase/migrations/20260720162105_reporting_analytics_foundation.sql", import.meta.url), "utf8");
 const patch = fs.readFileSync(new URL("../scripts/apply-reporting-workspace.mjs", import.meta.url), "utf8");
 
 test("reporting UI uses only the protected workspace RPC", () => {

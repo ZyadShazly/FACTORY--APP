@@ -6,23 +6,30 @@ import {
   canAssignRole,
   identityProtectionReason,
   isAdministrativeRole,
+  MANAGER_ASSIGNABLE_ROLES,
+  normalizeAccountPhone,
   PRODUCTION_ALLOWED_PAGES,
-  SELF_SIGNUP_ROLES,
   SYSTEM_ROLES,
 } from "../src/identity.js";
 import { dataTableKeysForRole, resolveAllowedTab, TABLES } from "../src/realtime.js";
 
-const migrationUrl = new URL("../supabase/migrations/202607150003_owner_identity_security.sql", import.meta.url);
-const hierarchyMigrationUrl = new URL("../supabase/migrations/202607160001_enforce_owner_manager_hierarchy.sql", import.meta.url);
-const priorMigrationUrl = new URL("../supabase/migrations/202607150002_enforce_protected_role_creation.sql", import.meta.url);
+const migrationUrl = new URL("../supabase/migrations/20260715000300_owner_identity_security.sql", import.meta.url);
+const hierarchyMigrationUrl = new URL("../supabase/migrations/20260716000100_enforce_owner_manager_hierarchy.sql", import.meta.url);
+const priorMigrationUrl = new URL("../supabase/migrations/20260715000200_enforce_protected_role_creation.sql", import.meta.url);
 const bootstrapUrl = new URL("../supabase/scripts/promote_existing_user_to_owner.sql", import.meta.url);
 
 test("the product exposes exactly the approved four roles", () => {
   assert.deepEqual(Object.keys(SYSTEM_ROLES), ["owner", "manager", "accountant", "production"]);
-  assert.deepEqual([...SELF_SIGNUP_ROLES], ["accountant", "production"]);
+  assert.deepEqual([...MANAGER_ASSIGNABLE_ROLES], ["accountant", "production"]);
   assert.equal(isAdministrativeRole("owner"), true);
   assert.equal(isAdministrativeRole("manager"), true);
   assert.equal(isAdministrativeRole("accountant"), false);
+});
+
+test("managed account phone normalization accepts only international identifiers", () => {
+  assert.equal(normalizeAccountPhone("00 966 50 123 4567"), "+966501234567");
+  assert.equal(normalizeAccountPhone("+20 (101) 234-5678"), "+201012345678");
+  assert.equal(normalizeAccountPhone("0501234567"), "");
 });
 
 test("manager versus owner UI hierarchy blocks protected edits", () => {
@@ -103,7 +110,7 @@ test("owner migration enforces hierarchy, last-admin safety and immutable audit"
   assert.doesNotMatch(sql, /service_role[^\n]*VITE_|VITE_[A-Z_]*SERVICE/i);
 });
 
-test("new migration preserves the protected self-signup contract", async () => {
+test("historical migrations preserve the least-privilege self-signup contract until it is superseded", async () => {
   const [currentSql, priorSql] = await Promise.all([
     readFile(migrationUrl, "utf8"),
     readFile(priorMigrationUrl, "utf8"),

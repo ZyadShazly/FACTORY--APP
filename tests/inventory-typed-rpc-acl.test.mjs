@@ -3,11 +3,11 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const aclMigration = readFileSync(
-  "supabase/migrations/202608020001_inventory_typed_rpc_acl.sql",
+  "supabase/migrations/20260802111901_inventory_typed_rpc_acl.sql",
   "utf8",
 );
 const definitionMigration = readFileSync(
-  "supabase/migrations/202607290003_explicit_inventory_item_type.sql",
+  "supabase/migrations/20260729082906_explicit_inventory_item_type.sql",
   "utf8",
 );
 

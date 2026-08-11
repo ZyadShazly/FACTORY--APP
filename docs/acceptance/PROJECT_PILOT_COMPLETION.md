@@ -49,7 +49,7 @@ The guard intentionally:
 
 New migration:
 
-`202607280002_project_pilot_completion.sql`
+`20260728000200_project_pilot_completion.sql`
 
 The additive migration:
 

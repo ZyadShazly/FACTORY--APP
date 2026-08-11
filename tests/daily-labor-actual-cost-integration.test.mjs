@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 
-const migration = fs.readFileSync("supabase/migrations/20260803055244_daily_labor_actual_cost_integration.sql", "utf8");
+const migration = fs.readFileSync("supabase/migrations/20260803060232_daily_labor_actual_cost_integration.sql", "utf8");
 const ui = fs.readFileSync("src/v22/dailyLabor.jsx", "utf8");
 
 test("daily labor posts net settlement with explainable metadata", () => {

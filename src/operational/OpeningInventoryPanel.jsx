@@ -1,6 +1,7 @@
 import React,{useMemo,useState}from"react";
 import{supabase}from"../supabaseClient";
 import{Button,Field,Notice,Panel,friendlyError,inputStyle,money}from"./ui";
+import{ConfirmDialog}from"../v22/shared";
 
 const emptyLine={item:"",warehouse:"",location:"",quantity:"",unitCost:"0",reference:"",reason:""};
 
@@ -9,6 +10,8 @@ export function OpeningInventoryPanel({workspace,onChanged,canViewFinancials=tru
   const[error,setError]=useState("");
   const[ok,setOk]=useState("");
   const[documentId,setDocumentId]=useState("");
+  const[confirmingPost,setConfirmingPost]=useState(false);
+  const[deletingLine,setDeletingLine]=useState(null);
   const[header,setHeader]=useState({reference:"",reason:""});
   const[line,setLine]=useState(emptyLine);
   const documents=workspace.opening_documents||[];
@@ -50,18 +53,22 @@ export function OpeningInventoryPanel({workspace,onChanged,canViewFinancials=tru
   }
 
   async function removeLine(row){
-    const reason=window.prompt(`اكتب سبب حذف بند "${row.item_name}" من المسودة.`);
-    if(reason===null)return;
-    if(!reason.trim())return setError("سبب الحذف مطلوب.");
-    await call("delete_opening_inventory_line",{target_line:row.id,deletion_reason:reason.trim()},"تم حذف بند المسودة مع تسجيل السبب.");
+    setDeletingLine({row,reason:""});
+  }
+  async function confirmRemoveLine(){
+    if(!deletingLine?.reason.trim())return;
+    const result=await call("delete_opening_inventory_line",{target_line:deletingLine.row.id,deletion_reason:deletingLine.reason.trim()},"تم حذف بند المسودة مع تسجيل السبب.");
+    if(result)setDeletingLine(null);
   }
 
   async function postDocument(){
     if(!selected||selected.status!=="draft")return setError("اختر مسودة صالحة للترحيل.");
     if(!lines.length)return setError("أضف بندًا واحدًا على الأقل.");
-    if(!window.confirm(`سيتم ترحيل ${money(totals.quantity)} وحدة بقيمة ${money(totals.value)} إلى دفتر المخزون. بعد الترحيل لن يمكن تعديل المستند أو حذفه. متابعة؟`))return;
+    setConfirmingPost(true);
+  }
+  async function confirmPostDocument(){
     const result=await call("post_opening_inventory_document",{target_document:documentId},"تم اعتماد الرصيد الافتتاحي وترحيله إلى دفتر المخزون.");
-    if(result)setDocumentId("");
+    if(result){setDocumentId("");setConfirmingPost(false)}
   }
 
   return <Panel title="الرصيد الافتتاحي">
@@ -93,6 +100,8 @@ export function OpeningInventoryPanel({workspace,onChanged,canViewFinancials=tru
       <Button disabled={busy||!lines.length} onClick={postDocument}>مراجعة واعتماد / ترحيل</Button>
     </>}
 
+    <ConfirmDialog open={confirmingPost} title="اعتماد الرصيد الافتتاحي" description={`سيتم ترحيل ${money(totals.quantity)} وحدة بقيمة ${money(totals.value)} إلى دفتر المخزون. لن يمكن تعديل المستند أو حذفه بعد الترحيل.`} confirmLabel="اعتماد وترحيل" danger busy={busy} onConfirm={confirmPostDocument} onCancel={()=>setConfirmingPost(false)}/>
+    <ConfirmDialog open={Boolean(deletingLine)} title="حذف بند من المسودة" description={`سيُحذف بند «${deletingLine?.row.item_name||"الصنف"}» من المسودة فقط، ولن تتأثر الأرصدة لأن المستند لم يُرحّل.`} confirmLabel="حذف البند" danger busy={busy} reasonRequired reason={deletingLine?.reason||""} onReasonChange={reason=>setDeletingLine(current=>({...current,reason}))} onConfirm={confirmRemoveLine} onCancel={()=>setDeletingLine(null)}/>
     <details className="inventory-collapsible">
       <summary>السجل المرحّل ({posted.length})</summary>
       <div style={{display:"grid",gap:8,marginTop:8}}>{posted.map(d=>{

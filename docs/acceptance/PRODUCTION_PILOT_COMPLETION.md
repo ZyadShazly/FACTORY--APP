@@ -46,7 +46,7 @@ Phase 4 completes the pilot Production workflow without deleting operational his
 
 New migration:
 
-`202607280001_production_pilot_completion.sql`
+`20260728000100_production_pilot_completion.sql`
 
 The migration is additive and was **not applied** by this mission. It:
 

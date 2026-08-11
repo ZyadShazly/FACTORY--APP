@@ -29,7 +29,7 @@ test("new materials refresh and provide direct create or link actions",()=>{
   assert.match(add,/await refreshSetup\(\)/);
   assert.match(materials,/إنشاء صنف مخزون من المادة/);
   assert.match(materials,/ربط بصنف موجود/);
-  assert.match(shell,/MaterialsTab[\s\S]*onNavigate=\{setTab\}/);
+  assert.match(shell,/MaterialsTab[\s\S]*onNavigate=\{navigate\}/);
 });
 
 test("link selector excludes materials already owned by another inventory item",()=>{
@@ -43,7 +43,7 @@ test("receipt link failures are friendly and route directly to inventory linking
   assert.match(procurement,/setLinkingRequired/);
   assert.match(procurement,/فتح ربط المواد في المخزون/);
   assert.match(procurement,/onNavigate\("inventory"\)/);
-  assert.match(shell,/ProcurementWorkspace data=\{data\} onNavigate=\{setTab\}/);
+  assert.match(shell,/ProcurementWorkspace data=\{data\} onNavigate=\{navigate\}/);
 });
 
 test("pilot hardening preserves protected RPC boundaries and adds no direct writes",()=>{

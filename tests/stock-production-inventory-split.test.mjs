@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 
 const inventory=fs.readFileSync("src/operational/InventoryCatalogPanel.jsx","utf8");
-const migration=fs.readFileSync("supabase/migrations/202607280005_stock_production_and_inventory_split.sql","utf8");
+const migration=fs.readFileSync("supabase/migrations/20260728103459_stock_production_and_inventory_split.sql","utf8");
 
 test("inventory separates raw materials and finished goods",()=>{
   assert.match(inventory,/stockKind/);

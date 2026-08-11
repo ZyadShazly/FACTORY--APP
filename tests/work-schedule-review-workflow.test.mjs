@@ -3,7 +3,7 @@ import fs from "node:fs";
 import test from "node:test";
 
 const ui = fs.readFileSync("src/v23/workCalendar.jsx", "utf8");
-const migration = fs.readFileSync("supabase/migrations/202607212220_work_schedule_review_and_cancellation.sql", "utf8");
+const migration = fs.readFileSync("supabase/migrations/20260721191416_work_schedule_review_and_cancellation.sql", "utf8");
 
 test("schedule approval is only available from the review dialog", () => {
   assert.match(ui, /فتح التفاصيل/);

@@ -1,6 +1,6 @@
 -- ONE-TIME OWNER BOOTSTRAP
 -- Run manually in Supabase SQL Editor after applying migrations through
--- 202607150003_owner_identity_security.sql.
+-- 20260715000300_owner_identity_security.sql.
 --
 -- Set exactly ONE of target_email or target_user_id below. Do not commit your
 -- real email or user id. This script never creates a password and never changes

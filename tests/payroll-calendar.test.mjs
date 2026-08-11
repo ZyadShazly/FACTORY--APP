@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { canApproveCalendar, dateRangeDays, localDateKey, monthCells, shiftMinutes, validateShift } from "../src/v23/calendar.js";
 
-const migrationUrl = new URL("../supabase/migrations/202607180002_payroll_calendar_foundation.sql", import.meta.url);
+const migrationUrl = new URL("../supabase/migrations/20260718000200_payroll_calendar_foundation.sql", import.meta.url);
 
 test("تواريخ التقويم محلية ولا تعتمد على تحويل UTC", () => {
   assert.equal(localDateKey(new Date(2026, 6, 18, 23, 30)), "2026-07-18");

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 
-const migration=fs.readFileSync("supabase/migrations/202607280002_project_pilot_completion.sql","utf8");
+const migration=fs.readFileSync("supabase/migrations/20260728000200_project_pilot_completion.sql","utf8");
 const workspace=fs.readFileSync("src/v22/projectWorkspace.jsx","utf8");
 const projects=fs.readFileSync("src/v22/projects.jsx","utf8");
 const errors=fs.readFileSync("src/operational/ui.jsx","utf8");

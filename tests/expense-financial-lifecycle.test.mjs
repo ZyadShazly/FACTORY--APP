@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 const migration = fs.readFileSync(
-  new URL('../supabase/migrations/202608020003_expense_financial_lifecycle.sql', import.meta.url),
+  new URL('../supabase/migrations/20260802121708_expense_financial_lifecycle.sql', import.meta.url),
   'utf8',
 );
 const ui = fs.readFileSync(new URL('../src/AppMonolith.jsx', import.meta.url), 'utf8');
@@ -29,9 +29,16 @@ test('expense RPC is not anonymously executable', () => {
 });
 
 test('expense UI captures project and exposes protected financial actions', () => {
-  assert.match(ui, /project_id: form\.projectId \|\| null/);
+  assert.match(ui, /target_project: form\.projectId \|\| null/);
+  assert.match(ui, /post_expense/);
   assert.match(ui, /prepare_operational_source_actual_cost/);
   assert.match(ui, /cancel_expense/);
   assert.match(ui, /اختياري للمصروف العام/);
   assert.doesNotMatch(ui, /deleteRow\("expenses"/);
+});
+
+test('expense cancellation keeps failed server decisions visible and respects owner-only reversal', () => {
+  assert.match(ui, /if \(error\) \{ setErr\(error\.message\); return false; \}/);
+  assert.match(ui, /if \(saved\) \{ setCancellingExpense\(null\)/);
+  assert.match(ui, /profileRole === "owner" \|\| \(profileRole === "manager" && e\.cost_posting_status !== "posted"\)/);
 });

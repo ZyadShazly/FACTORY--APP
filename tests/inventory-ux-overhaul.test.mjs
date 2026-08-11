@@ -20,7 +20,7 @@ test("primary inventory actions stay visible and route to existing workflows",()
   assert.match(css,/inventory-primary-actions\{position:sticky/);
   assert.match(workspace,/onNavigate\?\.\("purchases"\)/);
   assert.match(workspace,/onNavigate\?\.\("production"\)/);
-  assert.match(shell,/InventoryTab canViewFinancials=\{permissions\.view_financials\} onNavigate=\{setTab\} allowedPages=\{permissions\.pages \|\| \[\]\}/);
+  assert.match(shell,/InventoryTab canViewFinancials=\{permissions\.view_financials\} onNavigate=\{navigate\} allowedPages=\{permissions\.pages \|\| \[\]\}/);
 });
 
 test("workspace separates items opening operations history and settings",()=>{

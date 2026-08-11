@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, ArrowRight, Boxes, CalendarDays, CheckCircle2, ClipboardList, Factory, FileText, Gauge, HardHat, History, Package, Pencil, Plus, ReceiptText, ShieldCheck, Users, Wallet, Wrench } from "lucide-react";
 import { supabase } from "../supabaseClient";
-import { Button, EmptyState, ErrorState, Field, Input, money, number, PageTitle, Panel, PermissionGuard, Select, StatCard, SuccessState, TextArea } from "./shared";
+import { Button, ConfirmDialog, EmptyState, ErrorState, Field, Input, money, number, PageTitle, Panel, PermissionGuard, Select, StatCard, SuccessState, TextArea } from "./shared";
 import {
   calculatedMilestoneProgress, effectiveProjectProgress, lifecycleNeedsReason, lifecycleTransitionsFor,
   MILESTONE_STATUSES, PROJECT_EXECUTION_STAGES, PROJECT_LIFECYCLES, PROJECT_MEMBER_ROLES,
@@ -16,7 +16,7 @@ const TABS = [
   ["overview", "نظرة عامة", Gauge], ["milestones", "مراحل التنفيذ", ClipboardList], ["team", "الفريق", Users],
   ["files", "الملفات", FileText], ["materials", "الخامات والمشتريات", Package], ["production", "الإنتاج", Factory],
   ["labor", "العمالة", HardHat], ["expenses", "المصروفات", ReceiptText], ["assets", "العِدّة", Wrench],
-  ["budget", "الميزانية", Wallet], ["actualCost", "التكلفة الفعلية", Boxes], ["reports", "التقارير", FileText],
+  ["budget", "الميزانية", Wallet], ["actualCost", "التكلفة الفعلية", Boxes],
   ["activity", "سجل النشاط", History],
 ];
 
@@ -38,7 +38,6 @@ const WORKFLOW_ACTIONS = {
 
 function LifecycleBadge({ value }) { return <span className={`workspace-badge lifecycle-${value}`}>{PROJECT_LIFECYCLES[value] || value}</span>; }
 function StageBadge({ value }) { return <span className={`workspace-badge stage-${value}`}>{PROJECT_EXECUTION_STAGES[value] || value}</span>; }
-function ComingSoon({ title, description }) { return <Panel className="workspace-coming-soon"><ShieldCheck size={30}/><h3>{title}</h3><p>{description}</p><span>قريبًا — لم تُنشأ بيانات تقديرية أو مالية وهمية.</span></Panel>; }
 function WorkflowReadiness({ workflow }) {
   const source = workflow?.next_action === "complete_budget_and_details"
     ? workflow.approval_readiness
@@ -118,13 +117,13 @@ export function ProjectWorkspace({ project, data, profile, permissions, refresh,
   const [workflow, setWorkflow] = useState(null);
   const [managerTarget, setManagerTarget] = useState(project.project_manager_id || "");
   const [managerReason, setManagerReason] = useState("");
+  const [actionDialog, setActionDialog] = useState(null);
   const summary = useMemo(() => projectWorkspaceSummary(project, data), [project, data]);
   const calculatedProgress = calculatedMilestoneProgress(summary.milestones);
   const effectiveProgress = project.effective_progress_percentage ?? project.progress_percentage ?? effectiveProjectProgress({ mode:progress.mode, manual:progress.manual, calculated:calculatedProgress, overrideReason:progress.reason });
   const customer = data.customers.find((row) => row.id === project.customer_id);
   const manager = data.profiles.find((row) => row.id === project.project_manager_id);
-  const costsByType = Object.fromEntries(["material","production","payroll","daily_labor","expense","transport","other"].map((type) => [type, summary.costs.filter((row) => row.cost_type === type).reduce((sum,row) => sum + number(row.amount),0)]));
-  const actual = Object.values(costsByType).reduce((sum,value) => sum + value,0);
+  const actual = number(project.actual_cost);
   const profit = number(project.revenue)-actual; const margin = number(project.revenue) ? (profit/number(project.revenue))*100 : 0;
 
   useEffect(() => {
@@ -190,13 +189,13 @@ export function ProjectWorkspace({ project, data, profile, permissions, refresh,
   function editMilestone(row) {
     setMilestone({ ...row,responsibleIdentity:row.responsible_profile_id ? `profile:${row.responsible_profile_id}` : row.responsible_employee_id ? `employee:${row.responsible_employee_id}` : "" }); setShowMilestoneForm(true);
   }
-  async function cancelMilestone(row) { const reason=window.prompt("اكتب سبب إلغاء المرحلة"); if(reason?.trim()) await runRpc("remove_project_milestone",{ target_milestone:row.id,reason:reason.trim() },["projectMilestones","projects","projectActivities"],"تم إلغاء المرحلة مع حفظ تاريخها."); }
+  async function cancelMilestone(row) { setActionDialog({type:"milestone",row,reason:""}); }
   async function addMember() {
     const identity=resolveIdentity(data,member.identity);
     const result=await runRpc("add_project_member",{ target_project:project.id,target_profile:identity.profile_id,target_employee:identity.employee_id,member_role:member.project_role,member_start:member.start_date || null,member_end:member.end_date || null },["projectMembers","projects","projectActivities"],"تمت إضافة عضو الفريق.");
     if(result){setMember(emptyMember);setShowMemberForm(false);}
   }
-  async function removeMember(row){if(window.confirm(`إزالة ${identityLabel(data,row.profile_id,row.employee_id)} من الفريق؟`))await runRpc("remove_project_member",{target_member:row.id},["projectMembers","projects","projectActivities"],"تمت إزالة عضو الفريق.");}
+  async function removeMember(row){setActionDialog({type:"member",row,reason:""});}
   async function runWorkflowAction(action) {
     const rpc = {
       prepare_project:["transition_project_lifecycle",{ target_project:project.id,next_lifecycle:"planning",reason:null }],
@@ -218,13 +217,18 @@ export function ProjectWorkspace({ project, data, profile, permissions, refresh,
     if (result) setManagerReason("");
   }
   async function closeProject() {
-    const reason=window.prompt("اكتب سبب إغلاق المشروع. سيُحفظ في سجل التدقيق.");
-    if (reason?.trim()) await runRpc(
-      "close_project_secure",
-      { target_project:project.id,close_reason:reason.trim() },
-      ["projects","projectActivities"],
-      "تم إغلاق المشروع وحفظ السبب."
-    );
+    setActionDialog({type:"close",reason:""});
+  }
+  async function confirmActionDialog() {
+    if (!actionDialog) return;
+    const {type,row,reason}=actionDialog;
+    if (type!=="member" && !reason.trim()) return;
+    const result = type==="milestone"
+      ? await runRpc("remove_project_milestone",{target_milestone:row.id,reason:reason.trim()},["projectMilestones","projects","projectActivities"],"تم إلغاء المرحلة مع حفظ تاريخها.")
+      : type==="member"
+        ? await runRpc("remove_project_member",{target_member:row.id},["projectMembers","projects","projectActivities"],"تمت إزالة عضو الفريق.")
+        : await runRpc("close_project_secure",{target_project:project.id,close_reason:reason.trim()},["projects","projectActivities"],"تم إغلاق المشروع وحفظ السبب.");
+    if (result) setActionDialog(null);
   }
 
   const nextLifecycles = lifecycleTransitionsFor(project.lifecycle || "planning").filter((next) => next !== "active" || project.lifecycle !== "completed" || profile.role === "owner");
@@ -249,7 +253,7 @@ export function ProjectWorkspace({ project, data, profile, permissions, refresh,
       <Field label="ملاحظات" wide><TextArea value={details.notes || ""} onChange={(e)=>setDetails({...details,notes:e.target.value})}/></Field>
     </div><div className="v22-actions"><Button variant="ghost" onClick={()=>setEditing(false)}>إلغاء</Button><Button disabled={busy} onClick={saveDetails}>حفظ البيانات</Button></div></Panel>}
 
-    <nav className="workspace-tabs" aria-label="أقسام مساحة المشروع">{TABS.map(([id,label,Icon])=><button key={id} className={tab===id?"active":""} onClick={()=>setTab(id)}><Icon size={15}/><span>{label}</span>{id==="reports"&&<small>قريبًا</small>}</button>)}</nav>
+    <nav className="workspace-tabs" aria-label="أقسام مساحة المشروع">{TABS.map(([id,label,Icon])=><button key={id} className={tab===id?"active":""} onClick={()=>setTab(id)}><Icon size={15}/><span>{label}</span></button>)}</nav>
 
     {tab === "overview" && <div className="workspace-overview">
       <ProjectPilotWorkflow workflow={workflow} data={data} project={project} busy={busy} managerTarget={managerTarget} setManagerTarget={setManagerTarget} managerReason={managerReason} setManagerReason={setManagerReason} onAction={runWorkflowAction} onAssign={assignManager} onClose={closeProject} onBudget={()=>setTab("budget")}/>
@@ -277,8 +281,8 @@ export function ProjectWorkspace({ project, data, profile, permissions, refresh,
     {tab === "assets" && <LinkedRows title="العُهد والأصول المرتبطة" rows={summary.assignments} empty="لا توجد عهد مفتوحة مرتبطة" render={(row)=><><span>{row.assignment_code||"عهدة"}</span><small>{row.status} · العهدة نفسها ليست تكلفة مشروع</small></>}/>} 
     {tab === "budget" && <ProjectBudgetTab project={project} data={data} permissions={permissions} refresh={refresh}/>}
     {tab === "actualCost" && <PermissionGuard allow={permissions.project_financials_view} fallback={<div className="workspace-no-permission"><ShieldCheck size={24}/>لا تملك صلاحية عرض ماليات المشروع.</div>}><ProjectActualCostTab project={project} profile={profile}/></PermissionGuard>}
-    {tab === "reports" && <ComingSoon title="تقارير المشروع المتقدمة" description="التنبؤ والربحية المتقدمة والتقارير المقارنة مؤجلة حتى اكتمال الميزانية والتكلفة الفعلية."/>}
     {tab === "activity" && <ProjectTimeline activities={summary.activities}/>} 
+    <ConfirmDialog open={Boolean(actionDialog)} title={actionDialog?.type==="milestone"?"إلغاء مرحلة التنفيذ":actionDialog?.type==="member"?"إزالة عضو الفريق":"إغلاق المشروع"} description={actionDialog?.type==="milestone"?`ستُلغى مرحلة «${actionDialog?.row.title||"المرحلة"}» وتُستبعد من حساب الإنجاز مع بقاء تاريخها.`:actionDialog?.type==="member"?`ستُنهى عضوية ${actionDialog?.row?identityLabel(data,actionDialog.row.profile_id,actionDialog.row.employee_id):"العضو"} في هذا المشروع فقط، دون تغيير صلاحيات حسابه العامة.`:"سيصبح المشروع مغلقًا للعمليات الجديدة مع الحفاظ على كامل تاريخه المالي والتشغيلي."} confirmLabel={actionDialog?.type==="milestone"?"إلغاء المرحلة":actionDialog?.type==="member"?"إزالة العضو":"إغلاق المشروع"} danger busy={busy} reasonRequired={actionDialog?.type!=="member"} reason={actionDialog?.reason||""} onReasonChange={reason=>setActionDialog(current=>({...current,reason}))} onConfirm={confirmActionDialog} onCancel={()=>setActionDialog(null)}/>
   </div>;
 }
 

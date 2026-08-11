@@ -2,13 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {readFile} from "node:fs/promises";
 
-const migration=await readFile(new URL("../supabase/migrations/20260726103045_inventory_setup_opening_balance.sql",import.meta.url),"utf8");
+const migration=await readFile(new URL("../supabase/migrations/20260726181811_inventory_setup_opening_balance.sql",import.meta.url),"utf8");
 const catalog=await readFile(new URL("../src/operational/InventoryCatalogPanel.jsx",import.meta.url),"utf8");
 const materials=await readFile(new URL("../src/operational/MaterialsCatalogWorkspace.jsx",import.meta.url),"utf8");
 const opening=await readFile(new URL("../src/operational/OpeningInventoryPanel.jsx",import.meta.url),"utf8");
 const workspace=await readFile(new URL("../src/operational/InventoryWorkspace.jsx",import.meta.url),"utf8");
-const receipt=await readFile(new URL("../supabase/migrations/202607260001_inventory_material_catalog.sql",import.meta.url),"utf8");
-const operations=await readFile(new URL("../supabase/migrations/202607210001_inventory_operations.sql",import.meta.url),"utf8");
+const receipt=await readFile(new URL("../supabase/migrations/20260726000100_inventory_material_catalog.sql",import.meta.url),"utf8");
+const operations=await readFile(new URL("../supabase/migrations/20260720231743_inventory_operations.sql",import.meta.url),"utf8");
 
 test("inventory item can be created from an unlinked material with audit",()=>{
   assert.match(migration,/function public\.create_inventory_item/);

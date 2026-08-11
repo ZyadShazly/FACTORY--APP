@@ -2,7 +2,7 @@ import test from"node:test";
 import assert from"node:assert/strict";
 import{readFileSync}from"node:fs";
 
-const migration=readFileSync("supabase/migrations/202607290003_explicit_inventory_item_type.sql","utf8");
+const migration=readFileSync("supabase/migrations/20260729082906_explicit_inventory_item_type.sql","utf8");
 const ui=readFileSync("src/operational/InventoryCatalogPanel.jsx","utf8");
 
 test("inventory item type is explicit and independent from links",()=>{

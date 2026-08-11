@@ -59,13 +59,14 @@ test("operational patch is idempotent across LF and CRLF checkouts", () => {
   }
 });
 
-test("authentication failures are localized and network errors are caught", () => {
+test("managed authentication failures are localized and network errors are caught", () => {
   const app = source("src/AppMonolith.jsx");
   assert.match(app, /function authErrorMessage\(error\)/);
   assert.match(app, /تعذر الاتصال بالخادم/);
   assert.match(app, /catch \(error\) \{\s*setErr\(authErrorMessage\(error\)\)/);
-  assert.match(app, /options: \{ data: \{ full_name: fullName\.trim\(\), role \} \}/);
-  assert.match(app, /supabase\.rpc\("complete_my_profile"\)/);
+  assert.match(app, /phone: normalizeAccountPhone\(identifier\), password/);
+  assert.match(app, /action: "change_password"/);
+  assert.doesNotMatch(app, /supabase\.auth\.signUp\(/);
 });
 
 test("missing profiles self-recover after confirmed login", () => {
@@ -84,17 +85,19 @@ test("asset assignment supports partial return continuation and stable sharing p
 
 test("employee lifecycle is checked and finalized payroll stays immutable", () => {
   const payroll = source("src/v22/payroll.jsx");
+  const payrollReview = source("src/v22/PayrollReviewTab.jsx");
   assert.doesNotMatch(payroll, /from\("employees"\)\.delete\(\)/);
   assert.match(payroll, /supabase\.rpc\("set_employee_status"/);
   assert.match(payroll, /supabase\.rpc\("delete_employee_if_unused"/);
-  assert.match(payroll, /row\.status !== "draft"/);
-  assert.match(payroll, /p\.status === "draft"/);
+  assert.match(payrollReview, /!\["draft", "rejected"\]\.includes\(row\.status\)/);
+  assert.match(payrollReview, /\["draft", "rejected"\]\.includes\(row\.status\)/);
+  assert.doesNotMatch(payroll, /export function PayrollTab/);
 });
 
 test("database migration provides defense in depth", () => {
-  const migration = source("supabase/migrations/202607200001_operational_bug_closure.sql");
-  const employeeWorkflow = source("supabase/migrations/20260721100000_employee_management_workflow.sql");
-  const deleteGuard = source("supabase/migrations/20260721101000_employee_delete_guard_reconcile.sql");
+  const migration = source("supabase/migrations/20260720111024_operational_bug_closure.sql");
+  const employeeWorkflow = source("supabase/migrations/20260721095523_employee_management_workflow.sql");
+  const deleteGuard = source("supabase/migrations/20260721095949_employee_delete_guard_reconcile.sql");
   assert.match(migration, /create or replace function public\.complete_my_profile\(\)/i);
   assert.match(migration, /grant execute on function public\.complete_my_profile\(\) to authenticated/i);
   assert.match(migration, /prevent_employee_delete_trigger/i);

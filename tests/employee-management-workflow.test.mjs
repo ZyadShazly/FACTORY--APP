@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 
 const payroll = fs.readFileSync(new URL("../src/v22/payroll.jsx", import.meta.url), "utf8");
-const migration = fs.readFileSync(new URL("../supabase/migrations/20260721100000_employee_management_workflow.sql", import.meta.url), "utf8");
-const guard = fs.readFileSync(new URL("../supabase/migrations/20260721101000_employee_delete_guard_reconcile.sql", import.meta.url), "utf8");
+const migration = fs.readFileSync(new URL("../supabase/migrations/20260721095523_employee_management_workflow.sql", import.meta.url), "utf8");
+const guard = fs.readFileSync(new URL("../supabase/migrations/20260721095949_employee_delete_guard_reconcile.sql", import.meta.url), "utf8");
 const operationalPatch = fs.readFileSync(new URL("../scripts/apply-operational-bug-closure.mjs", import.meta.url), "utf8");
 
 test("employee list exposes view, edit, archive and restore actions", () => {

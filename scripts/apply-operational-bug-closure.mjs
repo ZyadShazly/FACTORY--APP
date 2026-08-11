@@ -85,7 +85,8 @@ function AuthGate`,
   }
 
   return (`;
-  if (!source.includes("options: { data: { full_name: fullName.trim(), role } }")) {
+  if (!source.includes("options: { data: { full_name: fullName.trim(), role } }")
+      && !source.includes("phone: normalizeAccountPhone(identifier), password")) {
     if (!submitPattern.test(source)) throw new Error("Missing AuthGate submit function");
     source = source.replace(submitPattern, replacement);
   }
@@ -145,6 +146,13 @@ function patchAssets() {
 function patchPayroll() {
   const path = "src/v22/payroll.jsx";
   let source = read(path);
+
+  // The active payroll workflow now lives in PayrollReviewTab. This file only
+  // owns employee management, so the legacy payroll patches are no longer needed.
+  if (!source.includes("export function PayrollTab")) {
+    write(path, source);
+    return;
+  }
 
   if (!source.includes('employee_dependency_summary')) {
     source = replaceRequired(

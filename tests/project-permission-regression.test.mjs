@@ -2,8 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const mainPermissionMigration = await readFile(new URL("../supabase/migrations/202607180003_assets_tools_foundation.sql", import.meta.url), "utf8");
-const projectMigration = await readFile(new URL("../supabase/migrations/202607190001_project_workspace_upgrade.sql", import.meta.url), "utf8");
+const mainPermissionMigration = await readFile(new URL("../supabase/migrations/20260718000300_assets_tools_foundation.sql", import.meta.url), "utf8");
+const projectMigration = await readFile(new URL("../supabase/migrations/20260719000100_project_workspace_upgrade.sql", import.meta.url), "utf8");
 const sharedFrontend = await readFile(new URL("../src/v22/shared.jsx", import.meta.url), "utf8");
 const actionPermissionFrontend = await readFile(new URL("../src/app/actionPermissions.js", import.meta.url), "utf8");
 const appFrontend = await readFile(new URL("../src/AppMonolith.jsx", import.meta.url), "utf8");

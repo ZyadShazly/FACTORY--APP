@@ -36,8 +36,13 @@ VITE_SUPABASE_ANON_KEY=...
 حاليًا هو:
 
 ```text
-202607290003_explicit_inventory_item_type.sql
+20260811080000_migration_chain_security_closeout.sql
 ```
+
+أي بيئة جديدة تبدأ من
+`20260711165136_legacy_erp_baseline.sql`. تتحقق `npm run
+validate:migrations` من صيغة الأسماء، uniqueness، وترتيب الـbaseline قبل أي
+تطبيق أو نشر.
 
 لا تفترض أن غياب رقم ملف محلي من سجل Supabase يعني أن الـmigration غير مطبقة.
 البيئة الحية تحتوي migrations طُبقت بأرقام توليد مختلفة، كما تحتوي بعض العقود
@@ -93,4 +98,3 @@ SUPABASE_SECURITY_TEST_SERVICE_ROLE_KEY=...
 
 لا تضبط هذه القيم على Production. بدونها يُتخطى اختبار التكامل الحي وتستمر
 اختبارات العقد المحلية.
-

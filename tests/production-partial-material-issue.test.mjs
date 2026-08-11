@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 
 const ui=fs.readFileSync("src/operational/ProductionWorkspace.jsx","utf8");
-const migration=fs.readFileSync("supabase/migrations/20260727053000_production_partial_material_issue.sql","utf8");
+const migration=fs.readFileSync("supabase/migrations/20260727070553_production_partial_material_issue.sql","utf8");
 
 test("production UI supports partial and repeated issue entry",()=>{
   assert.match(ui,/صرف الآن/);

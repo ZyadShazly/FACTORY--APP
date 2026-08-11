@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const migration = readFileSync(
-  "supabase/migrations/202608020002_project_approval_history_reconciliation.sql",
+  "supabase/migrations/20260802115749_project_approval_history_reconciliation.sql",
   "utf8",
 );
 const workspace = readFileSync("src/v22/projectWorkspace.jsx", "utf8");

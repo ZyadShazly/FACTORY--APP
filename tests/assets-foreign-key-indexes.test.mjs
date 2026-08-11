@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 
 const migration = fs.readFileSync(
-  "supabase/migrations/20260803061517_assets_foreign_key_indexes.sql",
+  "supabase/migrations/20260803061908_assets_foreign_key_indexes.sql",
   "utf8",
 );
 

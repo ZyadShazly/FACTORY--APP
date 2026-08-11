@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { createClient } from "@supabase/supabase-js";
 
-const migrationUrl = new URL("../supabase/migrations/202607150002_enforce_protected_role_creation.sql", import.meta.url);
+const migrationUrl = new URL("../supabase/migrations/20260715000200_enforce_protected_role_creation.sql", import.meta.url);
 const schemaUrl = new URL("../schema.sql", import.meta.url);
 
 function protectionContract(sql) {

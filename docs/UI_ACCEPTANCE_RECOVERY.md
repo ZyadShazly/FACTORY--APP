@@ -42,4 +42,4 @@
 
 بعد آخر Migration مدمجة، نفّذ:
 
-1. `202607180001_account_bootstrap_recovery.sql`
+1. `20260718000100_account_bootstrap_recovery.sql`

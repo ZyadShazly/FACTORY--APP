@@ -3,7 +3,7 @@ import assert from"node:assert/strict";
 import{readFile}from"node:fs/promises";
 import{buildConfirmationUrl,CONFIRMATION_METHOD_LABELS,isPreviewConfirmationUrl,publicConfirmationBase}from"../src/assets/domain.js";
 
-const migrationUrl=new URL("../supabase/migrations/202607180006_asset_confirmation_emergency_controls.sql",import.meta.url);
+const migrationUrl=new URL("../supabase/migrations/20260718000600_asset_confirmation_emergency_controls.sql",import.meta.url);
 const appUrl=new URL("../src/assets/AssetsPage.jsx",import.meta.url);
 const controlsUrl=new URL("../src/assets/EmergencyControls.jsx",import.meta.url);
 const realtimeUrl=new URL("../src/realtime.js",import.meta.url);

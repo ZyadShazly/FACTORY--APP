@@ -2,13 +2,12 @@
 
 ## Decision
 
-The Assets and custody workflow is operationally closed for the Pilot. EP-04
-does not claim a maintenance-management product, vehicle fleet module,
+The Assets and custody workflow is operationally closed for the Pilot. The
+product now includes a basic audited maintenance-order lifecycle (open,
+complete, cancel, cost and outcome) backed by the immutable availability
+ledger. EP-04 still does not claim an advanced maintenance-management product,
+maintenance scheduling/parts management, vehicle fleet module,
 depreciation engine, paid WhatsApp provider, or external OTP provider.
-
-Those capabilities remain explicitly outside the Pilot boundary. The current
-maintenance tab honestly exposes basic operational states only:
-`needs_maintenance`, `under_maintenance`, and `damaged`.
 
 ## Repository closeout
 

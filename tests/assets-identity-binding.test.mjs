@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { linkedProfileForEmployee } from "../src/assets/domain.js";
 
-const migration = await readFile(new URL("../supabase/migrations/202607180007_bind_asset_employee_profile_identity.sql", import.meta.url), "utf8");
+const migration = await readFile(new URL("../supabase/migrations/20260718000700_bind_asset_employee_profile_identity.sql", import.meta.url), "utf8");
 const page = await readFile(new URL("../src/assets/AssetsPage.jsx", import.meta.url), "utf8");
 const app = await readFile(new URL("../src/AppMonolith.jsx", import.meta.url), "utf8");
 

@@ -2,7 +2,7 @@ import test from"node:test";
 import assert from"node:assert/strict";
 import fs from"node:fs";
 
-const migration=fs.readFileSync("supabase/migrations/202607220001_warehouse_management_workflow.sql","utf8");
+const migration=fs.readFileSync("supabase/migrations/20260721231749_warehouse_management_workflow.sql","utf8");
 const inventory=fs.readFileSync("src/operational/InventoryWorkspace.jsx","utf8");
 const panel=fs.readFileSync("src/operational/WarehouseManagementPanel.jsx","utf8");
 

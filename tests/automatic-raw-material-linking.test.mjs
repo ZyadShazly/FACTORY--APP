@@ -2,7 +2,7 @@ import test from"node:test";
 import assert from"node:assert/strict";
 import{readFileSync}from"node:fs";
 
-const migration=readFileSync("supabase/migrations/202607290002_automatic_raw_material_linking.sql","utf8");
+const migration=readFileSync("supabase/migrations/20260729065159_automatic_raw_material_linking.sql","utf8");
 
 test("raw material linking is automatic idempotent and ambiguity-safe",()=>{
   assert.match(migration,/ensure_raw_material_inventory_item/);

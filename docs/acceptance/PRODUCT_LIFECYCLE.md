@@ -28,7 +28,7 @@ remains readable.
 
 ## Verification
 
-- Migration: `20260803073000_product_lifecycle.sql`
+- Migration: `20260803072103_product_lifecycle.sql`
 - Regression: `product-lifecycle.test.mjs`
 - Required before completion: full tests, build, Quality Gate, Vercel, live
   migration, delete probe, count reconciliation, FK verification, and Advisors.

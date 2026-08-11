@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
-const sql = fs.readFileSync('supabase/migrations/202607190007_project_actual_cost_engine_hardening.sql', 'utf8');
+const sql = fs.readFileSync('supabase/migrations/20260719124056_project_actual_cost_engine_hardening.sql', 'utf8');
 
 test('accountants can view, create, and submit actual costs but cannot approve by default', () => {
   assert.match(sql, /when 'accountant'/);

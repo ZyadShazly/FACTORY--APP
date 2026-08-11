@@ -3,7 +3,7 @@ import { downloadExcelWorkbook } from "./excelWorkbook";
 
 const num = (value) => Number(value || 0);
 const sum = (rows, key) => rows.reduce((total, row) => total + num(row[key]), 0);
-const statusLabel = (value) => ({ draft: "مسودة", rejected: "مرفوض", approved: "معتمد", paid: "مدفوع", pending: "قيد المراجعة", unpaid: "غير مدفوع", partial: "مدفوع جزئيًا", active: "نشط", archived: "مؤرشف" }[value] || value || "—");
+const statusLabel = (value) => ({ draft: "مسودة", rejected: "مرفوض", approved: "معتمد", paid: "مدفوع", pending: "قيد المراجعة", unpaid: "غير مدفوع", partial: "مدفوع جزئيًا", partially_paid: "مدفوع جزئيًا", active: "نشط", archived: "مؤرشف" }[value] || value || "—");
 const dateOnly = (value) => value ? String(value).slice(0, 10) : "";
 
 async function generatedBy() {
@@ -129,9 +129,12 @@ export async function exportExternalLaborWorkbook({ dateFrom, dateTo }) {
         { label: "عدد العمال", value: new Set(rows.map((r) => r.worker_name)).size, type: "number" },
         { label: "إجمالي الساعات", value: sum(rows, "total_hours"), type: "number" },
         { label: "إجمالي الإضافي", value: sum(rows, "overtime_hours"), type: "number" },
-        { label: "إجمالي المستحق", value: sum(rows, "total_amount"), type: "currency" },
+        { label: "إجمالي الأجر المحتسب", value: sum(rows, "total_amount"), type: "currency" },
+        { label: "إجمالي الإضافات", value: sum(rows, "addition_amount"), type: "currency" },
+        { label: "إجمالي الخصومات", value: sum(rows, "deduction_amount"), type: "currency" },
+        { label: "صافي المستحق", value: sum(rows, "net_amount"), type: "currency" },
         { label: "إجمالي المدفوع", value: sum(rows, "paid_amount"), type: "currency" },
-        { label: "المتبقي", value: sum(rows, "total_amount") - sum(rows, "paid_amount"), type: "currency" },
+        { label: "المتبقي", value: sum(rows, "net_amount") - sum(rows, "paid_amount"), type: "currency" },
       ],
       columns: [{ label: "حالة التقرير", width: 150, value: () => "جاهز للمراجعة" }],
       rows: rows.length ? [{}] : [],
@@ -152,7 +155,12 @@ export async function exportExternalLaborWorkbook({ dateFrom, dateTo }) {
         { label: "سعر الساعة", key: "hourly_rate", type: "currency", width: 90 },
         { label: "الإضافي", key: "overtime_hours", type: "number", width: 75 },
         { label: "سعر الإضافي", key: "overtime_rate", type: "currency", width: 90 },
-        { label: "الإجمالي", key: "total_amount", type: "currency", width: 95 },
+        { label: "الأجر المحتسب", key: "total_amount", type: "currency", width: 95 },
+        { label: "الإضافات", key: "addition_amount", type: "currency", width: 90 },
+        { label: "سبب الإضافة", key: "addition_reason", width: 180 },
+        { label: "الخصومات", key: "deduction_amount", type: "currency", width: 90 },
+        { label: "سبب الخصم", key: "deduction_reason", width: 180 },
+        { label: "صافي المستحق", key: "net_amount", type: "currency", width: 100 },
         { label: "المدفوع", key: "paid_amount", type: "currency", width: 95 },
         { label: "حالة الدفع", type: "status", width: 90, value: (r) => statusLabel(r.payment_status) },
       ],

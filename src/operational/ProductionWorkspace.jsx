@@ -5,6 +5,8 @@ import{
   PageHeader,PrimaryActionBar,SearchFilterBar,StatusBadge,dateText,friendlyError,
   inputStyle,money
 }from"./ui";
+import{ConfirmDialog}from"../v22/shared";
+import{runCriticalMutation}from"../v22/mutations";
 import"./productionWorkspace.css";
 
 const emptyWorkspace={orders:[],operations:[],requirements:[],events:[],employees:[],capabilities:{}};
@@ -37,6 +39,8 @@ export function ProductionWorkspace({data,profileRole,canViewFinancials=true}){
   const[ok,setOk]=useState("");
   const[busy,setBusy]=useState("");
   const[loading,setLoading]=useState(true);
+  const[cancelAction,setCancelAction]=useState(null);
+  const[operationAction,setOperationAction]=useState(null);
 
   async function load(){
     setLoading(true);setError("");
@@ -56,10 +60,14 @@ export function ProductionWorkspace({data,profileRole,canViewFinancials=true}){
 
   async function create(){
     if(!form.product)return setError("اختر المنتج.");
-    if(Number(form.qty)<=0)return setError("أدخل كمية إنتاج أكبر من صفر.");
+    const quantity=Number(form.qty);
+    const waste=Number(form.waste);
+    if(!Number.isFinite(quantity)||quantity<=0)return setError("أدخل كمية إنتاج رقمية أكبر من صفر.");
+    if(!Number.isFinite(waste))return setError("أدخل نسبة هالك رقمية صحيحة.");
+    if(waste<0)return setError("نسبة الهالك لا يمكن أن تكون سالبة.");
     const result=await call("create","create_production_order_secure",{
-      target_product:form.product,target_quantity:Number(form.qty),
-      target_waste_percentage:Number(form.waste||0),target_project:form.project||null,
+      target_product:form.product,target_quantity:quantity,
+      target_waste_percentage:waste,target_project:form.project||null,
       target_warehouse:form.warehouse||null,target_order_date:form.date,target_note:null
     },"تم إنشاء أمر الإنتاج كمسودة مع متطلبات خاماته وخطوة تشغيله.");
     if(result){setCreating(false);setForm(current=>({...current,product:"",project:"",warehouse:"",qty:"",waste:"0"}))}
@@ -92,7 +100,7 @@ export function ProductionWorkspace({data,profileRole,canViewFinancials=true}){
   }
 
   async function operationEvent(operation,event,reason=null){
-    await call(operation.id,"record_production_operation_event",{
+    return await call(operation.id,"record_production_operation_event",{
       target_operation:operation.id,target_event:event,event_reason:reason,
       good_quantity:null,bad_quantity:null,rework_qty:null
     },{
@@ -102,10 +110,7 @@ export function ProductionWorkspace({data,profileRole,canViewFinancials=true}){
   }
 
   async function pauseOperation(operation){
-    const reason=window.prompt("اكتب سبب إيقاف خطوة التشغيل مؤقتًا.");
-    if(reason===null)return;
-    if(!reason.trim())return setError("سبب الإيقاف المؤقت مطلوب.");
-    await operationEvent(operation,"pause",reason.trim());
+    setOperationAction({type:"pause",operation,reason:""});
   }
 
   function openFinish(operation,order){
@@ -126,32 +131,39 @@ export function ProductionWorkspace({data,profileRole,canViewFinancials=true}){
   }
 
   async function reviewQuality(operation,approve){
-    let reason=null;
     if(!approve){
-      reason=window.prompt("اكتب سبب رفض مراجعة الجودة وما المطلوب تصحيحه.");
-      if(reason===null)return;
-      if(!reason.trim())return setError("سبب رفض الجودة مطلوب.");
+      setOperationAction({type:"quality",operation,reason:""});
+      return;
     }
     await call(operation.id,"review_production_operation_quality",{
-      target_operation:operation.id,approve,review_reason:reason?.trim()||null
-    },approve?"تم اعتماد جودة خطوة التشغيل.":"تم رفض الجودة مع حفظ السبب.");
+      target_operation:operation.id,approve,review_reason:null
+    },"تم اعتماد جودة خطوة التشغيل.");
   }
 
   async function skipOperation(operation){
-    const reason=window.prompt("اكتب سبب تجاوز خطوة التشغيل. سيبقى القرار محفوظًا في التدقيق.");
-    if(reason===null)return;
-    if(!reason.trim())return setError("سبب تجاوز الخطوة مطلوب.");
-    await call(operation.id,"update_production_operation_status",{
-      target_operation:operation.id,target_status:"skipped",
-      actual_minutes:null,operation_note:reason.trim()
-    },"تم تجاوز الخطوة بقرار إداري موثق.");
+    setOperationAction({type:"skip",operation,reason:""});
   }
 
-  async function cancelOrder(order){
-    const reason=window.prompt(`اكتب سبب إلغاء ${orderReference(order)}. ستُعكس حركات الصرف المؤهلة دون حذف التاريخ.`);
-    if(reason===null)return;
-    if(!reason.trim())return setError("سبب إلغاء أمر الإنتاج مطلوب.");
-    await call(order.id,"cancel_production_order",{target_order:order.id,reason:reason.trim()},"تم إلغاء الأمر وعكس الحركات المؤهلة مع حفظ التاريخ.");
+  async function confirmOperationAction(){
+    if(!operationAction?.reason.trim())return;
+    const{type,operation,reason}=operationAction;
+    let result;
+    if(type==="pause")result=await operationEvent(operation,"pause",reason.trim());
+    else if(type==="quality")result=await call(operation.id,"review_production_operation_quality",{target_operation:operation.id,approve:false,review_reason:reason.trim()},"تم رفض الجودة مع حفظ السبب.");
+    else result=await call(operation.id,"update_production_operation_status",{target_operation:operation.id,target_status:"skipped",actual_minutes:null,operation_note:reason.trim()},"تم تجاوز الخطوة بقرار إداري موثق.");
+    if(result!==false)setOperationAction(null);
+  }
+
+  async function confirmCancelOrder(){
+    const{order,reason}=cancelAction;
+    setCancelAction(current=>({...current,busy:true,error:""}));setError("");setOk("");
+    const result=await runCriticalMutation({scope:"production:cancel",mutate:()=>supabase.rpc("cancel_production_order",{target_order:order.id,reason:reason.trim()}),verify:async()=>{
+      const verification=await supabase.rpc("get_production_workspace");
+      if(verification.error)return verification;
+      return (verification.data?.orders||[]).some(row=>row.id===order.id&&row.status==="cancelled");
+    },refetch:load});
+    if(result.error)return setCancelAction(current=>({...current,busy:false,error:result.mutationSaved?"وصل أمر الإلغاء للخادم، لكن تعذر التحقق. حدّث الشاشة قبل إعادة المحاولة.":friendlyError(result.error)}));
+    setCancelAction(null);setSelectedId("");setOk(result.refreshError?"تم إلغاء الأمر وعكس الحركات، لكن تعذر تحديث الشاشة. حدّث الصفحة دون إعادة الإلغاء.":"تم إلغاء الأمر وعكس الحركات المؤهلة مع حفظ التاريخ.");
   }
 
   const reqFor=id=>workspace.requirements.filter(row=>row.production_order_id===id);
@@ -226,7 +238,7 @@ export function ProductionWorkspace({data,profileRole,canViewFinancials=true}){
       <HelpText title="قبل الإنشاء">اربط المنتج بتركيبة خامات نشطة واختر المخزن. الإنشاء لا يصرف مخزونًا حتى إصدار الأمر وتسجيل كل دفعة.</HelpText>
       <div className="production-form-grid">
         <Field label="المنتج"><select style={inputStyle} value={form.product} onChange={event=>setForm({...form,product:event.target.value})}><option value="">اختر</option>{(data.products||[]).filter(row=>!row.archived_at).map(row=><option key={row.id} value={row.id}>{row.name}</option>)}</select></Field>
-        <Field label="المشروع"><select style={inputStyle} value={form.project} onChange={event=>setForm({...form,project:event.target.value})}><option value="">اختر</option>{(data.projects||[]).map(row=><option key={row.id} value={row.id}>{row.project_name||row.name||row.project_code}</option>)}</select></Field>
+        <Field label="المشروع"><select style={inputStyle} value={form.project} onChange={event=>setForm({...form,project:event.target.value})}><option value="">اختر</option>{(data.projects||[]).filter(row=>row.lifecycle==="active").map(row=><option key={row.id} value={row.id}>{row.project_code} · {row.project_name}</option>)}</select></Field>
         <Field label="المخزن"><select style={inputStyle} value={form.warehouse} onChange={event=>setForm({...form,warehouse:event.target.value})}><option value="">اختر</option>{(inventory.warehouses||[]).map(row=><option key={row.id} value={row.id}>{row.name}</option>)}</select></Field>
         <Field label="الكمية"><input type="number" min="0" style={inputStyle} value={form.qty} onChange={event=>setForm({...form,qty:event.target.value})}/></Field>
         <Field label="الهالك %"><input type="number" min="0" style={inputStyle} value={form.waste} onChange={event=>setForm({...form,waste:event.target.value})}/></Field>
@@ -262,7 +274,7 @@ export function ProductionWorkspace({data,profileRole,canViewFinancials=true}){
           {workspace.capabilities.plan&&["draft","planned"].includes(selected.status)&&<Button disabled={Boolean(busy)} onClick={()=>call(selected.id,"plan_production_order",{target_order:selected.id,start_date:new Date().toISOString().slice(0,10),end_date:null},"تم تخطيط الأمر.")}>تخطيط</Button>}
           {workspace.capabilities.release&&selected.status==="planned"&&<Button disabled={Boolean(busy)} onClick={()=>call(selected.id,"release_production_order",{target_order:selected.id},"تم إصدار الأمر للتنفيذ.")}>إصدار</Button>}
           {workspace.capabilities.complete&&selected.status==="in_progress"&&<Button disabled={Boolean(busy)||!selectedMetrics.materialsComplete||!selectedMetrics.operationsComplete||!selectedMetrics.qualityComplete} onClick={()=>call(selected.id,"complete_production_order",{target_order:selected.id},"تم إكمال أمر الإنتاج.")}>إكمال الأمر</Button>}
-          {workspace.capabilities.cancel&&!["completed","cancelled"].includes(selected.status)&&<Button tone="danger" disabled={Boolean(busy)} onClick={()=>cancelOrder(selected)}>إلغاء وعكس</Button>}
+          {workspace.capabilities.cancel&&!["completed","cancelled"].includes(selected.status)&&<Button tone="danger" disabled={Boolean(busy)} onClick={()=>setCancelAction({order:selected,reason:"",busy:false,error:""})}>إلغاء وعكس</Button>}
         </div>
         {selected.status==="in_progress"&&(!selectedMetrics.materialsComplete||!selectedMetrics.operationsComplete||!selectedMetrics.qualityComplete)&&<Notice type="error">لا يمكن إكمال الأمر الآن: {!selectedMetrics.materialsComplete?"استكمل صرف كل الخامات. ":""}{!selectedMetrics.operationsComplete?"استكمل خطوات التشغيل. ":""}{!selectedMetrics.qualityComplete?"اعتمد مراجعات الجودة المعلقة.":""}</Notice>}
 
@@ -310,6 +322,9 @@ export function ProductionWorkspace({data,profileRole,canViewFinancials=true}){
         </section>
       </>}
     </DetailsDrawer>
+
+    <ConfirmDialog open={Boolean(cancelAction)} title={cancelAction?`إلغاء ${orderReference(cancelAction.order)}`:"إلغاء أمر الإنتاج"} description="ستُعكس حركات صرف المخزون المؤهلة دون حذف التاريخ. العملية محمية من التطبيق المكرر." confirmLabel="إلغاء وعكس الحركات" danger reasonRequired reason={cancelAction?.reason||""} busy={cancelAction?.busy} error={cancelAction?.error} onReasonChange={reason=>setCancelAction(current=>({...current,reason,error:""}))} onConfirm={confirmCancelOrder} onCancel={()=>setCancelAction(null)}/>
+    <ConfirmDialog open={Boolean(operationAction)} title={operationAction?.type==="pause"?"إيقاف خطوة التشغيل مؤقتًا":operationAction?.type==="quality"?"رفض مراجعة الجودة":"تجاوز خطوة التشغيل"} description={operationAction?.type==="pause"?"سيتوقف عداد تنفيذ الخطوة ويُحفظ السبب في سجلها.":operationAction?.type==="quality"?"اكتب ما يجب تصحيحه قبل إعادة المراجعة.":"سيبقى قرار التجاوز وسببه محفوظين في سجل التدقيق."} confirmLabel={operationAction?.type==="pause"?"إيقاف مؤقت":operationAction?.type==="quality"?"رفض الجودة":"تجاوز الخطوة"} danger reasonRequired reason={operationAction?.reason||""} busy={busy===operationAction?.operation.id} onReasonChange={reason=>setOperationAction(current=>({...current,reason}))} onConfirm={confirmOperationAction} onCancel={()=>setOperationAction(null)}/>
 
     <DetailsDrawer open={Boolean(finishing)} title="إنهاء خطوة التشغيل" description="راجع الكميات قبل الإرسال للجودة." onClose={()=>setFinishing(null)} className="production-finish-drawer">
       {finishing&&<div className="production-finish-form">

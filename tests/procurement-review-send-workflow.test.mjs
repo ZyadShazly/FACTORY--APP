@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
-const migration=fs.readFileSync('supabase/migrations/202607260002_procurement_review_send_workflow.sql','utf8');
+const migration=fs.readFileSync('supabase/migrations/20260726000200_procurement_review_send_workflow.sql','utf8');
 
 test('purchase requests and orders have user-facing names',()=>{
   assert.match(migration,/purchase_requests\s+add column if not exists display_name text/i);

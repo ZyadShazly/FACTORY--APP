@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
-const sql = fs.readFileSync('supabase/migrations/202607190006_project_actual_cost_engine.sql','utf8');
+const sql = fs.readFileSync('supabase/migrations/20260719124029_project_actual_cost_engine.sql','utf8');
 
 test('actual cost sources are canonical and deduplicated', () => {
   assert.match(sql,/project_actual_cost_source_revision_uidx/);

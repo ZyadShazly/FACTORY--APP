@@ -1,6 +1,7 @@
 import React,{useEffect,useMemo,useState}from"react";
 import{supabase}from"../supabaseClient";
 import{Button,Field,Notice,Panel,friendlyError,inputStyle,money}from"./ui";
+import{ConfirmDialog}from"../v22/shared";
 
 const emptyForm={sku:"",name:"",unit:"وحدة",itemType:"raw_material",materialId:"",active:true};
 
@@ -13,6 +14,7 @@ export function InventoryCatalogPanel({workspace,onChanged,onOpenMaterials,canMa
   const[links,setLinks]=useState({});
   const[showCreate,setShowCreate]=useState(false);
   const[form,setForm]=useState(emptyForm);
+  const[deleteAction,setDeleteAction]=useState(null);
   const sourceCatalog=(workspace.catalog||[]).length?workspace.catalog:(workspace.items||[]);
   const rawItems=useMemo(()=>sourceCatalog.filter(item=>item.item_type==="raw_material"),[sourceCatalog]);
   const finishedItems=useMemo(()=>sourceCatalog.filter(item=>item.item_type==="finished_good"),[sourceCatalog]);
@@ -66,12 +68,15 @@ export function InventoryCatalogPanel({workspace,onChanged,onOpenMaterials,canMa
   }
 
   async function deleteItem(item){
-    const reason=window.prompt(`اكتب سبب حذف الصنف "${item.name}". لن يتم الحذف إذا كان مستخدمًا تشغيليًا.`);
-    if(reason===null)return;
-    if(!reason.trim())return setError("سبب الحذف مطلوب.");
-    await run(item.id,"delete_inventory_setup_entity",{
-      entity_type:"inventory_item",target_id:item.id,deletion_reason:reason.trim()
+    setDeleteAction({item,reason:""});
+  }
+
+  async function confirmDelete(){
+    if(!deleteAction?.reason.trim())return;
+    const done=await run(deleteAction.item.id,"delete_inventory_setup_entity",{
+      entity_type:"inventory_item",target_id:deleteAction.item.id,deletion_reason:deleteAction.reason.trim()
     },"تم حذف الصنف غير المستخدم مع حفظ بياناته السابقة في سجل التدقيق.");
+    if(done)setDeleteAction(null);
   }
 
   return <Panel title="أصناف المخزون" actions={canManage&&<Button onClick={()=>startCreate()}>+ صنف جديد</Button>}>
@@ -149,5 +154,6 @@ export function InventoryCatalogPanel({workspace,onChanged,onOpenMaterials,canMa
       })}
       {!catalog.length&&<tr><td colSpan={canManage?7:6} className="inventory-empty">لا توجد {stockKind==="raw"?"مواد خام":"منتجات تامة"} مطابقة.</td></tr>}
     </tbody></table></div>
+    <ConfirmDialog open={Boolean(deleteAction)} title="حذف صنف غير مستخدم" description={`لن يُحذف «${deleteAction?.item.name||"الصنف"}» إذا كان مرتبطًا بأي حركة أو رصيد أو مستند تشغيلي.`} confirmLabel="حذف الصنف" danger busy={busy===deleteAction?.item.id} reasonRequired reason={deleteAction?.reason||""} onReasonChange={reason=>setDeleteAction(current=>({...current,reason}))} onConfirm={confirmDelete} onCancel={()=>setDeleteAction(null)}/>
   </Panel>;
 }

@@ -3,7 +3,7 @@
 ## Prerequisite
 
 Apply the Supabase migrations in filename order through
-`202607140003_enable_multi_user_realtime.sql`. The last migration adds the
+`20260714000300_enable_multi_user_realtime.sql`. The last migration adds the
 operational tables to `supabase_realtime`, introduces profile account status,
 and blocks suspended profiles from operational tables.
 
