@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 
 const settings=fs.readFileSync("src/settings/SettingsPage.jsx","utf8");
-const migration=fs.readFileSync("supabase/migrations/202607190020_system_ux_hardening.sql","utf8");
+const migration=fs.readFileSync("supabase/migrations/20260719185315_system_ux_hardening.sql","utf8");
 
 test("currency mutation is only offered to the Owner allowed by the server",()=>{
   assert.match(settings,/canManageCurrency = currentProfile\?\.role === "owner"/);

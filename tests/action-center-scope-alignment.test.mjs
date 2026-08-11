@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 
-const migration=fs.readFileSync("supabase/migrations/202608103600_action_center_scope_alignment.sql","utf8");
+const migration=fs.readFileSync("supabase/migrations/20260810360000_action_center_scope_alignment.sql","utf8");
 
 test("Production notifications and search only expose assigned orders",()=>{
   const assigned=/assigned_employee_id=actor_employee/g;

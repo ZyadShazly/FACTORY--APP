@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
-const migration = fs.readFileSync('supabase/migrations/202607200008_action_center_search.sql','utf8');
+const migration = fs.readFileSync('supabase/migrations/20260720201614_action_center_search.sql','utf8');
 const shell = fs.readFileSync('src/layout/AppShell.jsx','utf8');
 
 test('action center and search are protected RPCs',()=>{

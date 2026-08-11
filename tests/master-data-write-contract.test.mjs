@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-const migration = readFileSync("supabase/migrations/202608102300_master_data_write_contract.sql", "utf8");
+const migration = readFileSync("supabase/migrations/20260810230000_master_data_write_contract.sql", "utf8");
 const ui = readFileSync("src/AppMonolith.jsx", "utf8");
 
 test("master data creation and editing are permission checked and audited", () => {

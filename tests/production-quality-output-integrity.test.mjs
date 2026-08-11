@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-const migration=readFileSync("supabase/migrations/202608103200_production_quality_output_receipt.sql","utf8");
+const migration=readFileSync("supabase/migrations/20260810320000_production_quality_output_receipt.sql","utf8");
 const ui=readFileSync("src/AppMonolith.jsx","utf8");
 
 test("finished goods receipt uses the final quality-approved output",()=>{

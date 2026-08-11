@@ -52,8 +52,8 @@
 
 ## ترتيب التطبيق
 
-1. طبّق migrations السابقة بالترتيب حتى `202607180001_account_bootstrap_recovery.sql`.
-2. طبّق `202607180002_payroll_calendar_foundation.sql`.
+1. طبّق migrations السابقة بالترتيب حتى `20260718000100_account_bootstrap_recovery.sql`.
+2. طبّق `20260718000200_payroll_calendar_foundation.sql`.
 3. تحقق من `department_migration_report` ولا تعدل `employees.department` القديم.
 4. امنح Accountant الصلاحيات المطلوبة من شاشة الفريق عند الحاجة.
 5. أنشئ واعتمد جدول الشركة الافتراضي قبل استخدام Resolver في دورة الرواتب اللاحقة.

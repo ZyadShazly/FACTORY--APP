@@ -7,7 +7,7 @@ const app = fs.readFileSync("src/AppMonolith.jsx", "utf8");
 const inventoryHook = fs.readFileSync("src/operational/useInventoryWorkspace.js", "utf8");
 const projects = fs.readFileSync("src/v22/projectWorkspace.jsx", "utf8");
 const actualCost = fs.readFileSync("src/v22/projectActualCost.jsx", "utf8");
-const migration = fs.readFileSync("supabase/migrations/202608101100_uat_canonical_project_actual_cost.sql", "utf8");
+const migration = fs.readFileSync("supabase/migrations/20260810110000_uat_canonical_project_actual_cost.sql", "utf8");
 
 test("UAT-001 aggregates the protected ledger across warehouses", () => {
   const workspace = {

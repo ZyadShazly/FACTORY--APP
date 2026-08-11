@@ -35,7 +35,7 @@ This tracker is the evidence index for the NextEP factory pilot mission. Every i
 
 ## Coordination register
 
-- PR #80 (`agent/fix-procurement-print-templates`) remains an open Draft. Phase 2 reused its two commits and completed them on the stacked phase branch; the two PRs must be reconciled before any future merge to avoid applying migration `202607260002` twice.
+- PR #80 (`agent/fix-procurement-print-templates`) remains an open Draft. Phase 2 reused its two commits and completed them on the stacked phase branch; the two PRs must be reconciled before any future merge to avoid applying migration `20260726000200` twice.
 - PR #34 (`feat/production-execution-quality`) remains an open Draft. Its live migration was already applied outside this mission under version `20260721041533`; Phase 4 reconciles that state with an additive idempotent migration and repository-safe replay guard. Do not merge PR #34 independently without reconciling the duplicate historical migration version and stacked implementation.
 - Historical coordination assumption: `agent/safe-delete-dependency-explorer`
   was treated as separately owned. Current reconciliation shows the branch is

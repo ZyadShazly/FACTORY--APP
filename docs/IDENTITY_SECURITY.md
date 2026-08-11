@@ -16,14 +16,14 @@ Protected profile fields (`role`, `permissions`, and `status`) cannot be changed
 Apply migrations in filename order. For this phase, the new final migration is:
 
 ```text
-202607160001_enforce_owner_manager_hierarchy.sql
+20260716000100_enforce_owner_manager_hierarchy.sql
 ```
 
-It must run after `202607150003_owner_identity_security.sql`. It does not weaken self-signup restrictions: new users may still create only `accountant` or `production` profiles with empty permissions and active status.
+It must run after `20260715000300_owner_identity_security.sql`. It does not weaken self-signup restrictions: new users may still create only `accountant` or `production` profiles with empty permissions and active status.
 
 ## Promote an existing account to Owner
 
-1. Apply all migrations through `202607160001_enforce_owner_manager_hierarchy.sql`.
+1. Apply all migrations through `20260716000100_enforce_owner_manager_hierarchy.sql`.
 2. Open `supabase/scripts/promote_existing_user_to_owner.sql` locally.
 3. Copy it into Supabase SQL Editor without saving personal values to Git.
 4. Set exactly one variable inside the `DO` block:

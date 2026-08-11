@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-const migration = readFileSync("supabase/migrations/202607280006_finished_goods_production_receipt.sql", "utf8");
+const migration = readFileSync("supabase/migrations/20260728114535_finished_goods_production_receipt.sql", "utf8");
 const inventoryUi = readFileSync("src/operational/InventoryCatalogPanel.jsx", "utf8");
 
 test("production completion posts one finished-goods inventory receipt", () => {

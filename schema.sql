@@ -1,3 +1,6 @@
+-- LEGACY REFERENCE ONLY. Fresh environments must use the ordered files in
+-- supabase/migrations, beginning with 20260711165136_legacy_erp_baseline.sql.
+-- This historical editor script is intentionally not the migration source of truth.
 -- ============================================================
 -- شغّل الكود ده كله مرة واحدة في Supabase: SQL Editor -> New query -> الصق كله -> Run
 -- ============================================================

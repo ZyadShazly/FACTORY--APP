@@ -49,21 +49,21 @@ Owner وManager تلقائيًا. Accountant حسب المنح. Production يم�
 
 ## Migration
 
-بعد `202607180002_payroll_calendar_foundation.sql` طبّق:
+بعد `20260718000200_payroll_calendar_foundation.sql` طبّق:
 
-`202607180003_assets_tools_foundation.sql`
+`20260718000300_assets_tools_foundation.sql`
 
 إذا كانت Migration السابقة مطبقة بالفعل، طبّق بعدها مباشرة:
 
-`202607180004_fix_assets_pgcrypto_schema.sql`
+`20260718000400_fix_assets_pgcrypto_schema.sql`
 
 الـHotfix يؤهل وظائف `pgcrypto` صراحةً داخل schema `extensions`، ويعيد إنشاء RPCs المتأثرة ويصلح Stored Defaults دون إعادة إنشاء الجداول.
 
-ثم طبّق `202607180005_fix_asset_alerts_access.sql` لإتاحة بيانات تنبيهات الأصول الآمنة فقط عبر View منفذة بصلاحيات المالك، مع استمرار حجب `public.assets` المباشر والحقول المالية.
+ثم طبّق `20260718000500_fix_asset_alerts_access.sql` لإتاحة بيانات تنبيهات الأصول الآمنة فقط عبر View منفذة بصلاحيات المالك، مع استمرار حجب `public.assets` المباشر والحقول المالية.
 
-ثم طبّق `202607180006_asset_confirmation_emergency_controls.sql` وبعدها مباشرة `202607180007_bind_asset_employee_profile_identity.sql`. إذا كانت `006` مطبقة سابقًا، فمسار الاسترداد هو تطبيق `007` فقط؛ فهي تسجل الروابط القديمة غير المعيارية، تحيدها، ثم تعيد تعريف RPCs والتأكيدات فوق العلاقة المعيارية.
+ثم طبّق `20260718000600_asset_confirmation_emergency_controls.sql` وبعدها مباشرة `20260718000700_bind_asset_employee_profile_identity.sql`. إذا كانت `006` مطبقة سابقًا، فمسار الاسترداد هو تطبيق `007` فقط؛ فهي تسجل الروابط القديمة غير المعيارية، تحيدها، ثم تعيد تعريف RPCs والتأكيدات فوق العلاقة المعيارية.
 
-بعدهما طبّق `202607180008_assets_security_performance_hardening.sql`. تغلق هذه
+بعدهما طبّق `20260718000800_assets_security_performance_hardening.sql`. تغلق هذه
 الـMigration تنفيذ دوال Triggers والـhelpers الداخلية أمام `PUBLIC` و`anon`
 و`authenticated`، وتثبت `search_path`، وتضيف فهارس مفاتيح الربط الأكثر استخدامًا.
 لا تغيّر صلاحيات Business RPCs التي تستدعيها الواجهة.
@@ -89,7 +89,7 @@ Owner وManager تلقائيًا. Accountant حسب المنح. Production يم�
 
 التأكيد الموثق يعتمد حصريًا على العلاقة المعيارية `profiles.employee_id → employees.id`. لا تُستنتج الهوية من الاسم أو البريد أو الهاتف. يربط Owner الحساب بموظف نشط واحد من شاشة الفريق عبر `admin_link_profile_employee` الموثقة، ولا يمكن ربط الموظف بأكثر من حساب. الموظف المرتبط يؤكد بحسابه فقط، بينما يظل رابط الحيازة متاحًا فقط للموظف الذي لا يملك حسابًا مرتبطًا.
 
-تسجل Migration `202607180007_bind_asset_employee_profile_identity.sql` أي روابط قديمة غير معيارية داخل `asset_identity_binding_migration_report` قبل إزالة الرابط غير الآمن. وإذا سبق تسجيل `authenticated_employee` بلا علاقة معيارية، يتحول مؤشر الثقة إلى `bearer_link` مع بقاء التاريخ التشغيلي وتقرير المراجعة وسجل التدقيق.
+تسجل Migration `20260718000700_bind_asset_employee_profile_identity.sql` أي روابط قديمة غير معيارية داخل `asset_identity_binding_migration_report` قبل إزالة الرابط غير الآمن. وإذا سبق تسجيل `authenticated_employee` بلا علاقة معيارية، يتحول مؤشر الثقة إلى `bearer_link` مع بقاء التاريخ التشغيلي وتقرير المراجعة وسجل التدقيق.
 
 التحقق الخارجي الإنتاجي بالهاتف يحتاج OTP Provider مستقلًا يرسل الرمز إلى رقم المستلم المحفوظ عبر قناة منفصلة. عند وجود حساب نظام للمستلم يجب ربط `receiver_profile_id` وتفضيل التأكيد بالحساب. تُنشأ الروابط من `VITE_PUBLIC_APP_URL`؛ روابط Vercel Preview المحمية قد لا تفتح للمستلم ولا علاقة لذلك باتصال Supabase Realtime.
 

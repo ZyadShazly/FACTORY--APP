@@ -8,7 +8,7 @@ const inventory=fs.readFileSync("src/operational/InventoryWorkspace.jsx","utf8")
 const opening=fs.readFileSync("src/operational/OpeningInventoryPanel.jsx","utf8");
 const actualCost=fs.readFileSync("src/v22/projectActualCost.jsx","utf8");
 const shared=fs.readFileSync("src/v22/shared.jsx","utf8");
-const migration=fs.readFileSync("supabase/migrations/202608101330_uat_idempotent_production_cancellation.sql","utf8");
+const migration=fs.readFileSync("supabase/migrations/20260810133000_uat_idempotent_production_cancellation.sql","utf8");
 
 test("UAT-007 critical cancellation avoids browser-native dialogs",()=>{
   assert.doesNotMatch(app.slice(app.indexOf("function SalesTab"),app.indexOf("/* -------------------------------- Suppliers")),/window\.(?:prompt|confirm)/);

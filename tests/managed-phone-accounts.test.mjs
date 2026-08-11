@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const migrationUrl = new URL("../supabase/migrations/202608101700_managed_phone_accounts.sql", import.meta.url);
+const migrationUrl = new URL("../supabase/migrations/20260810170000_managed_phone_accounts.sql", import.meta.url);
 const edgeUrl = new URL("../supabase/functions/admin-manage-user/index.ts", import.meta.url);
 const appUrl = new URL("../src/AppMonolith.jsx", import.meta.url);
 

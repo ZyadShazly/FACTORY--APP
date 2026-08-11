@@ -4,7 +4,7 @@ import fs from "node:fs";
 
 const ui = fs.readFileSync("src/v22/PayrollReviewTab.jsx", "utf8");
 const css = fs.readFileSync("src/v22/payroll.css", "utf8");
-const migration = fs.readFileSync("supabase/migrations/202607280004_payroll_pilot_completion.sql", "utf8");
+const migration = fs.readFileSync("supabase/migrations/20260728000400_payroll_pilot_completion.sql", "utf8");
 const docs = fs.readFileSync("docs/acceptance/PAYROLL_PILOT_COMPLETION.md", "utf8");
 
 test("migration is additive and preserves the existing payroll formula and data", () => {

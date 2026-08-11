@@ -6,7 +6,7 @@ Phase 6 completes the employee lifecycle on branch
 `agent/employees-lifecycle-completion`. It preserves the existing employee
 authorization and checked-delete workflow, and adds exact dependency evidence
 through the additive migration
-`202607280003_employee_lifecycle_completion.sql`.
+`20260728000300_employee_lifecycle_completion.sql`.
 
 - لم تُطبّق على Supabase؛ the migration remains repository-only.
 - No employee, payroll, asset, project, production, or audit row is rewritten or deleted.

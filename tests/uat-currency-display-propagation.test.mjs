@@ -4,7 +4,7 @@ import fs from "node:fs";
 import { formatDocumentMoney } from "../src/userExperience.js";
 
 const ui=fs.readFileSync("src/operational/ProcurementWorkspace.jsx","utf8");
-const migration=fs.readFileSync("supabase/migrations/202608101420_uat_procurement_currency_propagation.sql","utf8");
+const migration=fs.readFileSync("supabase/migrations/20260810142000_uat_procurement_currency_propagation.sql","utf8");
 
 test("UAT-006 preview, cards and print use document currency",()=>{
   assert.match(formatDocumentMoney(100,"SAR"),/SAR/);

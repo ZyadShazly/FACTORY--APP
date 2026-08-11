@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 
 const ui=fs.readFileSync("src/reporting/ReportingWorkspace.jsx","utf8");
-const migration=fs.readFileSync("supabase/migrations/202608103400_operational_reporting_summary.sql","utf8");
+const migration=fs.readFileSync("supabase/migrations/20260810340000_operational_reporting_summary.sql","utf8");
 
 test("reporting loads the protected period operational summary",()=>{
   assert.match(ui,/get_operational_reporting_summary/);

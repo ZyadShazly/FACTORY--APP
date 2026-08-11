@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 
-const migration=fs.readFileSync("supabase/migrations/202608103500_production_financial_data_boundary.sql","utf8");
+const migration=fs.readFileSync("supabase/migrations/20260810350000_production_financial_data_boundary.sql","utf8");
 const app=fs.readFileSync("src/AppMonolith.jsx","utf8");
 
 test("production reference and workspace payloads remove financial fields",()=>{

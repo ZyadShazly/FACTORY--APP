@@ -3,11 +3,11 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 const migration = fs.readFileSync(
-  new URL('../supabase/migrations/202607190010_project_actual_cost_source_integrations.sql', import.meta.url),
+  new URL('../supabase/migrations/20260719150015_project_actual_cost_source_integrations.sql', import.meta.url),
   'utf8',
 );
 const hardening = fs.readFileSync(
-  new URL('../supabase/migrations/202607190011_project_actual_cost_source_status_hardening.sql', import.meta.url),
+  new URL('../supabase/migrations/20260719150204_project_actual_cost_source_status_hardening.sql', import.meta.url),
   'utf8',
 );
 

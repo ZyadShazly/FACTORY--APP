@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-const migration = readFileSync("supabase/migrations/202608102100_commercial_inventory_posting.sql", "utf8");
+const migration = readFileSync("supabase/migrations/20260810210000_commercial_inventory_posting.sql", "utf8");
 const ui = readFileSync("src/AppMonolith.jsx", "utf8");
 
 test("sale and rental creation use authenticated retry-safe RPCs", () => {

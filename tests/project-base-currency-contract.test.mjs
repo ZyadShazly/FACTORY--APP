@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
 
-const migration = fs.readFileSync("supabase/migrations/202608101900_project_base_currency_contract.sql", "utf8");
+const migration = fs.readFileSync("supabase/migrations/20260810190000_project_base_currency_contract.sql", "utf8");
 const app = fs.readFileSync("src/AppMonolith.jsx", "utf8");
 const budget = fs.readFileSync("src/v22/projectBudget.jsx", "utf8");
 const workbook = fs.readFileSync("src/reporting/excelWorkbook.js", "utf8");

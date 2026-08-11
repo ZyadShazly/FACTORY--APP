@@ -5,7 +5,7 @@ import { normalizeInternationalPhone, whatsappMessage, whatsappUrl } from "../sr
 
 const payroll = fs.readFileSync(new URL("../src/v22/payroll.jsx", import.meta.url), "utf8");
 const assetsPage = fs.readFileSync(new URL("../src/assets/AssetsPage.jsx", import.meta.url), "utf8");
-const migration = fs.readFileSync(new URL("../supabase/migrations/20260721090000_employee_whatsapp_assets.sql", import.meta.url), "utf8");
+const migration = fs.readFileSync(new URL("../supabase/migrations/20260721081941_employee_whatsapp_assets.sql", import.meta.url), "utf8");
 
 test("employee creation requires an international WhatsApp number", () => {
   assert.match(payroll, /label="رقم واتساب \(إجباري\)"/);

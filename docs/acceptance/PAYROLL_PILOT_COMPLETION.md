@@ -4,7 +4,7 @@
 
 This phase completes the employee-level payroll review and approval path. It does not change the existing generated payroll formula, add an attendance ledger, merge a PR, or apply a migration to production.
 
-Migration: `202607280004_payroll_pilot_completion.sql` (additive, repository only).
+Migration: `20260728000400_payroll_pilot_completion.sql` (additive, repository only).
 
 ## Review contract
 

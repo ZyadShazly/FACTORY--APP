@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const migrationUrl = new URL("../supabase/migrations/202608101800_project_file_archive_lifecycle.sql", import.meta.url);
+const migrationUrl = new URL("../supabase/migrations/20260810180000_project_file_archive_lifecycle.sql", import.meta.url);
 const uiUrl = new URL("../src/v22/projects.jsx", import.meta.url);
 
 test("project files use an audited reversible archive and retain storage", async () => {

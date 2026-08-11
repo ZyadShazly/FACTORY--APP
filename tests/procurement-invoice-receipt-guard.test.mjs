@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const ui=readFileSync("src/operational/ProcurementWorkspace.jsx","utf8");
-const migration=readFileSync("supabase/migrations/202608102900_supplier_invoice_full_receipt_guard.sql","utf8");
+const migration=readFileSync("supabase/migrations/20260810290000_supplier_invoice_full_receipt_guard.sql","utf8");
 
 test("invoice approval UI only offers fully received purchase orders",()=>{
   assert.match(ui,/invoiceableOrders=ws\.orders\.filter\(row=>row\.status==="fully_received"\)/);

@@ -3,11 +3,11 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const foundation = await readFile(
-  new URL("../supabase/migrations/202607190001_project_workspace_upgrade.sql", import.meta.url),
+  new URL("../supabase/migrations/20260719000100_project_workspace_upgrade.sql", import.meta.url),
   "utf8",
 );
 const hardening = await readFile(
-  new URL("../supabase/migrations/202607190002_project_workspace_performance_hardening.sql", import.meta.url),
+  new URL("../supabase/migrations/20260719000200_project_workspace_performance_hardening.sql", import.meta.url),
   "utf8",
 );
 

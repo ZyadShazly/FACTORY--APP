@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const ui=readFileSync("src/assets/AssetsPage.jsx","utf8");
-const migration=readFileSync("supabase/migrations/202608103100_asset_descriptive_update_contract.sql","utf8");
+const migration=readFileSync("supabase/migrations/20260810310000_asset_descriptive_update_contract.sql","utf8");
 
 test("asset registry exposes protected descriptive editing without changing ledger quantities",()=>{
   assert.match(ui,/rpc\("update_asset_record"/);

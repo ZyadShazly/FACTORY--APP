@@ -9,9 +9,9 @@ Cash, GL, AR, AP, MRP, Production costing, or Employee Cash Custody.
 
 Migration order:
 
-1. `202607190001_project_workspace_upgrade.sql`
-2. `202607190002_project_workspace_performance_hardening.sql`
-3. `202607190003_project_estimated_budget.sql`
+1. `20260719000100_project_workspace_upgrade.sql`
+2. `20260719000200_project_workspace_performance_hardening.sql`
+3. `20260719111053_project_estimated_budget.sql`
 
 Migration `003` fails fast when the merged PR #13 Project Workspace tables or
 authorization functions are missing. It preserves all project IDs, files,

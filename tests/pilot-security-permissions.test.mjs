@@ -3,11 +3,11 @@ import fs from "node:fs";
 import test from "node:test";
 
 const cleanup = fs.readFileSync(
-  "supabase/migrations/202607220001_pilot_security_permission_cleanup.sql",
+  "supabase/migrations/20260722011940_pilot_security_permission_cleanup.sql",
   "utf8",
 );
 const publicGrantCleanup = fs.readFileSync(
-  "supabase/migrations/202607220002_pilot_security_public_grant_cleanup.sql",
+  "supabase/migrations/20260722012034_pilot_security_public_grant_cleanup.sql",
   "utf8",
 );
 

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
-const migration=await readFile(new URL('../supabase/migrations/202607260001_inventory_material_catalog.sql',import.meta.url),'utf8');
+const migration=await readFile(new URL('../supabase/migrations/20260726000100_inventory_material_catalog.sql',import.meta.url),'utf8');
 
 test('inventory workspace exposes full catalog and materials',()=>{
   assert.match(migration,/'catalog'/);

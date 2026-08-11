@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const ui=readFileSync("src/operational/ProcurementWorkspace.jsx","utf8");
-const migration=readFileSync("supabase/migrations/202608102800_procurement_partial_receipt_integrity.sql","utf8");
-const rejectedMigration=readFileSync("supabase/migrations/202608103300_procurement_rejected_receipt_workflow.sql","utf8");
+const migration=readFileSync("supabase/migrations/20260810280000_procurement_partial_receipt_integrity.sql","utf8");
+const rejectedMigration=readFileSync("supabase/migrations/20260810330000_procurement_rejected_receipt_workflow.sql","utf8");
 
 test("receipt UI captures partial accepted and rejected quantities per order line",()=>{
   assert.match(ui,/receiptLines/);

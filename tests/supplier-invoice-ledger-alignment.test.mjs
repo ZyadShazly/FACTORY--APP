@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { supplierBalances } from "../src/domain/commercialBalances.js";
 
-const migration=readFileSync("supabase/migrations/202608103000_supplier_invoice_ledger_alignment.sql","utf8");
+const migration=readFileSync("supabase/migrations/20260810300000_supplier_invoice_ledger_alignment.sql","utf8");
 const ui=readFileSync("src/AppMonolith.jsx","utf8");
 
 test("supplier balance includes approved invoices and preserves legacy direct purchases",()=>{

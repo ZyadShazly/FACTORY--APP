@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-const migration = readFileSync("supabase/migrations/202608102700_employee_creation_contract.sql", "utf8");
+const migration = readFileSync("supabase/migrations/20260810270000_employee_creation_contract.sql", "utf8");
 const ui = readFileSync("src/v22/payroll.jsx", "utf8");
 
 test("employee creation is an idempotent owner-manager command", () => {

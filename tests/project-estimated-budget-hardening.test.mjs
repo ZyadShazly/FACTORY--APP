@@ -2,8 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const preflight = await readFile(new URL("../supabase/migrations/2026071900029_project_estimated_budget_preflight.sql", import.meta.url), "utf8");
-const hardening = await readFile(new URL("../supabase/migrations/202607190004_project_estimated_budget_security_accounting_hardening.sql", import.meta.url), "utf8");
+const preflight = await readFile(new URL("../supabase/migrations/20260719110339_project_estimated_budget_preflight.sql", import.meta.url), "utf8");
+const hardening = await readFile(new URL("../supabase/migrations/20260719111133_project_estimated_budget_security_accounting_hardening.sql", import.meta.url), "utf8");
 
 test("legacy project costs use their own IDs before migration 003 indexes are created", () => {
   assert.match(preflight, /when coalesce\(source_type, 'legacy'\) = 'legacy' then id/);

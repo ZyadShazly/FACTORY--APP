@@ -95,9 +95,9 @@ test("employee lifecycle is checked and finalized payroll stays immutable", () =
 });
 
 test("database migration provides defense in depth", () => {
-  const migration = source("supabase/migrations/202607200001_operational_bug_closure.sql");
-  const employeeWorkflow = source("supabase/migrations/20260721100000_employee_management_workflow.sql");
-  const deleteGuard = source("supabase/migrations/20260721101000_employee_delete_guard_reconcile.sql");
+  const migration = source("supabase/migrations/20260720111024_operational_bug_closure.sql");
+  const employeeWorkflow = source("supabase/migrations/20260721095523_employee_management_workflow.sql");
+  const deleteGuard = source("supabase/migrations/20260721095949_employee_delete_guard_reconcile.sql");
   assert.match(migration, /create or replace function public\.complete_my_profile\(\)/i);
   assert.match(migration, /grant execute on function public\.complete_my_profile\(\) to authenticated/i);
   assert.match(migration, /prevent_employee_delete_trigger/i);

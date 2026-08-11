@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 
-const migration = fs.readFileSync("supabase/migrations/20260803070000_commercial_party_lifecycle.sql", "utf8");
+const migration = fs.readFileSync("supabase/migrations/20260803070353_commercial_party_lifecycle.sql", "utf8");
 const ui = fs.readFileSync("src/AppMonolith.jsx", "utf8");
 
 test("customer and supplier history cannot be hard deleted", () => {

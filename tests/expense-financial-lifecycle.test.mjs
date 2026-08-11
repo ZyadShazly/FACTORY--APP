@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 const migration = fs.readFileSync(
-  new URL('../supabase/migrations/202608020003_expense_financial_lifecycle.sql', import.meta.url),
+  new URL('../supabase/migrations/20260802121708_expense_financial_lifecycle.sql', import.meta.url),
   'utf8',
 );
 const ui = fs.readFileSync(new URL('../src/AppMonolith.jsx', import.meta.url), 'utf8');

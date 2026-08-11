@@ -37,7 +37,7 @@ Each template includes the NextEP logo, display name where applicable, internal 
 
 ## Migration review
 
-Migration: `202607260002_procurement_review_send_workflow.sql`
+Migration: `20260726000200_procurement_review_send_workflow.sql`
 
 Status: **Created only; not applied to production or any connected Supabase project.**
 

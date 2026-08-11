@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { budgetLineTotals, budgetTotals, compareBudgetItems, BUDGET_CATEGORIES, BUDGET_TRANSITIONS } from "../src/v22/projectBudgetDomain.js";
 
-const migration = await readFile(new URL("../supabase/migrations/202607190003_project_estimated_budget.sql", import.meta.url),"utf8");
+const migration = await readFile(new URL("../supabase/migrations/20260719111053_project_estimated_budget.sql", import.meta.url),"utf8");
 const workspace = await readFile(new URL("../src/v22/projectWorkspace.jsx", import.meta.url),"utf8");
 const budgetUi = await readFile(new URL("../src/v22/projectBudget.jsx", import.meta.url),"utf8");
 const css = await readFile(new URL("../src/v22/projectBudget.css", import.meta.url),"utf8");

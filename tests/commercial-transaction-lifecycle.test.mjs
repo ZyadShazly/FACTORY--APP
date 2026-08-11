@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 
-const migration=fs.readFileSync("supabase/migrations/20260803071500_commercial_transaction_lifecycle.sql","utf8");
+const migration=fs.readFileSync("supabase/migrations/20260803071443_commercial_transaction_lifecycle.sql","utf8");
 const ui=fs.readFileSync("src/AppMonolith.jsx","utf8");
 
 test("sales and rentals preserve immutable history",()=>{

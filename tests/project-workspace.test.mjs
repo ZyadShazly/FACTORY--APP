@@ -6,7 +6,7 @@ import {
   PROJECT_LIFECYCLE_TRANSITIONS,
 } from "../src/v22/projectDomain.js";
 
-const migration = await readFile(new URL("../supabase/migrations/202607190001_project_workspace_upgrade.sql", import.meta.url), "utf8");
+const migration = await readFile(new URL("../supabase/migrations/20260719000100_project_workspace_upgrade.sql", import.meta.url), "utf8");
 const projects = await readFile(new URL("../src/v22/projects.jsx", import.meta.url), "utf8");
 const workspace = await readFile(new URL("../src/v22/projectWorkspace.jsx", import.meta.url), "utf8");
 const realtime = await readFile(new URL("../src/realtime.js", import.meta.url), "utf8");

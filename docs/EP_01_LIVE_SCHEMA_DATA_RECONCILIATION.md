@@ -41,7 +41,7 @@ Therefore:
 - conversion and completion evidence belongs to history metadata and the linked
   Purchase Order / receipt records;
 - repository migration
-  `202607240001_procurement_request_lifecycle.sql` must not be applied blindly
+  `20260724000100_procurement_request_lifecycle.sql` must not be applied blindly
   to production.
 
 ## Supabase Advisor classification
@@ -61,7 +61,7 @@ Advisor reference:
 
 ### Confirmed ACL gap
 
-Migration `202607290003_explicit_inventory_item_type.sql` grants
+Migration `20260729082906_explicit_inventory_item_type.sql` grants
 `create_inventory_item_typed` to `authenticated` but does not revoke the
 Postgres default `PUBLIC` execute privilege. The function contains an internal
 owner/manager check, which blocks useful anonymous execution, but the endpoint

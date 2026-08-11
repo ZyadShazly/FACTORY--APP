@@ -47,7 +47,7 @@ review, while new database checks prevent another negative sale.
 
 ## Verification contract
 
-- Migration: `20260803071500_commercial_transaction_lifecycle.sql`
+- Migration: `20260803071443_commercial_transaction_lifecycle.sql`
 - Regression: `commercial-transaction-lifecycle.test.mjs`
 - Required before completion: full tests, production build, GitHub Quality Gate,
   Vercel, live migration, immutable-delete probes, row-count reconciliation,

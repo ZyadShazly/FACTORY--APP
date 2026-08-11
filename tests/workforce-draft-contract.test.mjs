@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-const migration = readFileSync("supabase/migrations/202608102500_workforce_draft_contract.sql", "utf8");
+const migration = readFileSync("supabase/migrations/20260810250000_workforce_draft_contract.sql", "utf8");
 const payroll = readFileSync("src/v22/PayrollReviewTab.jsx", "utf8");
 const labor = readFileSync("src/v22/dailyLabor.jsx", "utf8");
 

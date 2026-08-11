@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import { customerBalances, supplierBalances, transactionClassLabel } from "../src/domain/commercialBalances.js";
 
-const migration = fs.readFileSync("supabase/migrations/202608101210_uat_customer_supplier_advances.sql", "utf8");
+const migration = fs.readFileSync("supabase/migrations/20260810121000_uat_customer_supplier_advances.sql", "utf8");
 const app = fs.readFileSync("src/AppMonolith.jsx", "utf8");
 
 test("UAT-004 separates customer due, advance, mixed settlement and legacy evidence", () => {

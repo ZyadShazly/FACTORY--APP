@@ -2,7 +2,7 @@ import test from"node:test";
 import assert from"node:assert/strict";
 import{readFile}from"node:fs/promises";
 
-const migration=await readFile(new URL("../supabase/migrations/202608101600_commercial_advance_operations.sql",import.meta.url),"utf8");
+const migration=await readFile(new URL("../supabase/migrations/20260810160000_commercial_advance_operations.sql",import.meta.url),"utf8");
 const panel=await readFile(new URL("../src/operational/CommercialAdvancesPanel.jsx",import.meta.url),"utf8");
 const app=await readFile(new URL("../src/AppMonolith.jsx",import.meta.url),"utf8");
 const ui=await readFile(new URL("../src/operational/ui.jsx",import.meta.url),"utf8");

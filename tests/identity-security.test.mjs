@@ -13,9 +13,9 @@ import {
 } from "../src/identity.js";
 import { dataTableKeysForRole, resolveAllowedTab, TABLES } from "../src/realtime.js";
 
-const migrationUrl = new URL("../supabase/migrations/202607150003_owner_identity_security.sql", import.meta.url);
-const hierarchyMigrationUrl = new URL("../supabase/migrations/202607160001_enforce_owner_manager_hierarchy.sql", import.meta.url);
-const priorMigrationUrl = new URL("../supabase/migrations/202607150002_enforce_protected_role_creation.sql", import.meta.url);
+const migrationUrl = new URL("../supabase/migrations/20260715000300_owner_identity_security.sql", import.meta.url);
+const hierarchyMigrationUrl = new URL("../supabase/migrations/20260716000100_enforce_owner_manager_hierarchy.sql", import.meta.url);
+const priorMigrationUrl = new URL("../supabase/migrations/20260715000200_enforce_protected_role_creation.sql", import.meta.url);
 const bootstrapUrl = new URL("../supabase/scripts/promote_existing_user_to_owner.sql", import.meta.url);
 
 test("the product exposes exactly the approved four roles", () => {

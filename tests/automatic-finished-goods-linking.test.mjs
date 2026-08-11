@@ -2,7 +2,7 @@ import test from"node:test";
 import assert from"node:assert/strict";
 import{readFileSync}from"node:fs";
 
-const migration=readFileSync("supabase/migrations/202607290001_automatic_finished_goods_linking.sql","utf8");
+const migration=readFileSync("supabase/migrations/20260729063300_automatic_finished_goods_linking.sql","utf8");
 const ui=readFileSync("src/operational/InventoryCatalogPanel.jsx","utf8");
 
 test("finished goods linking is automatic and idempotent",()=>{

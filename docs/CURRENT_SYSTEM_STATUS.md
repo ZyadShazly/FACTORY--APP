@@ -10,7 +10,7 @@ evidence, not as the current work queue.
 | --- | --- |
 | Working branch | `product/continue-implementation-20260810` |
 | UAT PR | #119 remains Draft; it is not merged by this work |
-| Latest repository migration | `202608103600_action_center_scope_alignment.sql` |
+| Latest repository migration | `20260811080000_migration_chain_security_closeout.sql` |
 | Regression | 527 passed, 0 failed, 2 optional integrations skipped (529 total) |
 | Production build | Passed |
 | Production changes | No Production migration or data mutation performed |
@@ -121,7 +121,7 @@ Allowed values:
 Repository migration:
 
 ```text
-supabase/migrations/202607290003_explicit_inventory_item_type.sql
+supabase/migrations/20260729082906_explicit_inventory_item_type.sql
 ```
 
 Live migration:
@@ -192,77 +192,77 @@ Therefore:
 
 | Repository migration | Live version/name |
 | --- | --- |
-| `2026071900029_project_estimated_budget_preflight` | `20260719110339 project_estimated_budget_preflight` |
-| `202607190003_project_estimated_budget` | `20260719111053 project_estimated_budget` |
-| `202607190004_project_estimated_budget_security_accounting_hardening` | `20260719111133 project_estimated_budget_security_accounting_hardening` |
-| `202607190005_supabase_policy_cleanup` | `20260719112820 supabase_policy_cleanup` |
-| `202607190006_project_actual_cost_engine` | `20260719124029 project_actual_cost_engine` |
-| `202607190007_project_actual_cost_engine_hardening` | `20260719124056 project_actual_cost_engine_hardening` |
-| `202607190008_project_actual_cost_source_controls` | `20260719124445 project_actual_cost_source_controls` |
-| `202607190009_project_actual_cost_workflow_variance` | `20260719134651 project_actual_cost_workflow_variance` |
-| `202607190010_project_actual_cost_source_integrations` | `20260719150015 project_actual_cost_source_integrations` |
-| `202607190011_project_actual_cost_source_status_hardening` | `20260719150204 project_actual_cost_source_status_hardening` |
-| `202607190012_procurement_foundation` | `20260719151717` and `20260719153729 procurement_foundation` |
-| `202607190013_procurement_workflow` | `20260719154134 procurement_workflow` |
-| `202607190014_procurement_security_hardening` | `20260719154209 procurement_security_hardening` |
-| `202607190015_procurement_invoice_accounting_hardening` | `20260719154406 procurement_invoice_accounting_hardening` |
-| `202607190014_inventory_foundation` | `20260719171953 inventory_foundation` |
-| `202607190015_inventory_reversal_hardening` | `20260719172014 inventory_reversal_hardening` |
-| `202607190016_inventory_cost_link_guard` | `20260719172213 inventory_cost_link_guard` |
-| `202607190017_inventory_cost_link_scope` | `20260719172259 inventory_cost_link_scope` |
-| `202607190020_system_ux_hardening` | `20260719185315 system_ux_hardening` |
-| `202607190021_system_ux_hardening_rpc_acl` | `20260719185436 system_ux_hardening_rpc_acl` |
-| `202607200001_production_manufacturing_foundation` | `20260720074356` and `20260720074617 production_manufacturing_foundation` |
-| `202607200002_production_operation_workflow` | `20260720074615` and `20260720074747 production_operation_workflow` |
-| `202607200003_production_operation_parameter_fix` | `20260720075127 production_operation_parameter_fix` |
-| `202607200004a_operational_workspace_reads` | `20260720094733 operational_workspace_reads` |
-| `202607200004b_secure_production_create` | `20260720094749 secure_production_create` |
-| `202607200004c_production_action_permissions` | `20260720094822 production_action_permissions` |
-| `202607200004d_operation_parameter_disambiguation` | `20260720095026 operation_parameter_disambiguation` |
-| `202607200004e_workspace_project_name_fix` | `20260720095154 workspace_project_name_fix` |
-| `202607200004f_procurement_workspace_v2` | `20260720100200 procurement_workspace_v2` |
-| `202607200014_procurement_inventory_atomic_receipt` | `20260720101618 procurement_inventory_atomic_receipt` |
-| `202607200001_operational_bug_closure` | `20260720111024 operational_bug_closure` |
-| `202607200007_reporting_analytics_foundation` | `20260720162105 reporting_analytics_foundation` |
-| `202607200008_action_center_search` | `20260720201614 action_center_search` |
-| `202607200009_asset_alerts_security_invoker` | `20260720211345 asset_alerts_security_invoker` |
-| `202607210001_inventory_operations` | `20260720231743 inventory_operations` |
-| `202607210002_inventory_operations_hardening` | `20260720231753 inventory_operations_hardening` |
-| `202607210004_fix_pending_asset_cancellation` | `20260721062000 fix_pending_asset_cancellation` |
-| `202607210005_pilot_uat_alerts_calendar` | `20260721071818 pilot_uat_alerts_calendar` |
+| `20260719110339_project_estimated_budget_preflight` | `20260719110339 project_estimated_budget_preflight` |
+| `20260719111053_project_estimated_budget` | `20260719111053 project_estimated_budget` |
+| `20260719111133_project_estimated_budget_security_accounting_hardening` | `20260719111133 project_estimated_budget_security_accounting_hardening` |
+| `20260719112820_supabase_policy_cleanup` | `20260719112820 supabase_policy_cleanup` |
+| `20260719124029_project_actual_cost_engine` | `20260719124029 project_actual_cost_engine` |
+| `20260719124056_project_actual_cost_engine_hardening` | `20260719124056 project_actual_cost_engine_hardening` |
+| `20260719124445_project_actual_cost_source_controls` | `20260719124445 project_actual_cost_source_controls` |
+| `20260719134651_project_actual_cost_workflow_variance` | `20260719134651 project_actual_cost_workflow_variance` |
+| `20260719150015_project_actual_cost_source_integrations` | `20260719150015 project_actual_cost_source_integrations` |
+| `20260719150204_project_actual_cost_source_status_hardening` | `20260719150204 project_actual_cost_source_status_hardening` |
+| `20260719153729_procurement_foundation` | `20260719151717` and `20260719153729 procurement_foundation` |
+| `20260719154134_procurement_workflow` | `20260719154134 procurement_workflow` |
+| `20260719154209_procurement_security_hardening` | `20260719154209 procurement_security_hardening` |
+| `20260719154406_procurement_invoice_accounting_hardening` | `20260719154406 procurement_invoice_accounting_hardening` |
+| `20260719171953_inventory_foundation` | `20260719171953 inventory_foundation` |
+| `20260719172014_inventory_reversal_hardening` | `20260719172014 inventory_reversal_hardening` |
+| `20260719172213_inventory_cost_link_guard` | `20260719172213 inventory_cost_link_guard` |
+| `20260719172259_inventory_cost_link_scope` | `20260719172259 inventory_cost_link_scope` |
+| `20260719185315_system_ux_hardening` | `20260719185315 system_ux_hardening` |
+| `20260719185436_system_ux_hardening_rpc_acl` | `20260719185436 system_ux_hardening_rpc_acl` |
+| `20260720074617_production_manufacturing_foundation` | `20260720074356` and `20260720074617 production_manufacturing_foundation` |
+| `20260720074747_production_operation_workflow` | `20260720074615` and `20260720074747 production_operation_workflow` |
+| `20260720075127_production_operation_parameter_fix` | `20260720075127 production_operation_parameter_fix` |
+| `20260720094733_operational_workspace_reads` | `20260720094733 operational_workspace_reads` |
+| `20260720094749_secure_production_create` | `20260720094749 secure_production_create` |
+| `20260720094822_production_action_permissions` | `20260720094822 production_action_permissions` |
+| `20260720095026_operation_parameter_disambiguation` | `20260720095026 operation_parameter_disambiguation` |
+| `20260720095154_workspace_project_name_fix` | `20260720095154 workspace_project_name_fix` |
+| `20260720100200_procurement_workspace_v2` | `20260720100200 procurement_workspace_v2` |
+| `20260720101618_procurement_inventory_atomic_receipt` | `20260720101618 procurement_inventory_atomic_receipt` |
+| `20260720111024_operational_bug_closure` | `20260720111024 operational_bug_closure` |
+| `20260720162105_reporting_analytics_foundation` | `20260720162105 reporting_analytics_foundation` |
+| `20260720201614_action_center_search` | `20260720201614 action_center_search` |
+| `20260720211345_asset_alerts_security_invoker` | `20260720211345 asset_alerts_security_invoker` |
+| `20260720231743_inventory_operations` | `20260720231743 inventory_operations` |
+| `20260720231753_inventory_operations_hardening` | `20260720231753 inventory_operations_hardening` |
+| `20260721062000_fix_pending_asset_cancellation` | `20260721062000 fix_pending_asset_cancellation` |
+| `20260721071818_pilot_uat_alerts_calendar` | `20260721071818 pilot_uat_alerts_calendar` |
 | `20260721090000_employee_whatsapp_assets` | `20260721081800` and `20260721081941 employee_whatsapp_assets` |
 | `20260721093000_employee_whatsapp_reconcile` | `20260721083301 employee_whatsapp_reconcile` |
 | `20260721100000_employee_management_workflow` | `20260721095523 employee_management_workflow` |
 | `20260721101000_employee_delete_guard_reconcile` | `20260721095949 employee_delete_guard_reconcile` |
 | `20260721102000_payroll_review_workflow` | `20260721103320 payroll_review_workflow` |
-| `202607210003_external_labor_review_workflow` | `20260721151650 external_labor_review_workflow` |
+| `20260721151650_external_labor_review_workflow` | `20260721151650 external_labor_review_workflow` |
 | `20260721164000_external_labor_payment_parameter_fix` | `20260721161457 external_labor_payment_parameter_fix` |
-| `202607212220_work_schedule_review_and_cancellation` | `20260721191416 work_schedule_review_and_cancellation` |
-| `202607220001_warehouse_management_workflow` | `20260721231749 warehouse_management_workflow` |
-| `202607220001_pilot_security_permission_cleanup` | `20260722011940 pilot_security_permission_cleanup` |
-| `202607220002_pilot_security_public_grant_cleanup` | `20260722012034 pilot_security_public_grant_cleanup` |
+| `20260721191416_work_schedule_review_and_cancellation` | `20260721191416 work_schedule_review_and_cancellation` |
+| `20260721231749_warehouse_management_workflow` | `20260721231749 warehouse_management_workflow` |
+| `20260722011940_pilot_security_permission_cleanup` | `20260722011940 pilot_security_permission_cleanup` |
+| `20260722012034_pilot_security_public_grant_cleanup` | `20260722012034 pilot_security_public_grant_cleanup` |
 | `20260726103045_inventory_setup_opening_balance` | `20260726181811 inventory_setup_opening_balance` |
 | `20260727053000_production_partial_material_issue` | `20260727070553 production_partial_material_issue` |
-| `202607280005_stock_production_and_inventory_split` | `20260728103459 stock_production_and_inventory_split` |
-| `202607280006_finished_goods_production_receipt` | `20260728114535 finished_goods_production_receipt` |
-| `202607290001_automatic_finished_goods_linking` | `20260729063300 automatic_finished_goods_linking` |
-| `202607290002_automatic_raw_material_linking` | `20260729065159 automatic_raw_material_linking` |
-| `202607290003_explicit_inventory_item_type` | `20260729082906 explicit_inventory_item_type` |
+| `20260728103459_stock_production_and_inventory_split` | `20260728103459 stock_production_and_inventory_split` |
+| `20260728114535_finished_goods_production_receipt` | `20260728114535 finished_goods_production_receipt` |
+| `20260729063300_automatic_finished_goods_linking` | `20260729063300 automatic_finished_goods_linking` |
+| `20260729065159_automatic_raw_material_linking` | `20260729065159 automatic_raw_material_linking` |
+| `20260729082906_explicit_inventory_item_type` | `20260729082906 explicit_inventory_item_type` |
 
 ### Repository files without an exact live-history name
 
 | Repository scope | Current evidence |
 | --- | --- |
-| `202607130001` through `202607180008` | No matching names in the visible live history; core identity, payroll calendar, Assets, and Realtime objects are live. Exact provenance remains an EP-01 reconciliation item. |
-| `202607190001_project_workspace_upgrade` | No matching live-history name; Project workspace objects are live. |
-| `202607190002_project_workspace_performance_hardening` | No matching live-history name; do not infer missing indexes from history alone. |
-| `202607240001_procurement_request_lifecycle` | No exact live-history name. `purchase_request_status_history` is live, while repository-defined `converted_at` and `completed_at` columns are absent. Live history later records `20260729102604 reconcile_purchase_request_status_history`. Canonical lifecycle representation remains an EP-01 decision. |
-| `202607260001_inventory_material_catalog` | No exact live-history name; `manage_inventory_item_catalog` is live. |
-| `202607260002_procurement_review_send_workflow` | No exact live-history name; reviewed send/display fields and RPC markers are live. |
-| `202607280001_production_pilot_completion` | No exact live-history name; assignment and quality markers are live. |
-| `202607280002_project_pilot_completion` | No exact live-history name; `get_project_pilot_workflow` and approval fields are live. |
-| `202607280003_employee_lifecycle_completion` | No exact live-history name; `employee_dependency_summary` is live. |
-| `202607280004_payroll_pilot_completion` | No exact live-history name; review evidence fields and `get_payroll_review_snapshot` are live. |
+| `20260713000100` through `20260718000800` | No matching names in the visible live history; core identity, payroll calendar, Assets, and Realtime objects are live. Exact provenance remains an EP-01 reconciliation item. |
+| `20260719000100_project_workspace_upgrade` | No matching live-history name; Project workspace objects are live. |
+| `20260719000200_project_workspace_performance_hardening` | No matching live-history name; do not infer missing indexes from history alone. |
+| `20260724000100_procurement_request_lifecycle` | No exact live-history name. `purchase_request_status_history` is live, while repository-defined `converted_at` and `completed_at` columns are absent. Live history later records `20260729102604 reconcile_purchase_request_status_history`. Canonical lifecycle representation remains an EP-01 decision. |
+| `20260726000100_inventory_material_catalog` | No exact live-history name; `manage_inventory_item_catalog` is live. |
+| `20260726000200_procurement_review_send_workflow` | No exact live-history name; reviewed send/display fields and RPC markers are live. |
+| `20260728000100_production_pilot_completion` | No exact live-history name; assignment and quality markers are live. |
+| `20260728000200_project_pilot_completion` | No exact live-history name; `get_project_pilot_workflow` and approval fields are live. |
+| `20260728000300_employee_lifecycle_completion` | No exact live-history name; `employee_dependency_summary` is live. |
+| `20260728000400_payroll_pilot_completion` | No exact live-history name; review evidence fields and `get_payroll_review_snapshot` are live. |
 
 ### Live migration records without an exact repository filename
 

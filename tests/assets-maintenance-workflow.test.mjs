@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
 
-const migration = fs.readFileSync("supabase/migrations/202608102000_asset_maintenance_workflow.sql", "utf8");
+const migration = fs.readFileSync("supabase/migrations/20260810200000_asset_maintenance_workflow.sql", "utf8");
 const ui = fs.readFileSync("src/assets/AssetsPage.jsx", "utf8");
 const realtime = fs.readFileSync("src/realtime.js", "utf8");
 

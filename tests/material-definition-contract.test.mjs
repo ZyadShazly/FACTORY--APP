@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-const migration = readFileSync("supabase/migrations/202608102400_material_definition_contract.sql", "utf8");
+const migration = readFileSync("supabase/migrations/20260810240000_material_definition_contract.sql", "utf8");
 const ui = readFileSync("src/operational/MaterialsCatalogWorkspace.jsx", "utf8");
 const app = readFileSync("src/AppMonolith.jsx", "utf8");
 
