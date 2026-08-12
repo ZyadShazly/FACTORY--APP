@@ -35,7 +35,7 @@ test("admin Auth capability remains server-side and rolls back partial creation"
   const source = await readFile(edgeUrl, "utf8");
   assert.match(source, /caller\.auth\.getUser\(token\)/);
   assert.match(source, /admin\.auth\.admin\.createUser/);
-  assert.match(source, /phoneAliasEmail/);
+  assert.match(source, /authEmailForPhone/);
   assert.match(source, /email_confirm: true/);
   assert.match(source, /caller\.rpc\("admin_register_managed_profile"/);
   assert.match(source, /target_phone: phone/);
@@ -51,9 +51,10 @@ test("production login accepts phone input through an internal email alias and e
   const appSource = await readFile(appUrl, "utf8");
   const clientSource = await readFile(clientUrl, "utf8");
   assert.match(appSource, /phone: normalizeAccountPhone\(identifier\), password/);
-  assert.match(clientSource, /phoneAliasEmail/);
+  assert.match(clientSource, /managedPhoneAuthEmail/);
   assert.match(clientSource, /signInWithPassword/);
-  assert.match(clientSource, /email: phoneAliasEmail\(credentials\.phone\)/);
+  assert.match(clientSource, /email = managedPhoneAuthEmail\(credentials\.phone\)/);
+  assert.match(clientSource, /signInWithPassword\(\{ email, password: credentials\.password \}\)/);
   assert.match(appSource, /action: "change_password"/);
   assert.match(appSource, /supabase\.functions\.invoke\("admin-manage-user"/);
   assert.doesNotMatch(appSource, /supabase\.auth\.signUp\(/);
