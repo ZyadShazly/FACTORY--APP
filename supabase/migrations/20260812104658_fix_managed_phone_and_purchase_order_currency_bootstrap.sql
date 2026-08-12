@@ -119,7 +119,7 @@ begin
   update public.purchase_requests set status='converted',updated_at=now() where id=req.id;
   insert into public.audit_log(table_name,record_id,action,actor_id,new_data,metadata)
   values('purchase_orders',po.id::text,'purchase_order_draft_created',actor,to_jsonb(po),jsonb_build_object('quote_id',q.id,'request_id',req.id,'currency_contract_preserved',true));
-  return to_jsonb(po;
+  return to_jsonb(po);
 end
 $$;
 
