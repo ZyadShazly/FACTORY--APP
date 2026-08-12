@@ -19,6 +19,10 @@ function normalizePhone(value: unknown) {
   return /^\+[1-9][0-9]{7,14}$/.test(international) ? international : "";
 }
 
+function authEmailForPhone(phone: string) {
+  return `phone.${phone.slice(1)}@nextep.local`;
+}
+
 function mayManage(actorRole: string, targetRole: string) {
   return actorRole === "owner" || actorRole === "manager" && ["accountant", "production"].includes(targetRole);
 }
@@ -49,11 +53,8 @@ Deno.serve(async (request) => {
   if (actorError || !actor || actor.status !== "active") return reply(403, { ok: false, error: "Active application account required" });
 
   let body: Record<string, unknown>;
-  try {
-    body = await request.json();
-  } catch {
-    return reply(400, { ok: false, error: "Invalid JSON payload" });
-  }
+  try { body = await request.json(); }
+  catch { return reply(400, { ok: false, error: "Invalid JSON payload" }); }
 
   if (body.action === "change_password") {
     const newPassword = String(body.new_password || "");
@@ -79,46 +80,19 @@ Deno.serve(async (request) => {
       return reply(400, { ok: false, error: "Invalid account name, phone, temporary password or role" });
     }
 
+    const authEmail = authEmailForPhone(phone);
     const { data: created, error: createError } = await admin.auth.admin.createUser({
-      phone,
+      email: authEmail,
       password: temporaryPassword,
-      phone_confirm: true,
-      user_metadata: { full_name: fullName, managed_account: true },
+      email_confirm: true,
+      user_metadata: { full_name: fullName, managed_account: true, managed_phone: phone },
     });
     if (createError || !created.user) return reply(400, { ok: false, error: createError?.message || "Authentication account creation failed" });
 
-    let authUser = created.user;
-    if (normalizePhone(authUser.phone) !== phone) {
-      const { data: updated, error: authPhoneError } = await admin.auth.admin.updateUserById(created.user.id, {
-        phone,
-        phone_confirm: true,
-      });
-      if (authPhoneError || !updated.user) {
-        const rollback = await admin.auth.admin.deleteUser(created.user.id);
-        return reply(400, {
-          ok: false,
-          error: authPhoneError?.message || "Authentication phone could not be persisted",
-          rolled_back: !rollback.error,
-        });
-      }
-      authUser = updated.user;
-    }
-
-    const { data: confirmedAuth, error: confirmError } = await admin.auth.admin.getUserById(created.user.id);
-    const confirmedPhone = normalizePhone(confirmedAuth.user?.phone);
-    if (confirmError || !confirmedAuth.user || confirmedPhone !== phone) {
-      const rollback = await admin.auth.admin.deleteUser(created.user.id);
-      return reply(400, {
-        ok: false,
-        error: "Authentication phone could not be confirmed after account creation",
-        rolled_back: !rollback.error,
-      });
-    }
-
     const { data: profile, error: profileError } = await caller.rpc("admin_register_managed_profile", {
-      target_user_id: authUser.id,
+      target_user_id: created.user.id,
       target_full_name: fullName,
-      target_phone: confirmedPhone,
+      target_phone: phone,
       target_role: role,
     });
     if (profileError) {
@@ -141,8 +115,13 @@ Deno.serve(async (request) => {
 
     const { data: previousAuth, error: previousError } = await admin.auth.admin.getUserById(userId);
     if (previousError || !previousAuth.user) return reply(404, { ok: false, error: "Authentication account not found" });
-    const oldPhone = previousAuth.user.phone || "";
-    const { error: authUpdateError } = await admin.auth.admin.updateUserById(userId, { phone, phone_confirm: true });
+    const oldEmail = previousAuth.user.email || "";
+    const newEmail = authEmailForPhone(phone);
+    const { error: authUpdateError } = await admin.auth.admin.updateUserById(userId, {
+      email: newEmail,
+      email_confirm: true,
+      user_metadata: { ...(previousAuth.user.user_metadata || {}), managed_account: true, managed_phone: phone },
+    });
     if (authUpdateError) return reply(400, { ok: false, error: authUpdateError.message });
 
     const { data: profile, error: profileError } = await caller.rpc("admin_update_managed_phone", {
@@ -151,9 +130,9 @@ Deno.serve(async (request) => {
       reason,
     });
     if (profileError) {
-      const rollback = oldPhone ? await admin.auth.admin.updateUserById(userId, { phone: oldPhone, phone_confirm: true }) : null;
+      const rollback = oldEmail ? await admin.auth.admin.updateUserById(userId, { email: oldEmail, email_confirm: true }) : null;
       if (rollback?.error) console.error("managed phone rollback failed", { userId, error: rollback.error.message });
-      return reply(400, { ok: false, error: profileError.message, rolled_back: Boolean(oldPhone && !rollback?.error) });
+      return reply(400, { ok: false, error: profileError.message, rolled_back: Boolean(oldEmail && !rollback?.error) });
     }
     return reply(200, { ok: true, profile: { id: profile.id, phone: profile.phone } });
   }
