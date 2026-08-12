@@ -87,10 +87,38 @@ Deno.serve(async (request) => {
     });
     if (createError || !created.user) return reply(400, { ok: false, error: createError?.message || "Authentication account creation failed" });
 
+    let authUser = created.user;
+    if (normalizePhone(authUser.phone) !== phone) {
+      const { data: updated, error: authPhoneError } = await admin.auth.admin.updateUserById(created.user.id, {
+        phone,
+        phone_confirm: true,
+      });
+      if (authPhoneError || !updated.user) {
+        const rollback = await admin.auth.admin.deleteUser(created.user.id);
+        return reply(400, {
+          ok: false,
+          error: authPhoneError?.message || "Authentication phone could not be persisted",
+          rolled_back: !rollback.error,
+        });
+      }
+      authUser = updated.user;
+    }
+
+    const { data: confirmedAuth, error: confirmError } = await admin.auth.admin.getUserById(created.user.id);
+    const confirmedPhone = normalizePhone(confirmedAuth.user?.phone);
+    if (confirmError || !confirmedAuth.user || confirmedPhone !== phone) {
+      const rollback = await admin.auth.admin.deleteUser(created.user.id);
+      return reply(400, {
+        ok: false,
+        error: "Authentication phone could not be confirmed after account creation",
+        rolled_back: !rollback.error,
+      });
+    }
+
     const { data: profile, error: profileError } = await caller.rpc("admin_register_managed_profile", {
-      target_user_id: created.user.id,
+      target_user_id: authUser.id,
       target_full_name: fullName,
-      target_phone: phone,
+      target_phone: confirmedPhone,
       target_role: role,
     });
     if (profileError) {
