@@ -52,7 +52,7 @@ function ProcurementDocument({
   let lines=[];
   if(type==="request")lines=workspace.request_items.filter(item=>item.purchase_request_id===row.id).map(item=>({...item,unit_price:item.estimated_unit_cost,tax_amount:0,line_total:item.estimated_total}));
   if(type==="order")lines=workspace.order_items.filter(item=>item.purchase_order_id===row.id);
-  if(type==="receipt")lines=workspace.receipt_items.filter(item=>item.goods_receipt_id===row.id).map(item=>{const source=workspace.order_items.find(orderItem=>orderItem.id===item.purchase_order_item_id)||{};return{...source,...item,description:source.description||"بند مستلم",quantity:item.accepted_quantity,unit_price:source.unit_price||0,tax_amount:source.tax_amount||0,line_total:Number(item.accepted_quantity||0)*Number(source.unit_price||0)}});
+  if(type==="receipt")lines=workspace.receipt_items.filter(item=>item.goods_receipt_id===row.id).map(item=>{const source=workspace.order_items.find(orderItem=>orderItem.id===item.purchase_order_item_id)||{};const received=Number(item.quantity_received||0),accepted=Number(item.accepted_quantity||0);return{...source,...item,description:source.description||"بند مستلم",quantity:accepted,rejected_quantity:Math.max(received-accepted,0),inspection_notes:item.notes||"—",unit_price:source.unit_price||0,tax_amount:source.tax_amount||0,line_total:accepted*Number(source.unit_price||0)}});
   if(type==="invoice")lines=workspace.invoice_lines.filter(item=>item.supplier_invoice_id===row.id);
   const subtotal=lines.reduce((sum,item)=>sum+(Number(item.quantity||0)*Number(item.unit_price||0)),0);
   const discount=lines.reduce((sum,item)=>sum+Number(item.discount_amount||0),0);
@@ -77,9 +77,11 @@ function ProcurementDocument({
       <div><small>عملة المستند</small><strong>{documentCurrency}</strong></div>
       {row.base_currency&&<div><small>العملة الأساسية / سعر الصرف</small><strong>{row.base_currency} · {Number(row.exchange_rate||0).toLocaleString("en-US")}</strong></div>}
     </section>
-    <ResponsiveTable headers={["الوصف","الكمية","سعر الوحدة","الخصم","الضريبة","الإجمالي"]}>
+    {type==="receipt"?<ResponsiveTable headers={["الوصف","المقبول","المرفوض/التالف","ملاحظة الفحص","سعر الوحدة","قيمة المقبول"]}>
+      {lines.map(item=><tr key={item.id}><td>{item.description}</td><td>{Number(item.quantity||0).toLocaleString("ar-EG")}</td><td>{Number(item.rejected_quantity||0).toLocaleString("ar-EG")}</td><td>{item.inspection_notes}</td><td>{documentMoney(item.unit_price)}</td><td>{documentMoney(item.line_total)}</td></tr>)}
+    </ResponsiveTable>:<ResponsiveTable headers={["الوصف","الكمية","سعر الوحدة","الخصم","الضريبة","الإجمالي"]}>
       {lines.map(item=><tr key={item.id}><td>{item.description}</td><td>{Number(item.quantity||0).toLocaleString("ar-EG")}</td><td>{documentMoney(item.unit_price)}</td><td>{documentMoney(item.discount_amount)}</td><td>{documentMoney(item.tax_amount)}</td><td>{documentMoney(item.line_total)}</td></tr>)}
-    </ResponsiveTable>
+    </ResponsiveTable>}
     <section className="procurement-document-totals">
       <div><span>الإجمالي قبل الخصم والضريبة</span><strong>{documentMoney(row.subtotal??subtotal)}</strong></div>
       <div><span>الخصم</span><strong>{documentMoney(row.discount_amount??discount)}</strong></div>
@@ -107,6 +109,7 @@ export function ProcurementWorkspace({data,onNavigate}){
   const[linkingRequired,setLinkingRequired]=useState(false);
   const[tab,setTab]=useState("requests"),[search,setSearch]=useState(""),[creating,setCreating]=useState(false);
   const[selected,setSelected]=useState(null),[rejecting,setRejecting]=useState(null),[rejectReason,setRejectReason]=useState("");
+  const[overrideRequest,setOverrideRequest]=useState(null),[overrideReason,setOverrideReason]=useState("");
   const[request,setRequest]=useState({display_name:"",project_id:"",material_id:"",description:"",quantity:"",unit:"قطعة",estimated_unit_cost:"",justification:""});
   const currencyCode=getCurrencySettings().currency_code;
   const[quote,setQuote]=useState({request_id:"",supplier_id:"",unit_price:"",currency:currencyCode,base_currency:currencyCode,exchange_rate:"1",rate_date:new Date().toISOString().slice(0,10)});
@@ -138,6 +141,25 @@ export function ProcurementWorkspace({data,onNavigate}){
     setOk(msg);if(!keepSelection)setSelected(null);setRejecting(null);setRejectReason("");
     await load({preserveFeedback:true});
     return result||true;
+  }
+  async function approveRequest(row){
+    setError("");setOk("");
+    const{data:result,error:approveError}=await supabase.rpc("decide_purchase_request",{target_id:row.id,approve:true,reason:null});
+    if(approveError){
+      const raw=String(approveError.message||approveError);
+      if(raw.includes("Owner override reason is required")){
+        setOverrideRequest(row);setOverrideReason("");
+        setError("الطلب يتجاوز الميزانية المعتمدة. بصفتك Owner يمكنك اعتماد تجاوز استثنائي بعد كتابة السبب.");
+        return false;
+      }
+      setError(friendlyError(approveError));return false;
+    }
+    setOk("تم اعتماد الطلب بعد مراجعة التفاصيل.");setSelected(null);await load({preserveFeedback:true});return result||true;
+  }
+  async function confirmBudgetOverride(){
+    if(!overrideRequest||!overrideReason.trim())return setError("سبب التجاوز الاستثنائي مطلوب.");
+    const saved=await call("owner_override_purchase_request_budget",{target_id:overrideRequest.id,override_reason:overrideReason.trim()},"تم اعتماد الطلب بتجاوز Owner مسجل في سجل التدقيق.");
+    if(saved){setOverrideRequest(null);setOverrideReason("");}
   }
   async function saveRequest(){
     if(!request.display_name.trim())return setError("أدخل اسمًا واضحًا لطلب الشراء.");
@@ -230,6 +252,7 @@ export function ProcurementWorkspace({data,onNavigate}){
           <Field label="الوصف"><input style={inputStyle} value={request.description} onChange={event=>setRequest({...request,description:event.target.value})}/></Field>
           <Field label="الكمية"><input type="number" min="0" style={inputStyle} value={request.quantity} onChange={event=>setRequest({...request,quantity:event.target.value})}/></Field>
           <Field label="تكلفة الوحدة التقديرية"><input type="number" min="0" style={inputStyle} value={request.estimated_unit_cost} onChange={event=>setRequest({...request,estimated_unit_cost:event.target.value})}/></Field>
+          <Field label="مبرر الطلب"><input style={inputStyle} value={request.justification} onChange={event=>setRequest({...request,justification:event.target.value})} placeholder="سبب الشراء أو الحاجة التشغيلية"/></Field>
           <Button onClick={saveRequest}>حفظ المسودة</Button>
         </div></Panel>}
         <Panel title={`الطلبات النشطة (${activeRequests.length})`}><div className="procurement-record-list">{activeRequests.map(requestCard)}{!activeRequests.length&&<Empty title="لا توجد طلبات شراء نشطة"/>}</div></Panel>
@@ -280,7 +303,7 @@ export function ProcurementWorkspace({data,onNavigate}){
         selection={selected} workspace={ws} projects={projects} suppliers={suppliers}
         sendReference={sendReference} setSendReference={setSendReference}
         orderName={orderName} setOrderName={setOrderName}
-        onApproveRequest={row=>call("decide_purchase_request",{target_id:row.id,approve:true,reason:null},"تم اعتماد الطلب بعد مراجعة التفاصيل.")}
+        onApproveRequest={approveRequest}
         onRejectRequest={row=>setRejecting(row)}
         onApproveOrder={row=>call("approve_purchase_order",{target_order:row.id},"تم اعتماد أمر الشراء بعد المعاينة.")}
         onSendOrder={row=>call("mark_purchase_order_sent",{target_order:row.id,send_reference:sendReference||null},"تم تسجيل إرسال أمر الشراء للمورد.")}
@@ -288,5 +311,6 @@ export function ProcurementWorkspace({data,onNavigate}){
       />
     </DetailsDrawer>
     {rejecting&&<div className="procurement-rejection-layer" role="dialog" aria-modal="true" aria-label="رفض طلب الشراء"><div><h3>رفض طلب الشراء</h3><Field label="سبب الرفض"><textarea style={{...inputStyle,width:"100%",minHeight:110}} value={rejectReason} onChange={event=>setRejectReason(event.target.value)} placeholder="اكتب سببًا واضحًا ليعرف مقدم الطلب المطلوب تعديله"/></Field><span style={actionsStyle}><Button tone="ghost" onClick={()=>{setRejecting(null);setRejectReason("")}}>رجوع</Button><Button tone="danger" onClick={()=>{if(!rejectReason.trim())return setError("سبب الرفض مطلوب.");void call("decide_purchase_request",{target_id:rejecting.id,approve:false,reason:rejectReason.trim()},"تم رفض الطلب مع تسجيل السبب.")}}>تأكيد الرفض</Button></span></div></div>}
+    {overrideRequest&&<div className="procurement-rejection-layer" role="dialog" aria-modal="true" aria-label="تجاوز Owner لميزانية طلب الشراء"><div><h3>تجاوز استثنائي للميزانية</h3><p>هذا الطلب يتجاوز حدود الميزانية المعتمدة. التجاوز متاح للـOwner فقط وسيُسجل بالكامل في Audit Log.</p><Field label="سبب التجاوز الإلزامي"><textarea style={{...inputStyle,width:"100%",minHeight:110}} value={overrideReason} onChange={event=>setOverrideReason(event.target.value)} placeholder="اكتب لماذا يجب اعتماد الطلب رغم تجاوز الميزانية"/></Field><span style={actionsStyle}><Button tone="ghost" onClick={()=>{setOverrideRequest(null);setOverrideReason("")}}>رجوع</Button><Button tone="danger" onClick={confirmBudgetOverride}>اعتماد بتجاوز Owner</Button></span></div></div>}
   </div>;
 }
