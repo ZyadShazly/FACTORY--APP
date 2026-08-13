@@ -67,6 +67,7 @@ test("protected business datasets route through their visible RPCs", async () =>
     assets: "get_assets_visible",
     payroll: "get_payroll_visible",
     assetAlerts: "get_asset_alerts_visible",
+    auditLog: "get_audit_log_visible",
   };
 
   for (const [key, rpc] of Object.entries(expected)) {
@@ -85,21 +86,23 @@ test("production material, product, and order bootstrap uses sanitized reference
   assert.equal(calls.some((call) => call[0] === "from" && ["materials", "products", "productionOrders"].includes(call[1])), false);
 });
 
-test("audit log falls back to legacy rows when actor relation is unavailable", async () => {
-  const relationError = { code: "PGRST200" };
+test("audit log is fail-closed and never falls back to direct table reads", async () => {
+  const permissionError = { code: "42501", message: "Audit log access requires owner or manager role" };
   const { fetchTableRows, calls, logs } = harness({
+    rpcResults: {
+      get_audit_log_visible: { data: null, error: permissionError },
+    },
     tableResults: {
-      audit_log: [
-        { data: null, error: relationError },
-        { data: [{ id: 1 }], error: null },
-      ],
+      audit_log: [{ data: [{ id: 1 }], error: null }],
     },
   });
 
   const result = await fetchTableRows("auditLog", "audit_log");
-  assert.deepEqual(result.data, [{ id: 1 }]);
-  assert.equal(calls.filter((call) => call[0] === "from" && call[1] === "audit_log").length, 2);
-  assert.ok(logs.some((log) => log[0] === "warn" && String(log[1]).includes("AuditLog")));
+  assert.equal(result.data, null);
+  assert.equal(result.error, permissionError);
+  assert.equal(calls.filter((call) => call[0] === "rpc" && call[1] === "get_audit_log_visible").length, 1);
+  assert.equal(calls.some((call) => call[0] === "from" && call[1] === "audit_log"), false);
+  assert.ok(logs.some((log) => log[0] === "error" && String(log[1]).includes("audit_log")));
 });
 
 test("project files fall back to uploaded_at only for missing created_at", async () => {
