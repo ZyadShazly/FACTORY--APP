@@ -6,6 +6,7 @@ import{CONFIRMATION_METHOD_LABELS}from"./domain";
 export const EMERGENCY_ACTIONS={
  cancel_pending_assignment:{rpc:"cancel_pending_asset_assignment",title:"إلغاء إصدار معلّق وإعادة الكمية",effect:"سيتم تحرير الكمية المحجوزة بحركات Ledger عكسية، دون حذف سجل الإصدار.",success:"تم إلغاء الإصدار المعلّق وإعادة الكمية المتاحة."},
  reverse_issued_assignment:{rpc:"reverse_asset_assignment",title:"عكس عهدة صادرة وإعادة الرصيد",effect:"سيتم إنشاء حركات تعويضية كاملة. لا يمكن التنفيذ بعد إرجاع أو تسوية لاحقة.",success:"تم عكس العهدة الصادرة بحركات تعويضية."},
+ recover_assignment_state:{rpc:"owner_recover_asset_assignment",title:"إعادة احتساب حالة العهدة المعلقة",effect:"سيعيد النظام حساب حالة العهدة من الإرجاعات والتسويات الفعلية فقط، دون تعديل كميات الـLedger أو حذف التاريخ.",success:"تمت إعادة احتساب حالة العهدة وتسجيل الإجراء الاستثنائي."},
  cancel_pending_return:{rpc:"cancel_pending_asset_return",title:"إلغاء طلب الإرجاع دون تعديل الرصيد",effect:"لن تزيد الكمية المتاحة ولن يُسجل أن الأصل عاد فعليًا.",success:"تم إلغاء طلب الإرجاع دون تغيير الرصيد."},
  force_confirm_return:{rpc:"force_confirm_asset_return",title:"تأكيد استلام فعلي استثنائي",effect:"سيُطبق أثر الإرجاع الفعلي على الرصيد والـLedger باسم مالك النظام.",success:"تم تأكيد الاستلام الفعلي استثنائيًا."},
 };
@@ -15,6 +16,7 @@ export function ConfirmationBadge({method}){if(!method)return null;return <span 
 export function AssignmentEmergencyActions({assignment,quantity,onSelect}){return <div className="emergency-actions">
  {assignment.status==="pending_receiver_confirmation"&&<Button variant="danger" onClick={()=>onSelect({type:"cancel_pending_assignment",targetId:assignment.id,quantity})}>إلغاء إصدار معلّق وإعادة الكمية</Button>}
  {assignment.status==="issued"&&<Button variant="danger" onClick={()=>onSelect({type:"reverse_issued_assignment",targetId:assignment.id,quantity})}>عكس عهدة صادرة وإعادة الرصيد</Button>}
+ {assignment.status==="settlement_pending"&&<Button variant="danger" onClick={()=>onSelect({type:"recover_assignment_state",targetId:assignment.id,quantity})}>إصلاح حالة التسوية المعلقة</Button>}
  </div>}
 
 export function ReturnEmergencyActions({event,quantity,onSelect}){if(event.status!=="pending_receiver_confirmation")return null;return <div className="emergency-actions">
