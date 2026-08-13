@@ -44,20 +44,10 @@ export function createTableFetcher({
         );
       } else if (key === "auditLog") {
         fetchResult = await withTimeout(
-          supabase
-            .from(table)
-            .select("*, actor:profiles!audit_log_actor_id_fkey(full_name,email)")
-            .order("created_at", { ascending: true }),
+          supabase.rpc("get_audit_log_visible"),
           undefined,
           timeoutLabel,
         );
-
-        if (fetchResult.error) {
-          logger.warn?.("[AuditLog] actor profile relation unavailable; using legacy rows", fetchResult.error);
-          fetchResult = await withTimeout(
-            supabase.from(table).select("*").order("created_at", { ascending: true }),
-          );
-        }
       } else {
         fetchResult = await withTimeout(
           supabase.from(table).select("*").order("created_at", { ascending: true }),
