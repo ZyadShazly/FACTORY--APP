@@ -2,7 +2,7 @@ import React, { useMemo, useState } from "react";
 import { isAdministrativeRole } from "../identity";
 import { Eye, PauseCircle, Pencil, PlayCircle, Trash2, UserPlus } from "lucide-react";
 import { supabase } from "../supabaseClient";
-import { ArchiveSection, DependencySummary, KpiCard, KpiGrid, SearchFilterBar } from "../ui";
+import { ArchiveSection, DependencySummary, EmptyState, KpiCard, KpiGrid, SearchFilterBar } from "../ui";
 import { Button, DataTable, ErrorState, Field, Input, money, number, PageTitle, Panel, TextArea, Toast } from "./shared";
 import { runCriticalMutation } from "./mutations";
 
