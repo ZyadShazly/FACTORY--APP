@@ -24,3 +24,26 @@ test("critical mutations verify final server state and bound refresh", async()=>
   assert.equal(result.mutationSaved,true);
   assert.equal(result.verificationResult,true);
 });
+
+test("critical mutations suppress concurrent duplicate submits for the same scope", async()=>{
+  let mutationCalls=0;
+  let release;
+  const gate=new Promise((resolve)=>{release=resolve;});
+  const options={
+    scope:"sales:post",
+    mutate:async()=>{mutationCalls+=1;await gate;return {data:{id:"sale-1"},error:null};},
+    verify:async()=>true,
+    refetch:async()=>({data:[],error:null}),
+  };
+  const first=runCriticalMutation(options);
+  const second=runCriticalMutation(options);
+  assert.equal(first,second);
+  assert.equal(mutationCalls,0);
+  await Promise.resolve();
+  assert.equal(mutationCalls,1);
+  release();
+  const [firstResult,secondResult]=await Promise.all([first,second]);
+  assert.equal(mutationCalls,1);
+  assert.equal(firstResult.error,null);
+  assert.equal(secondResult.error,null);
+});
