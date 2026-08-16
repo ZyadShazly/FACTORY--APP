@@ -29,7 +29,9 @@ export async function syncMutation({ scope, mutationResult, refetch, refetchTime
   return { mutationResult, refetchResult, error: null, refreshError: refetchResult?.error || null, mutationSaved: true };
 }
 
-export async function runCriticalMutation({ scope, mutate, refetch, verify, mutationTimeoutMs = 12000, refetchTimeoutMs = 8000, verifyTimeoutMs = 8000 }) {
+const criticalMutationsInFlight = new Map();
+
+async function runCriticalMutationOnce({ scope, mutate, refetch, verify, mutationTimeoutMs = 12000, refetchTimeoutMs = 8000, verifyTimeoutMs = 8000 }) {
   let mutationResult;
   try {
     mutationResult = await withBoundedTimeout(Promise.resolve().then(mutate), mutationTimeoutMs, "انتهت مهلة إرسال العملية؛ تحقق من حالتها قبل إعادة المحاولة");
@@ -49,4 +51,19 @@ export async function runCriticalMutation({ scope, mutate, refetch, verify, muta
   }
   const settled = await syncMutation({ scope, mutationResult, refetch, refetchTimeoutMs });
   return { ...settled, verificationResult };
+}
+
+export function runCriticalMutation(options) {
+  const scope = options?.scope || "critical-mutation";
+  const existing = criticalMutationsInFlight.get(scope);
+  if (existing) {
+    console.warn(`[${scope}] duplicate in-flight critical mutation suppressed`);
+    return existing;
+  }
+
+  const operation = runCriticalMutationOnce(options).finally(() => {
+    if (criticalMutationsInFlight.get(scope) === operation) criticalMutationsInFlight.delete(scope);
+  });
+  criticalMutationsInFlight.set(scope, operation);
+  return operation;
 }
