@@ -1,6 +1,7 @@
 name: playwright-uat
 
 on:
+  pull_request: {}
   workflow_dispatch:
     inputs:
       target_url:
@@ -16,13 +17,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      UAT_BASE_URL: ${{ inputs.target_url }}
-      UAT_SUPABASE_URL: ${{ secrets.UAT_SUPABASE_URL }}
-      UAT_SUPABASE_ANON_KEY: ${{ secrets.UAT_SUPABASE_ANON_KEY }}
-      UAT_PRODUCTION_PHONE: ${{ secrets.UAT_PRODUCTION_PHONE }}
-      UAT_PRODUCTION_PASSWORD: ${{ secrets.UAT_PRODUCTION_PASSWORD }}
-      UAT_ACCOUNTANT_PHONE: ${{ secrets.UAT_ACCOUNTANT_PHONE }}
-      UAT_ACCOUNTANT_PASSWORD: ${{ secrets.UAT_ACCOUNTANT_PASSWORD }}
+      UAT_BASE_URL: ${{ github.event_name == 'workflow_dispatch' && inputs.target_url || '' }}
+      UAT_SUPABASE_URL: ${{ github.event_name == 'workflow_dispatch' && secrets.UAT_SUPABASE_URL || '' }}
+      UAT_SUPABASE_ANON_KEY: ${{ github.event_name == 'workflow_dispatch' && secrets.UAT_SUPABASE_ANON_KEY || '' }}
+      UAT_PRODUCTION_PHONE: ${{ github.event_name == 'workflow_dispatch' && secrets.UAT_PRODUCTION_PHONE || '' }}
+      UAT_PRODUCTION_PASSWORD: ${{ github.event_name == 'workflow_dispatch' && secrets.UAT_PRODUCTION_PASSWORD || '' }}
+      UAT_ACCOUNTANT_PHONE: ${{ github.event_name == 'workflow_dispatch' && secrets.UAT_ACCOUNTANT_PHONE || '' }}
+      UAT_ACCOUNTANT_PASSWORD: ${{ github.event_name == 'workflow_dispatch' && secrets.UAT_ACCOUNTANT_PASSWORD || '' }}
     steps:
       - uses: actions/checkout@v4
 
