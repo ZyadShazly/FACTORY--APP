@@ -12,6 +12,8 @@ const reversalMigration = await readFile(new URL("../supabase/migrations/2026091
 const payrollMigration = await readFile(new URL("../supabase/migrations/20260910212219_fix_payroll_calendar_review_permission.sql", import.meta.url), "utf8");
 const laborExportMigration = await readFile(new URL("../supabase/migrations/20260910212414_fix_external_labor_export_permission.sql", import.meta.url), "utf8");
 const closedProjectMigration = await readFile(new URL("../supabase/migrations/20260910212126_fix_closed_project_customer_due.sql", import.meta.url), "utf8");
+const unitAwareBudgetMigration = await readFile(new URL("../supabase/migrations/20260911004500_restore_procurement_budget_unit_comparability.sql", import.meta.url), "utf8");
+const projectAdvanceMigration = await readFile(new URL("../supabase/migrations/20260911005500_project_customer_advance_allocation.sql", import.meta.url), "utf8");
 
 test("explicit zero sale price is rejected instead of falling back to product price", () => {
   assert.match(app, /form\.unitPrice === "" \? Number\(selectedProduct\.selling_price\) : num\(form\.unitPrice\)/);
@@ -65,7 +67,7 @@ test("material aggregate exposes weighted average inventory cost for product BOM
   assert.match(app, /averageUnitCost/);
 });
 
-test("closed project revenue contributes to customer due in UI and database canonical balance", () => {
+test("closed project revenue contributes to customer due and visible customer ledger", () => {
   const balance = customerBalances("c1", {
     sales: [{ customer_id: "c1", status: "posted", total: 500 }],
     rentals: [],
@@ -75,4 +77,43 @@ test("closed project revenue contributes to customer due in UI and database cano
   assert.equal(balance.due, 14500);
   assert.match(closedProjectMigration, /p\.lifecycle='closed'/);
   assert.match(closedProjectMigration, /select sum\(p\.revenue\)/);
+  assert.match(app, /function customerProjectTotal/);
+  assert.match(app, /إجمالي المستحقات/);
+  assert.match(app, /type: "إقفال مشروع"/);
+  assert.match(app, /customerSaleTotal\(c\.id, data\) \+ customerRentalTotal\(c\.id, data\) \+ customerProjectTotal\(c\.id, data\)/);
+});
+
+test("customer advance can settle a closed project charge", () => {
+  const balance = customerBalances("c1", {
+    sales: [],
+    rentals: [],
+    projects: [{ customer_id: "c1", lifecycle: "closed", revenue: 15000 }],
+    customerReceipts: [{
+      customer_id: "c1", status: "posted", amount: 500,
+      transaction_classification: "advance", settlement_amount: 0,
+      advance_amount: 500, allocated_advance_amount: 100,
+    }],
+  });
+  assert.equal(balance.due, 14900);
+  assert.equal(balance.advance, 400);
+  assert.match(projectAdvanceMigration, /target_type in \('sale','rental','project'\)/);
+  assert.match(projectAdvanceMigration, /when target_type='project'/);
+  assert.match(projectAdvanceMigration, /'type','project'/);
+  assert.match(projectAdvanceMigration, /elsif target_type='project'/);
+  assert.match(projectAdvanceMigration, /private\.customer_advance_target_remaining\('project'/);
+});
+
+test("procurement guard keeps unit-aware quantity checks while blocking unlinked lines", () => {
+  assert.match(unitAwareBudgetMigration, /requested_unit_count/);
+  assert.match(unitAwareBudgetMigration, /prior_unit_count/);
+  assert.match(unitAwareBudgetMigration, /quantity_is_comparable/);
+  assert.match(unitAwareBudgetMigration, /c\.quantity_is_comparable and c\.prior_quantity\+c\.requested_quantity>c\.budget_quantity/);
+  assert.match(unitAwareBudgetMigration, /unlinked_budget_item/);
+  assert.match(unitAwareBudgetMigration, /invalid_budget_link/);
+  assert.match(unitAwareBudgetMigration, /project_total/);
+});
+
+test("reversed customer and supplier cash rows do not reduce the visible ledgers twice", () => {
+  assert.match(app, /r\.status === "reversed" \? 0 : -r\.amount/);
+  assert.match(app, /p\.status === "reversed" \? 0 : -p\.amount/);
 });
