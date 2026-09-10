@@ -8,10 +8,10 @@ const app = await readFile(new URL("../src/AppMonolith.jsx", import.meta.url), "
 const assets = await readFile(new URL("../src/assets/AssetsPage.jsx", import.meta.url), "utf8");
 const calendar = await readFile(new URL("../src/v23/workCalendar.jsx", import.meta.url), "utf8");
 const exportsUi = await readFile(new URL("../src/reporting/professionalExports.js", import.meta.url), "utf8");
-const reversalMigration = await readFile(new URL("../supabase/migrations/20260911000500_fix_commercial_reversal_target_id.sql", import.meta.url), "utf8");
-const payrollMigration = await readFile(new URL("../supabase/migrations/20260911001800_fix_payroll_calendar_review_permission.sql", import.meta.url), "utf8");
-const laborExportMigration = await readFile(new URL("../supabase/migrations/20260911002500_fix_external_labor_export_permission.sql", import.meta.url), "utf8");
-const closedProjectMigration = await readFile(new URL("../supabase/migrations/20260911003000_fix_closed_project_customer_due.sql", import.meta.url), "utf8");
+const reversalMigration = await readFile(new URL("../supabase/migrations/20260910211643_fix_commercial_reversal_target_id.sql", import.meta.url), "utf8");
+const payrollMigration = await readFile(new URL("../supabase/migrations/20260910212219_fix_payroll_calendar_review_permission.sql", import.meta.url), "utf8");
+const laborExportMigration = await readFile(new URL("../supabase/migrations/20260910212414_fix_external_labor_export_permission.sql", import.meta.url), "utf8");
+const closedProjectMigration = await readFile(new URL("../supabase/migrations/20260910212126_fix_closed_project_customer_due.sql", import.meta.url), "utf8");
 
 test("explicit zero sale price is rejected instead of falling back to product price", () => {
   assert.match(app, /form\.unitPrice === "" \? Number\(selectedProduct\.selling_price\) : num\(form\.unitPrice\)/);
