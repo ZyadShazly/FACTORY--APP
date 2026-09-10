@@ -110,7 +110,8 @@ export function ProcurementWorkspace({data,onNavigate}){
   const[tab,setTab]=useState("requests"),[search,setSearch]=useState(""),[creating,setCreating]=useState(false);
   const[selected,setSelected]=useState(null),[rejecting,setRejecting]=useState(null),[rejectReason,setRejectReason]=useState("");
   const[overrideRequest,setOverrideRequest]=useState(null),[overrideReason,setOverrideReason]=useState("");
-  const[request,setRequest]=useState({display_name:"",project_id:"",material_id:"",description:"",quantity:"",unit:"قطعة",estimated_unit_cost:"",justification:""});
+  const[request,setRequest]=useState({display_name:"",project_id:"",budget_item_id:"",material_id:"",description:"",quantity:"",unit:"قطعة",estimated_unit_cost:"",justification:""});
+  const[budgetItems,setBudgetItems]=useState([]),[budgetLoading,setBudgetLoading]=useState(false);
   const currencyCode=getCurrencySettings().currency_code;
   const[quote,setQuote]=useState({request_id:"",supplier_id:"",unit_price:"",currency:currencyCode,base_currency:currencyCode,exchange_rate:"1",rate_date:new Date().toISOString().slice(0,10)});
   const[draftOrder,setDraftOrder]=useState({quote_id:"",display_name:""});
@@ -142,6 +143,16 @@ export function ProcurementWorkspace({data,onNavigate}){
     await load({preserveFeedback:true});
     return result||true;
   }
+  async function chooseRequestProject(projectId){
+    setRequest(current=>({...current,project_id:projectId,budget_item_id:""}));
+    setBudgetItems([]);setError("");
+    if(!projectId)return;
+    setBudgetLoading(true);
+    const{data:items,error:budgetError}=await supabase.rpc("get_procurement_budget_items",{target_project:projectId});
+    setBudgetLoading(false);
+    if(budgetError){setError(friendlyError(budgetError));return;}
+    setBudgetItems(Array.isArray(items)?items:[]);
+  }
   async function approveRequest(row){
     setError("");setOk("");
     const{data:result,error:approveError}=await supabase.rpc("decide_purchase_request",{target_id:row.id,approve:true,reason:null});
@@ -149,7 +160,11 @@ export function ProcurementWorkspace({data,onNavigate}){
       const raw=String(approveError.message||approveError);
       if(raw.includes("Owner override reason is required")){
         setOverrideRequest(row);setOverrideReason("");
-        setError("الطلب يتجاوز الميزانية المعتمدة. بصفتك Owner يمكنك اعتماد تجاوز استثنائي بعد كتابة السبب.");
+        setError("الطلب خارج حدود بند الميزانية المعتمد أو غير مربوط به. بصفتك Owner يمكنك اعتماد تجاوز استثنائي بعد كتابة السبب.");
+        return false;
+      }
+      if(raw.includes("Purchase request exceeds the approved project budget")){
+        setError("الطلب خارج حدود الميزانية المعتمدة ويتطلب تجاوز Owner موثقًا.");
         return false;
       }
       setError(friendlyError(approveError));return false;
@@ -164,8 +179,10 @@ export function ProcurementWorkspace({data,onNavigate}){
   async function saveRequest(){
     if(!request.display_name.trim())return setError("أدخل اسمًا واضحًا لطلب الشراء.");
     if(!request.description.trim()||Number(request.quantity)<=0)return setError("أدخل وصفًا وكمية صحيحة.");
-    const saved=await call("save_purchase_request_v2",{payload:{display_name:request.display_name,project_id:request.project_id||null,required_date:null,priority:"normal",justification:request.justification,items:[{material_id:request.material_id||null,description:request.description,quantity:Number(request.quantity),unit:request.unit,estimated_unit_cost:Number(request.estimated_unit_cost||0),sequence:1}] }},"تم حفظ طلب الشراء كمسودة.");
-    if(saved){setCreating(false);setRequest({...request,display_name:"",description:"",quantity:"",estimated_unit_cost:"",justification:""})}
+    if(request.project_id&&!request.budget_item_id)return setError("اختر بند الميزانية المعتمد، أو اختر «خارج الميزانية» إذا كانت العملية استثنائية.");
+    const budgetItem=request.budget_item_id==="__unbudgeted__"?null:(request.budget_item_id||null);
+    const saved=await call("save_purchase_request_v2",{payload:{display_name:request.display_name,project_id:request.project_id||null,required_date:null,priority:"normal",justification:request.justification,items:[{material_id:request.material_id||null,description:request.description,quantity:Number(request.quantity),unit:request.unit,estimated_unit_cost:Number(request.estimated_unit_cost||0),budget_item_id:budgetItem,sequence:1}] }},"تم حفظ طلب الشراء كمسودة.");
+    if(saved){setCreating(false);setRequest({...request,budget_item_id:"",display_name:"",description:"",quantity:"",estimated_unit_cost:"",justification:""})}
   }
   async function saveQuote(){
     const items=ws.request_items.filter(item=>item.purchase_request_id===quote.request_id);
@@ -247,14 +264,15 @@ export function ProcurementWorkspace({data,onNavigate}){
       {tab==="requests"&&<>
         {creating&&<Panel title="طلب شراء جديد" actions={<Button tone="ghost" onClick={()=>setCreating(false)}>إغلاق</Button>}><div style={formStyle}>
           <Field label="اسم الطلب"><input required style={inputStyle} value={request.display_name} onChange={event=>setRequest({...request,display_name:event.target.value})} placeholder="مثال: أخشاب مشروع المعرض"/></Field>
-          <Field label="المشروع"><select style={inputStyle} value={request.project_id} onChange={event=>setRequest({...request,project_id:event.target.value})}><option value="">بدون مشروع</option>{projects.map(project=><option key={project.id} value={project.id}>{project.project_name||project.name}</option>)}</select></Field>
+          <Field label="المشروع"><select style={inputStyle} value={request.project_id} onChange={event=>void chooseRequestProject(event.target.value)}><option value="">بدون مشروع</option>{projects.map(project=><option key={project.id} value={project.id}>{project.project_name||project.name}</option>)}</select></Field>
+          {request.project_id&&<Field label="بند الميزانية"><select style={inputStyle} value={request.budget_item_id} disabled={budgetLoading} onChange={event=>setRequest({...request,budget_item_id:event.target.value})}><option value="">{budgetLoading?"جاري تحميل بنود الميزانية...":"اختر بند الميزانية المعتمد"}</option>{budgetItems.map(item=><option key={item.id} value={item.id}>{item.description}{item.category?` · ${item.category}`:""}</option>)}<option value="__unbudgeted__">خارج الميزانية — يتطلب تجاوز Owner</option></select></Field>}
           <Field label="المادة"><select style={inputStyle} value={request.material_id} onChange={event=>setRequest({...request,material_id:event.target.value})}><option value="">اختر</option>{materials.map(material=><option key={material.id} value={material.id}>{material.name}</option>)}</select></Field>
           <Field label="الوصف"><input style={inputStyle} value={request.description} onChange={event=>setRequest({...request,description:event.target.value})}/></Field>
           <Field label="الكمية"><input type="number" min="0" style={inputStyle} value={request.quantity} onChange={event=>setRequest({...request,quantity:event.target.value})}/></Field>
           <Field label="تكلفة الوحدة التقديرية"><input type="number" min="0" style={inputStyle} value={request.estimated_unit_cost} onChange={event=>setRequest({...request,estimated_unit_cost:event.target.value})}/></Field>
           <Field label="مبرر الطلب"><input style={inputStyle} value={request.justification} onChange={event=>setRequest({...request,justification:event.target.value})} placeholder="سبب الشراء أو الحاجة التشغيلية"/></Field>
           <Button onClick={saveRequest}>حفظ المسودة</Button>
-        </div></Panel>}
+        </div>{request.budget_item_id==="__unbudgeted__"&&<HelpText title="طلب خارج الميزانية">يمكن حفظ المسودة وإرسالها للمراجعة، لكن الاعتماد سيتطلب تجاوز Owner بسبب موثق.</HelpText>}</Panel>}
         <Panel title={`الطلبات النشطة (${activeRequests.length})`}><div className="procurement-record-list">{activeRequests.map(requestCard)}{!activeRequests.length&&<Empty title="لا توجد طلبات شراء نشطة"/>}</div></Panel>
         <ArchiveSection title="طلبات الشراء السابقة" count={previousRequests.length} helpText="الطلبات المحولة والمكتملة والمرفوضة محفوظة هنا ولا تُحذف عند التحويل."><div className="procurement-record-list">{previousRequests.map(requestCard)}{!previousRequests.length&&<Empty title="لا يوجد سجل سابق"/>}</div></ArchiveSection>
       </>}
@@ -311,6 +329,6 @@ export function ProcurementWorkspace({data,onNavigate}){
       />
     </DetailsDrawer>
     {rejecting&&<div className="procurement-rejection-layer" role="dialog" aria-modal="true" aria-label="رفض طلب الشراء"><div><h3>رفض طلب الشراء</h3><Field label="سبب الرفض"><textarea style={{...inputStyle,width:"100%",minHeight:110}} value={rejectReason} onChange={event=>setRejectReason(event.target.value)} placeholder="اكتب سببًا واضحًا ليعرف مقدم الطلب المطلوب تعديله"/></Field><span style={actionsStyle}><Button tone="ghost" onClick={()=>{setRejecting(null);setRejectReason("")}}>رجوع</Button><Button tone="danger" onClick={()=>{if(!rejectReason.trim())return setError("سبب الرفض مطلوب.");void call("decide_purchase_request",{target_id:rejecting.id,approve:false,reason:rejectReason.trim()},"تم رفض الطلب مع تسجيل السبب.")}}>تأكيد الرفض</Button></span></div></div>}
-    {overrideRequest&&<div className="procurement-rejection-layer" role="dialog" aria-modal="true" aria-label="تجاوز Owner لميزانية طلب الشراء"><div><h3>تجاوز استثنائي للميزانية</h3><p>هذا الطلب يتجاوز حدود الميزانية المعتمدة. التجاوز متاح للـOwner فقط وسيُسجل بالكامل في Audit Log.</p><Field label="سبب التجاوز الإلزامي"><textarea style={{...inputStyle,width:"100%",minHeight:110}} value={overrideReason} onChange={event=>setOverrideReason(event.target.value)} placeholder="اكتب لماذا يجب اعتماد الطلب رغم تجاوز الميزانية"/></Field><span style={actionsStyle}><Button tone="ghost" onClick={()=>{setOverrideRequest(null);setOverrideReason("")}}>رجوع</Button><Button tone="danger" onClick={confirmBudgetOverride}>اعتماد بتجاوز Owner</Button></span></div></div>}
+    {overrideRequest&&<div className="procurement-rejection-layer" role="dialog" aria-modal="true" aria-label="تجاوز Owner لميزانية طلب الشراء"><div><h3>تجاوز استثنائي للميزانية</h3><p>هذا الطلب يتجاوز حدود الميزانية المعتمدة أو يحتوي بندًا خارجها. التجاوز متاح للـOwner فقط وسيُسجل بالكامل في Audit Log.</p><Field label="سبب التجاوز الإلزامي"><textarea style={{...inputStyle,width:"100%",minHeight:110}} value={overrideReason} onChange={event=>setOverrideReason(event.target.value)} placeholder="اكتب لماذا يجب اعتماد الطلب رغم تجاوز الميزانية"/></Field><span style={actionsStyle}><Button tone="ghost" onClick={()=>{setOverrideRequest(null);setOverrideReason("")}}>رجوع</Button><Button tone="danger" onClick={confirmBudgetOverride}>اعتماد بتجاوز Owner</Button></span></div></div>}
   </div>;
 }
