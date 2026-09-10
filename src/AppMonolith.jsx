@@ -184,6 +184,9 @@ function customerReceiptTotal(customerId, data) {
 function customerRentalTotal(customerId, data) {
   return data.rentals.filter((r) => r.customer_id === customerId && r.status !== "cancelled").reduce((s, r) => s + r.rental_fee, 0);
 }
+function customerProjectTotal(customerId, data) {
+  return (data.projects || []).filter((p) => p.customer_id === customerId && p.lifecycle === "closed").reduce((s, p) => s + num(p.revenue), 0);
+}
 function customerBalance(customerId, data) { return customerBalances(customerId, data).due; }
 
 /* ------------------------------- عناصر عامة ------------------------------- */
@@ -1312,7 +1315,7 @@ function SuppliersTab({ data, refresh, canManage }) {
 function SupplierLedger({ supplierId, data }) {
   const purchases = data.materialPurchases.filter((p) => p.supplier_id === supplierId).map((p) => ({ date: p.purchase_date, type: "شراء", amount: p.qty * p.unit_cost, note: data.materials.find((m) => m.id === p.material_id)?.name }));
   const invoices = (data.supplierInvoices || []).filter((invoice) => invoice.supplier_id === supplierId && ["approved", "paid"].includes(invoice.status)).map((invoice) => ({ date: invoice.invoice_date, type: "فاتورة مورد", amount: invoice.total_amount, note: invoice.invoice_number }));
-  const payments = data.supplierPayments.filter((p) => p.supplier_id === supplierId).map((p) => ({ date: p.payment_date, type: transactionClassLabel(p), amount: -p.amount, note: p.note }));
+  const payments = data.supplierPayments.filter((p) => p.supplier_id === supplierId).map((p) => ({ date: p.payment_date, type: transactionClassLabel(p), amount: p.status === "reversed" ? 0 : -p.amount, note: p.reversal_reason ? `${p.note || ""}${p.note ? " · " : ""}سبب العكس: ${p.reversal_reason}` : p.note }));
   const rows = [...purchases, ...invoices, ...payments].sort((a, b) => (a.date || "").localeCompare(b.date || ""));
   if (rows.length === 0) return <div style={{ color: C.muted, fontSize: 13 }}>لا توجد حركات مسجلة</div>;
   return <Table headers={["التاريخ", "النوع", "البيان", "المبلغ"]}>{rows.map((r, i) => <tr key={i}><Td>{r.date}</Td><Td style={{ color: r.type === "شراء" ? C.red : C.green }}>{r.type}</Td><Td>{r.note || "—"}</Td><Td>{formatMoney(Math.abs(r.amount))}</Td></tr>)}</Table>;
@@ -1409,11 +1412,11 @@ function CustomersTab({ data, refresh, canManage }) {
       <Card>
         <SearchBox value={search} onChange={setSearch} placeholder="ابحث باسم العميل..." />
         {filtered.length === 0 ? <Empty text="لا توجد نتائج" /> : (
-          <Table headers={["العميل", "الهاتف", "إجمالي المبيعات والإيجارات", "إجمالي التحصيل", "المستحق", "السلفة", ""]}>
+          <Table headers={["العميل", "الهاتف", "إجمالي المستحقات", "إجمالي التحصيل", "المستحق", "السلفة", ""]}>
             {filtered.map((c) => { const balances = customerBalances(c.id, data); const bal = balances.due; return (
               <React.Fragment key={c.id}>
                 <tr>
-                  <Td>{c.name}</Td><Td>{c.phone || "—"}</Td><Td>{formatMoney(customerSaleTotal(c.id, data) + customerRentalTotal(c.id, data))}</Td><Td>{formatMoney(customerReceiptTotal(c.id, data))}</Td>
+                  <Td>{c.name}</Td><Td>{c.phone || "—"}</Td><Td>{formatMoney(customerSaleTotal(c.id, data) + customerRentalTotal(c.id, data) + customerProjectTotal(c.id, data))}</Td><Td>{formatMoney(customerReceiptTotal(c.id, data))}</Td>
                   <Td style={{ fontWeight: 700, color: bal > 0 ? C.brass : C.green }}>{formatMoney(bal)}</Td><Td style={{fontWeight:700,color:C.green}}>{formatMoney(balances.advance)}{balances.legacyUnclassified>0&&<small style={{display:"block",color:C.red}}>يوجد {balances.legacyUnclassified} حركة قديمة غير مصنفة</small>}</Td>
                   <Td style={{ display: "flex", gap: 10, alignItems: "center" }}>
                     <button aria-label={`تعديل ${c.name}`} title="تعديل العميل" onClick={() => startEdit(c)} style={{ background: "none", border: "none", cursor: "pointer", color: C.brass }}><Pencil size={15} /></button>
@@ -1442,8 +1445,9 @@ function CustomersTab({ data, refresh, canManage }) {
 function CustomerLedger({ customerId, data }) {
   const sales = data.sales.filter((s) => s.customer_id === customerId).map((s) => ({ date: s.sale_date, type: s.status === "cancelled" ? "بيع ملغي" : "بيع", amount: s.status === "cancelled" ? 0 : s.total, note: `${data.products.find((p) => p.id === s.product_id)?.name || "—"}${s.status === "cancelled" ? ` — ${s.cancellation_reason || "ملغي"}` : ""}` }));
   const rentals = data.rentals.filter((r) => r.customer_id === customerId).map((r) => ({ date: r.start_date, type: r.status === "cancelled" ? "إيجار ملغي" : "إيجار", amount: r.status === "cancelled" ? 0 : r.rental_fee, note: `${data.products.find((p) => p.id === r.product_id)?.name || "—"}${r.status === "cancelled" ? ` — ${r.cancellation_reason || "ملغي"}` : ""}` }));
-  const receipts = data.customerReceipts.filter((r) => r.customer_id === customerId).map((r) => ({ date: r.receipt_date, type: transactionClassLabel(r), amount: -r.amount, note: r.note }));
-  const rows = [...sales, ...rentals, ...receipts].sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+  const projects = (data.projects || []).filter((p) => p.customer_id === customerId && p.lifecycle === "closed" && num(p.revenue) > 0).map((p) => ({ date: String(p.project_closed_at || p.lifecycle_changed_at || p.delivery_date || p.updated_at || "").slice(0,10), type: "إقفال مشروع", amount: num(p.revenue), note: `${p.project_code || "مشروع"} · ${p.project_name || "—"}` }));
+  const receipts = data.customerReceipts.filter((r) => r.customer_id === customerId).map((r) => ({ date: r.receipt_date, type: transactionClassLabel(r), amount: r.status === "reversed" ? 0 : -r.amount, note: r.reversal_reason ? `${r.note || ""}${r.note ? " · " : ""}سبب العكس: ${r.reversal_reason}` : r.note }));
+  const rows = [...sales, ...rentals, ...projects, ...receipts].sort((a, b) => (a.date || "").localeCompare(b.date || ""));
   if (rows.length === 0) return <div style={{ color: C.muted, fontSize: 13 }}>لا توجد حركات مسجلة</div>;
   return <Table headers={["التاريخ", "النوع", "البيان", "المبلغ"]}>{rows.map((r, i) => <tr key={i}><Td>{r.date}</Td><Td style={{ color: r.type === "تحصيل" ? C.green : C.brass }}>{r.type}</Td><Td>{r.note || "—"}</Td><Td>{formatMoney(Math.abs(r.amount))}</Td></tr>)}</Table>;
 }
