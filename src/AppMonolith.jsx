@@ -37,7 +37,7 @@ import { ProcurementWorkspace } from "./operational/ProcurementWorkspace";
 import { CommercialAdvancesPanel } from "./operational/CommercialAdvancesPanel";
 import { useInventoryWorkspace } from "./operational/useInventoryWorkspace";
 import { ArchiveSection } from "./ui/foundation";
-import { aggregateInventoryByProduct, canonicalFinishedProductAlerts, canonicalMaterialAlerts } from "./domain/inventoryBalances";
+import { aggregateInventoryByMaterial, aggregateInventoryByProduct, canonicalFinishedProductAlerts, canonicalMaterialAlerts } from "./domain/inventoryBalances";
 import { readWorkspaceLocation, workspaceUrl } from "./app/urlNavigation";
 import { customerBalances, supplierBalances, transactionClassLabel } from "./domain/commercialBalances";
 import { configureCurrency, formatMoney } from "./userExperience";
@@ -149,14 +149,17 @@ const fetchTableRows = createTableFetcher({
 });
 
 /* ------------------------------ دوال الحسابات ------------------------------ */
-function bomUnitCost(product, data) {
-  return (product.bom || []).reduce((s, r) => {
-    const m = data.materials.find((x) => x.id === r.material_id);
-    return s + (m ? m.unit_cost * r.qty : 0);
-  }, 0);
+function materialCurrentUnitCost(materialId, data, materialBalances) {
+  const balance = materialBalances?.get(materialId);
+  if (balance && Number(balance.quantityOnHand) > 0) return Number(balance.averageUnitCost || 0);
+  const material = data.materials.find((x) => x.id === materialId);
+  return num(material?.unit_cost);
 }
-function productUnitCost(product, data) {
-  return bomUnitCost(product, data) + num(product.labor_cost) + num(product.overhead_cost);
+function bomUnitCost(product, data, materialBalances) {
+  return (product.bom || []).reduce((s, r) => s + materialCurrentUnitCost(r.material_id, data, materialBalances) * num(r.qty), 0);
+}
+function productUnitCost(product, data, materialBalances) {
+  return bomUnitCost(product, data, materialBalances) + num(product.labor_cost) + num(product.overhead_cost);
 }
 function avgProductionUnitCost(productId, data) {
   const os = data.productionOrders.filter((o) => o.product_id === productId && o.status === "completed");
@@ -801,6 +804,7 @@ const MaterialsTab=MaterialsCatalogWorkspace;
 function ProductsTab({ data, canCreate, canEdit, canArchive, hideProfitInfo, refresh }) {
   const { workspace: inventoryWorkspace, error: inventoryError } = useInventoryWorkspace("products");
   const finishedBalances = useMemo(() => aggregateInventoryByProduct(inventoryWorkspace || {}), [inventoryWorkspace]);
+  const materialBalances = useMemo(() => aggregateInventoryByMaterial(inventoryWorkspace || {}), [inventoryWorkspace]);
   const blank = { name: "", sku: "", laborCost: "", overheadCost: "", sellingPrice: "", itemType: "sale", commandId: "" };
   const [form, setForm] = useState(blank);
   const [bom, setBom] = useState([]);
@@ -899,7 +903,7 @@ function ProductsTab({ data, canCreate, canEdit, canArchive, hideProfitInfo, ref
           <div style={{ marginBottom: 12 }}>
             <Table headers={["المادة", "الكمية", "التكلفة", ""]}>
               {bom.map((r, i) => { const m = data.materials.find((x) => x.id === r.material_id); return (
-                <tr key={i}><Td>{m?.name}</Td><Td>{r.qty} {m?.unit}</Td><Td>{formatMoney((m?.unit_cost || 0) * r.qty)}</Td>
+                <tr key={i}><Td>{m?.name}</Td><Td>{r.qty} {m?.unit}</Td><Td>{formatMoney(materialCurrentUnitCost(r.material_id, data, materialBalances) * r.qty)}</Td>
                   <Td><button aria-label={`حذف ${m?.name||"المادة"} من التركيبة`} title="حذف من التركيبة" onClick={() => removeBomRow(i)} style={{ background: "none", border: "none", cursor: "pointer", color: C.red }}><Trash2 size={14} /></button></Td></tr>
               ); })}
             </Table>
@@ -917,8 +921,8 @@ function ProductsTab({ data, canCreate, canEdit, canArchive, hideProfitInfo, ref
         {filtered.length === 0 ? <Empty text="لا توجد نتائج" /> : (
           <Table headers={["المنتج", "النوع", ...(hideProfitInfo ? [] : ["تكلفة الخامات", "عمالة", "تكاليف غير مباشرة", "إجمالي التكلفة/وحدة", "سعر البيع", "الهامش"]), "المخزون التام", ""]}>
             {filtered.map((p) => {
-              const matCost = bomUnitCost(p, data);
-              const unitCost = productUnitCost(p, data);
+              const matCost = bomUnitCost(p, data, materialBalances);
+              const unitCost = productUnitCost(p, data, materialBalances);
               const margin = p.selling_price > 0 ? ((p.selling_price - unitCost) / p.selling_price) * 100 : null;
               return (
                 <tr key={p.id}>
