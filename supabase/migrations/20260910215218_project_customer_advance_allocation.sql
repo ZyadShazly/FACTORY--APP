@@ -45,19 +45,8 @@ revoke all on function private.customer_advance_target_remaining(text,uuid,uuid)
 
 -- Keep the existing workspace implementation as a private core and expose a
 -- compatible wrapper that adds closed projects as customer allocation targets.
--- The guard makes this safe on environments where the core/wrapper split was
--- already applied manually but the migration version was not recorded.
-do $migration$
-begin
-  if to_regprocedure('public.get_commercial_advance_workspace_core(text,uuid)') is null then
-    if to_regprocedure('public.get_commercial_advance_workspace(text,uuid)') is null then
-      raise exception 'Commercial advance workspace function is missing';
-    end if;
-    execute 'alter function public.get_commercial_advance_workspace(text,uuid) rename to get_commercial_advance_workspace_core';
-  end if;
-end
-$migration$;
-
+alter function public.get_commercial_advance_workspace(text,uuid)
+  rename to get_commercial_advance_workspace_core;
 revoke all on function public.get_commercial_advance_workspace_core(text,uuid)
   from public,anon,authenticated;
 
