@@ -969,7 +969,7 @@ function SalesTab({ data, refresh, canManage }) {
     if (qty <= 0) return setErr("أدخل كمية أكبر من صفر");
     const stock = finishedBalances.get(form.productId)?.quantityOnHand;
     if (stock != null && stock < qty) return setErr(`المخزون التام المتاح ${stock} وحدة فقط`);
-    const unitPrice = num(form.unitPrice) || selectedProduct.selling_price;
+    const unitPrice = form.unitPrice === "" ? Number(selectedProduct.selling_price) : num(form.unitPrice);
     if (!Number.isFinite(unitPrice) || unitPrice <= 0) return setErr("سعر الوحدة يجب أن يكون أكبر من صفر");
     const commandId = form.commandId || globalThis.crypto.randomUUID();
     if (!form.commandId) setForm((current) => ({ ...current, commandId }));
