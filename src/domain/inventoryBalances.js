@@ -13,15 +13,18 @@ export function aggregateInventoryByMaterial(workspace = {}) {
       itemName: item.name,
       unit: item.unit || row.unit || "وحدة",
       quantityOnHand: 0,
+      inventoryValue: 0,
       warehouseNames: new Set(),
     };
     current.quantityOnHand += Number(row.quantity_on_hand || 0);
+    current.inventoryValue += Number(row.inventory_value || 0);
     if (row.warehouse_name) current.warehouseNames.add(row.warehouse_name);
     result.set(item.material_id, current);
   }
 
   return new Map([...result].map(([materialId, row]) => [materialId, {
     ...row,
+    averageUnitCost: row.quantityOnHand > 0 ? row.inventoryValue / row.quantityOnHand : 0,
     warehouseNames: [...row.warehouseNames].sort(),
   }]));
 }
