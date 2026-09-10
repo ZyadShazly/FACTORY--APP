@@ -12,8 +12,8 @@ const reversalMigration = await readFile(new URL("../supabase/migrations/2026091
 const payrollMigration = await readFile(new URL("../supabase/migrations/20260910212219_fix_payroll_calendar_review_permission.sql", import.meta.url), "utf8");
 const laborExportMigration = await readFile(new URL("../supabase/migrations/20260910212414_fix_external_labor_export_permission.sql", import.meta.url), "utf8");
 const closedProjectMigration = await readFile(new URL("../supabase/migrations/20260910212126_fix_closed_project_customer_due.sql", import.meta.url), "utf8");
-const unitAwareBudgetMigration = await readFile(new URL("../supabase/migrations/20260911004500_restore_procurement_budget_unit_comparability.sql", import.meta.url), "utf8");
-const projectAdvanceMigration = await readFile(new URL("../supabase/migrations/20260911005500_project_customer_advance_allocation.sql", import.meta.url), "utf8");
+const unitAwareBudgetMigration = await readFile(new URL("../supabase/migrations/20260910215155_restore_procurement_budget_unit_comparability.sql", import.meta.url), "utf8");
+const projectAdvanceMigration = await readFile(new URL("../supabase/migrations/20260910215218_project_customer_advance_allocation.sql", import.meta.url), "utf8");
 
 test("explicit zero sale price is rejected instead of falling back to product price", () => {
   assert.match(app, /form\.unitPrice === "" \? Number\(selectedProduct\.selling_price\) : num\(form\.unitPrice\)/);
