@@ -14,7 +14,8 @@ function availableAdvance(row) {
 
 export function customerBalances(customerId, data) {
   const charges = (data.sales || []).filter((row) => row.customer_id === customerId && row.status !== "cancelled").reduce((sum, row) => sum + Number(row.total || 0), 0)
-    + (data.rentals || []).filter((row) => row.customer_id === customerId && row.status !== "cancelled").reduce((sum, row) => sum + Number(row.rental_fee || 0), 0);
+    + (data.rentals || []).filter((row) => row.customer_id === customerId && row.status !== "cancelled").reduce((sum, row) => sum + Number(row.rental_fee || 0), 0)
+    + (data.projects || []).filter((row) => row.customer_id === customerId && row.lifecycle === "closed").reduce((sum, row) => sum + Number(row.revenue || 0), 0);
   const rows = (data.customerReceipts || []).filter((row) => row.customer_id === customerId);
   const settled = rows.reduce((sum, row) => sum + settledAmount(row), 0);
   return {

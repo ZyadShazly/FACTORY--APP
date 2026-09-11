@@ -113,12 +113,9 @@ export async function exportPayrollWorkbook({ dateFrom, dateTo }) {
 
 export async function exportExternalLaborWorkbook({ dateFrom, dateTo }) {
   const actor = await generatedBy();
-  const { data, error } = await supabase
-    .from("daily_labor")
-    .select("*,project:projects(project_code,project_name)")
-    .gte("work_date", dateFrom)
-    .lte("work_date", dateTo)
-    .order("work_date", { ascending: true });
+  const { data, error } = await supabase.rpc("get_external_labor_export", {
+    date_from: dateFrom, date_to: dateTo,
+  });
   if (error) throw error;
   const rows = data || [];
   download("external-labor-report", "تقرير العمالة الخارجية", { "من": dateFrom, "إلى": dateTo }, actor, [
