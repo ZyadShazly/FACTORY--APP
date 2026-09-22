@@ -34,7 +34,7 @@ import { InventoryWorkspace } from "./operational/InventoryWorkspace";
 import { MaterialsCatalogWorkspace } from "./operational/MaterialsCatalogWorkspace";
 import { ProductionWorkspace } from "./operational/ProductionWorkspace";
 import { ProcurementWorkspace } from "./operational/ProcurementWorkspace";
-import { CommercialAdvancesPanel } from "./operational/CommercialAdvancesPanel";
+import { CommercialAdvancesPanel } from "./operational/CommercialAdvancesPanel";\nimport { CustomerAdjustmentsPanel } from "./operational/CustomerAdjustmentsPanel";
 import { useInventoryWorkspace } from "./operational/useInventoryWorkspace";
 import { ArchiveSection } from "./ui/foundation";
 import { aggregateInventoryByMaterial, aggregateInventoryByProduct, canonicalFinishedProductAlerts, canonicalMaterialAlerts } from "./domain/inventoryBalances";
@@ -1424,7 +1424,7 @@ function CustomersTab({ data, refresh, canManage }) {
                     <button onClick={() => setExpanded(expanded === c.id ? null : c.id)} style={{ background: "none", border: "none", color: C.brass, cursor: "pointer", fontSize: 12.5 }}>{expanded === c.id ? "إخفاء الحركات" : "عرض الحركات"}</button>
                   </Td>
                 </tr>
-                {expanded === c.id && <tr><Td colSpan={7} style={{ background: C.panelAlt }}><CustomerLedger customerId={c.id} data={data} /><CommercialAdvancesPanel partyType="customer" partyId={c.id} canReverse={canManage} onChanged={refresh}/></Td></tr>}
+                {expanded === c.id && <tr><Td colSpan={7} style={{ background: C.panelAlt }}><CustomerLedger customerId={c.id} data={data} /><CustomerAdjustmentsPanel customerId={c.id} due={balances.due} rows={data.customerAdjustments||[]} canReverse={canManage} onChanged={refresh}/><CommercialAdvancesPanel partyType="customer" partyId={c.id} canReverse={canManage} onChanged={refresh}/></Td></tr>}
               </React.Fragment>
             ); })}
           </Table>
