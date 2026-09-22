@@ -17,9 +17,9 @@ export function customerBalances(customerId, data) {
     + (data.rentals || []).filter((row) => row.customer_id === customerId && row.status !== "cancelled").reduce((sum, row) => sum + Number(row.rental_fee || 0), 0)
     + (data.projects || []).filter((row) => row.customer_id === customerId && row.lifecycle === "closed").reduce((sum, row) => sum + Number(row.revenue || 0), 0);
   const rows = (data.customerReceipts || []).filter((row) => row.customer_id === customerId);
-  const settled = rows.reduce((sum, row) => sum + settledAmount(row), 0);
+  const settled = rows.reduce((sum, row) => sum + settledAmount(row), 0);\n  const adjustments = (data.customerAdjustments || []).filter((row) => row.customer_id === customerId && row.status === "posted").reduce((sum, row) => sum + Number(row.amount || 0), 0);
   return {
-    due: Math.max(0, charges - settled),
+    due: Math.max(0, charges - settled - adjustments),
     advance: rows.reduce((sum, row) => sum + availableAdvance(row), 0),
     cashReceived: rows.filter(active).reduce((sum, row) => sum + Number(row.amount || 0), 0),
     legacyUnclassified: rows.filter((row) => active(row) && legacy(row)).length,
