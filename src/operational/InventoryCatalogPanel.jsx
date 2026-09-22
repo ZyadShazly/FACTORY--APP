@@ -5,7 +5,7 @@ import{ConfirmDialog}from"../v22/shared";
 
 const emptyForm={sku:"",name:"",unit:"وحدة",itemType:"raw_material",materialId:"",active:true};
 
-export function InventoryCatalogPanel({workspace,onChanged,onOpenMaterials,canManage=false,createRequest=0}){
+export function InventoryCatalogPanel({workspace,onChanged,onOpenMaterials,canManage=false,canViewFinancials=true,createRequest=0}){
   const[busy,setBusy]=useState("");
   const[error,setError]=useState("");
   const[ok,setOk]=useState("");
@@ -129,11 +129,11 @@ export function InventoryCatalogPanel({workspace,onChanged,onOpenMaterials,canMa
     </div>}
 
     <input style={{...inputStyle,width:"100%",marginBottom:12}} value={search} onChange={event=>setSearch(event.target.value)} placeholder={stockKind==="raw"?"ابحث في المواد الخام بالاسم أو الكود...":"ابحث في المنتجات التامة بالاسم أو الكود..."}/>
-    <div className="inventory-table-wrap"><table className="inventory-table"><thead><tr>{["الاسم","الكود","الكمية","المخزن","الحالة","الارتباط",...(canManage?["الإجراءات"]:[])].map(header=><th key={header}>{header}</th>)}</tr></thead><tbody>
+    <div className="inventory-table-wrap"><table className="inventory-table"><thead><tr>{["الاسم","الكود","الكمية","قيمة المخزون","متوسط التكلفة","المخزن","الحالة","الارتباط",...(canManage?["الإجراءات"]:[])].map(header=><th key={header}>{header}</th>)}</tr></thead><tbody>
       {catalog.map(item=>{
         const isRaw=item.item_type==="raw_material";
         const selected=links[item.id]??item.material_id??"";
-        const summary=balanceSummary.get(item.id)||{quantity:0,warehouses:new Set()};
+        const summary=balanceSummary.get(item.id)||{quantity:0,value:0,warehouses:new Set()};\n        const averageCost=summary.quantity?summary.value/summary.quantity:0;
         const availableMaterials=materials.filter(material=>material.id===item.material_id||!linkedMaterialIds.has(material.id));
         return <tr key={item.id}>
           <td><span className="inventory-item-name"><strong>{item.name}</strong><small>{item.unit||"وحدة"}</small></span></td>
@@ -152,7 +152,7 @@ export function InventoryCatalogPanel({workspace,onChanged,onOpenMaterials,canMa
           </div></td>}
         </tr>
       })}
-      {!catalog.length&&<tr><td colSpan={canManage?7:6} className="inventory-empty">لا توجد {stockKind==="raw"?"مواد خام":"منتجات تامة"} مطابقة.</td></tr>}
+      {!catalog.length&&<tr><td colSpan={canManage?9:8} className="inventory-empty">لا توجد {stockKind==="raw"?"مواد خام":"منتجات تامة"} مطابقة.</td></tr>}
     </tbody></table></div>
     <ConfirmDialog open={Boolean(deleteAction)} title="حذف صنف غير مستخدم" description={`لن يُحذف «${deleteAction?.item.name||"الصنف"}» إذا كان مرتبطًا بأي حركة أو رصيد أو مستند تشغيلي.`} confirmLabel="حذف الصنف" danger busy={busy===deleteAction?.item.id} reasonRequired reason={deleteAction?.reason||""} onReasonChange={reason=>setDeleteAction(current=>({...current,reason}))} onConfirm={confirmDelete} onCancel={()=>setDeleteAction(null)}/>
   </Panel>;
