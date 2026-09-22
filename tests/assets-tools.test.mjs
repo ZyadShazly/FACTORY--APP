@@ -11,3 +11,16 @@ test("لا يمكن إلغاء عهدة صادرة دون حركة عكسية",a
 test("التأكيد الخارجي محدود وآمن ومقنع للبيانات",async()=>{const sql=await readFile(migrationUrl,"utf8");assert.match(sql,/mask_asset_receiver_name/);assert.match(sql,/mask_asset_phone/);assert.match(sql,/confirmation_failed_attempts\+1>=5/);assert.match(sql,/interval '15 minutes'/);assert.match(sql,/confirmation_used_at is not null[\s\S]*'expired'/);assert.match(sql,/confirmation_token_hash=null/)});
 test("الإصدار والإرجاع والتسوية ترفض تجاوز الرصيد وتطبق maker-checker",async()=>{const sql=await readFile(migrationUrl,"utf8");assert.match(sql,/Requested quantity exceeds available ledger balance/);assert.match(sql,/Return quantity exceeds outstanding quantity/);assert.match(sql,/Settlement quantity exceeds outstanding quantity/);assert.match(sql,/accountant cannot approve own settlement/);assert.match(sql,/Only working assets can be issued/)});
 test("RLS تحجب التكلفة عن Production والكتابة التجارية RPC فقط",async()=>{const sql=await readFile(migrationUrl,"utf8");assert.match(sql,/to_jsonb\(a\)-array\['purchase_cost','supplier_id'\]/);assert.match(sql,/Business mutations are RPC-only/);assert.match(sql,/permission_name=any\(array\['assets_view','assets_issue','assets_return'\]\)/)});
+
+
+test("واجهة الأصول تعرض تنبيهات مترجمة وتوضح معنى التكلفة وتوزع التابات",async()=>{
+  const ui=await readFile(new URL("../src/assets/AssetsPage.jsx",import.meta.url),"utf8");
+  const css=await readFile(new URL("../src/assets/assets.css",import.meta.url),"utf8");
+  assert.match(ui,/confirmation_pending:"بانتظار تأكيد المستلم"/);
+  assert.match(ui,/إجمالي تكلفة الشراء المسجلة/);
+  assert.match(ui,/إجمالي تكلفة سجل الأصل بالكامل/);
+  assert.match(ui,/حركات الأصول/);
+  assert.doesNotMatch(ui,/حركات Ledger/);
+  assert.match(css,/asset-tabs button\{flex:1 1 110px/);
+  assert.match(css,/@media\(max-width:700px\)[\s\S]*asset-tabs button\{flex:0 0 auto/);
+});

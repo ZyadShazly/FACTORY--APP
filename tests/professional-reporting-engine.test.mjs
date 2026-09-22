@@ -38,6 +38,12 @@ test("inventory export includes balances movements and exception checks", () => 
   assert.match(exportsSource, /quantity_on_hand/);
   assert.match(exportsSource, /inventory_value/);
   assert.match(exportsSource, /inventory_movements|movements/);
+  assert.match(exportsSource, /average_unit_cost/);
+  assert.match(exportsSource, /movementTypeLabel/);
+  assert.match(exportsSource, /r\.item_name \|\| r\.inventory_item_id/);
+  assert.match(exportsSource, /r\.warehouse_name \|\| r\.warehouse_id/);
+  assert.match(exportsSource, /استلام مشتريات/);
+  assert.match(exportsSource, /عكس صرف مبيعات/);
   assert.match(exportsSource, /الاستثناءات/);
 });
 

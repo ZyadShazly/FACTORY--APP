@@ -6,7 +6,7 @@ const TABLE_LABELS = {
   profiles:"المستخدمون", suppliers:"الموردون", customers:"العملاء", materials:"المواد الخام",
   material_purchases:"المشتريات", products:"المنتجات", production_orders:"أوامر الإنتاج",
   sales:"المبيعات", rentals:"الإيجارات", supplier_payments:"دفعات الموردين",
-  customer_receipts:"تحصيلات العملاء", expenses:"المصروفات", projects:"المشاريع",
+  customer_receipts:"تحصيلات العملاء", customer_adjustments:"تسويات العملاء", expenses:"المصروفات", projects:"المشاريع",
   project_files:"ملفات المشاريع", project_activities:"أنشطة المشاريع", employees:"الموظفون",
   payroll:"الرواتب", daily_labor:"العمالة اليومية", project_costs:"تكاليف المشاريع",
   departments:"الأقسام",work_schedules:"جداول العمل",work_schedule_days:"أيام جداول العمل",
@@ -16,11 +16,48 @@ const TABLE_LABELS = {
 };
 const ACTION_LABELS = {
   insert:"إضافة", update:"تعديل", delete:"حذف", archive:"أرشفة", restore:"استعادة",
+  production_order_cancelled:"إلغاء أمر إنتاج",
+  production_order_released:"إصدار أمر إنتاج",
+  production_order_completed:"إكمال أمر إنتاج",
+  production_material_partial_issue:"صرف خامات للإنتاج",
+  customer_created:"إنشاء عميل",
+  customer_updated:"تعديل عميل",
+  customer_archived:"أرشفة عميل",
+  customer_restored:"استعادة عميل",
+  customer_receipt_classified:"تحصيل عميل",
+  customer_adjustment_posted:"تسوية عميل",
+  customer_adjustment_reversed:"عكس تسوية عميل",
+  supplier_payment_classified:"دفعة مورد",
+  payroll_draft_created:"إنشاء مسير راتب",
+  payroll_draft_deleted:"حذف مسودة راتب",
+  project_closed:"إغلاق مشروع",
+  project_completed:"إكمال مشروع",
   role_change_attempt:"محاولة تغيير دور",
   privilege_change_attempt:"محاولة تغيير صلاحيات",
   profile_delete_attempt:"محاولة حذف حساب",
   owner_bootstrap:"ترقية مالك النظام",
 };
+
+const FIELD_LABELS = {
+  status:"الحالة", lifecycle:"دورة المشروع", project_name:"اسم المشروع", project_code:"كود المشروع",
+  name:"الاسم", amount:"المبلغ", total:"الإجمالي", revenue:"الإيراد", qty:"الكمية",
+  note:"البيان", reason:"السبب", cancellation_reason:"سبب الإلغاء", reversal_reason:"سبب العكس",
+  receipt_date:"تاريخ التحصيل", payment_date:"تاريخ الدفع", scheduled_work_days:"أيام العمل",
+  scheduled_minutes:"دقائق العمل", transaction_classification:"تصنيف الحركة",
+};
+const TECHNICAL_KEYS = new Set([
+  "id","command_id","created_by","updated_by","approved_by","rejected_by","cancelled_by","reversed_by",
+  "project_closed_by","project_completed_by","lifecycle_changed_by","review_updated_by","attendance_reviewed_by",
+  "created_at","updated_at","approved_at","rejected_at","cancelled_at","reversed_at"
+]);
+
+function readableValue(value){
+  if(value===null||value===undefined||value==="")return "—";
+  if(typeof value==="object"){
+    try{return JSON.stringify(value).slice(0,90)}catch{return "بيانات مرتبطة"}
+  }
+  return String(value).slice(0,90);
+}
 export const PERMISSION_LABELS = {
   projects_view:"عرض المشاريع",projects_create:"إنشاء المشاريع",projects_edit:"تعديل المشاريع",projects_delete:"حذف المشاريع",
   project_files_view:"عرض ملفات المشاريع",project_files_upload:"رفع ملفات المشاريع",project_files_delete:"أرشفة واستعادة ملفات المشاريع",
@@ -35,14 +72,53 @@ export const PERMISSION_LABELS = {
   daily_labor_delete:"حذف الورديات",daily_labor_pay:"دفع العمالة",audit_log_view:"عرض سجل التدقيق",
 };
 
+const GENERIC_AUDIT_ACTIONS = new Set(["insert","update","delete"]);
+
+function auditEventKey(row){
+  return `${row.table_name}|${row.record_id}|${row.created_at}`;
+}
+
+export function dedupeAuditRows(rows){
+  const businessKeys=new Set(
+    rows.filter(row=>!GENERIC_AUDIT_ACTIONS.has(row.action)).map(auditEventKey)
+  );
+  return rows.filter(row=>!GENERIC_AUDIT_ACTIONS.has(row.action)||!businessKeys.has(auditEventKey(row)));
+}
+
 export function AuditLogTab({ data }) {
   const [table,setTable]=useState("");const[action,setAction]=useState("");const[search,setSearch]=useState("");
-  const rows=useMemo(()=>data.auditLog.filter((r)=>(!table||r.table_name===table)&&(!action||r.action===action)&&(!search||`${r.record_id} ${auditActorLabel(r)} ${JSON.stringify(r.new_data||{})}`.toLowerCase().includes(search.toLowerCase()))).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at)),[data.auditLog,table,action,search]);
+  const rows=useMemo(()=>{
+    const filtered=data.auditLog
+      .filter((r)=>(!table||r.table_name===table)&&(!action||r.action===action)&&(!search||`${r.record_id} ${auditActorLabel(r)} ${JSON.stringify(r.new_data||{})}`.toLowerCase().includes(search.toLowerCase())))
+      .sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+    return dedupeAuditRows(filtered);
+  },[data.auditLog,table,action,search]);
   return <div><PageTitle eyebrow="الحوكمة والأمان" title="سجل التدقيق" description="سجل غير قابل للتعديل لكل الإضافات والتغييرات والحذف وعمليات الدفع."/><Panel><div className="v22-filters"><Input value={search} onChange={(e)=>setSearch(e.target.value)} placeholder="بحث بالمعرف أو المستخدم أو البيانات..."/><Select value={table} onChange={(e)=>setTable(e.target.value)}><option value="">كل الوحدات</option>{Object.entries(TABLE_LABELS).map(([k,v])=><option key={k} value={k}>{v}</option>)}</Select><Select value={action} onChange={(e)=>setAction(e.target.value)}><option value="">كل الإجراءات</option>{Object.entries(ACTION_LABELS).map(([k,v])=><option key={k} value={k}>{v}</option>)}</Select></div>{rows.length?<DataTable headers={["الوقت","الوحدة","الإجراء","السجل","المستخدم","ملخص التغيير"]}>{rows.map((r)=>{const actorLabel=auditActorLabel(r);return <tr key={r.id}><td>{new Date(r.created_at).toLocaleString("ar-EG")}</td><td>{TABLE_LABELS[r.table_name]||r.table_name}</td><td><span className={`audit-action ${r.action}`}>{ACTION_LABELS[r.action]||r.action}</span></td><td><code>{r.record_id?.slice(0,12)}</code></td><td>{actorLabel===r.actor_id?<code>{actorLabel}</code>:actorLabel}</td><td className="audit-summary">{summarize(r)}</td></tr>})}</DataTable>:<EmptyState title="لا توجد أحداث مطابقة"/>}</Panel></div>;
 }
 function summarize(row){
   if(row.action==="delete")return"تم حذف السجل";
   if(row.action.endsWith("_attempt"))return row.metadata?.allowed ? "تم السماح بالتغيير بعد التحقق الأمني" : `تم الرفض: ${row.metadata?.reason||"مخالفة التسلسل الإداري"}`;
   if(row.action==="owner_bootstrap")return"تمت ترقية حساب موجود يدويًا إلى مالك النظام دون تغيير بيانات الدخول";
-  const before=row.old_data||{};const after=row.new_data||{};const changed=Object.keys(after).filter((key)=>JSON.stringify(before[key])!==JSON.stringify(after[key])&&!['updated_at'].includes(key));return changed.slice(0,4).map((key)=>`${key}: ${String(after[key]??"—").slice(0,28)}`).join(" · ")||"تم إنشاء السجل";
+  if(row.action==="production_order_cancelled")return `تم إلغاء أمر الإنتاج${row.new_data?.cancellation_reason?`: ${row.new_data.cancellation_reason}`:""}`;
+  if(row.action==="production_order_released")return "تم إصدار أمر الإنتاج للتنفيذ";
+  if(row.action==="production_order_completed")return "تم إكمال أمر الإنتاج وترحيل الناتج";
+  if(row.action==="customer_created")return `تم إنشاء العميل ${row.new_data?.name||""}`.trim();
+  if(row.action==="customer_updated")return `تم تعديل بيانات العميل ${row.new_data?.name||""}`.trim();
+  if(row.action==="customer_archived")return `تمت أرشفة العميل ${row.new_data?.name||""}`.trim();
+  if(row.action==="customer_restored")return `تمت استعادة العميل ${row.new_data?.name||""}`.trim();
+  if(row.action==="customer_receipt_classified")return `تم تسجيل تحصيل عميل بقيمة ${readableValue(row.new_data?.amount)}`;
+  if(row.action==="supplier_payment_classified")return `تم تسجيل دفعة مورد بقيمة ${readableValue(row.new_data?.amount)}`;
+  if(row.action==="customer_adjustment_posted")return `تم تسجيل تسوية غير نقدية للعميل بقيمة ${readableValue(row.new_data?.amount)}${row.new_data?.reason?` · ${row.new_data.reason}`:""}`;
+  if(row.action==="customer_adjustment_reversed")return `تم عكس تسوية العميل${row.new_data?.reversal_reason?` · ${row.new_data.reversal_reason}`:""}`;
+  if(row.action==="project_closed")return `تم إغلاق المشروع ${row.new_data?.project_code||row.new_data?.project_name||row.record_id||""}`.trim();
+  if(row.action==="project_completed")return `تم إكمال المشروع ${row.new_data?.project_code||row.new_data?.project_name||row.record_id||""}`.trim();
+  const before=row.old_data||{};
+  const after=row.new_data||{};
+  if(row.table_name==="projects"&&row.action==="update"&&before.lifecycle!==after.lifecycle){
+    const projectLabel=after.project_code||after.project_name||row.record_id||"";
+    if(after.lifecycle==="closed")return `تم إغلاق المشروع ${projectLabel}`.trim();
+    if(after.lifecycle==="completed")return `تم إكمال المشروع ${projectLabel}`.trim();
+  }
+  const changed=Object.keys(after).filter((key)=>JSON.stringify(before[key])!==JSON.stringify(after[key])&&!TECHNICAL_KEYS.has(key));
+  return changed.slice(0,4).map((key)=>`${FIELD_LABELS[key]||key}: ${readableValue(after[key])}`).join(" · ")||"تم تسجيل العملية";
 }
