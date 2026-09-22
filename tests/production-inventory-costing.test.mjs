@@ -15,10 +15,16 @@ test("production-order planned material cost uses warehouse weighted-average inv
   assert.match(migration, /required_qty\*coalesce\(material_unit_cost,0\)/);
 });
 
+test("production-order BOM material id is unambiguous", () => {
+  assert.match(migration, /bom_material_id uuid/);
+  assert.match(migration, /ii\.material_id=bom_material_id/);
+  assert.doesNotMatch(migration, /ii\.material_id=material_id/);
+});
+
 test("production-order material costing only falls back to material master cost when no inventory average exists", () => {
   assert.match(migration, /if material_unit_cost is null then/);
   assert.match(migration, /select m\.unit_cost/);
-  assert.match(migration, /where m\.id=material_id/);
+  assert.match(migration, /where m\.id=bom_material_id/);
 });
 
 test("production-order total and unit costs still include labor and overhead", () => {
