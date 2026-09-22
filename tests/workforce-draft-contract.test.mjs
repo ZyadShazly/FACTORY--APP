@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-const migration = readFileSync("supabase/migrations/20260810250000_workforce_draft_contract.sql", "utf8");
+const migration = readFileSync("supabase/migrations/20260810250000_workforce_draft_contract.sql", "utf8");\nconst autoCalendar = readFileSync("supabase/migrations/20260922114000_payroll_draft_auto_calendar.sql", "utf8");
 const payroll = readFileSync("src/v22/PayrollReviewTab.jsx", "utf8");
 const labor = readFileSync("src/v22/dailyLabor.jsx", "utf8");
 
@@ -31,4 +31,14 @@ test("external labor draft UI delegates calculations and protected deletion", ()
   assert.doesNotMatch(labor, /total_hours: calculation\.totalHours/);
   assert.doesNotMatch(labor, /supabase\.from\("daily_labor"\)\.insert/);
   assert.doesNotMatch(labor, /window\.confirm|window\.prompt/);
+});
+
+
+test("payroll draft auto-calculates scheduled workdays from the protected approved calendar", () => {
+  assert.match(autoCalendar, /private\.resolve_work_calendar_for_payroll/);
+  assert.match(autoCalendar, /scheduled_work_days/);
+  assert.match(autoCalendar, /scheduled_minutes/);
+  assert.match(autoCalendar, /calendar_autocalculated/);
+  assert.match(autoCalendar, /calendar_version/);
+  assert.doesNotMatch(autoCalendar, /payroll_calendar_view/);
 });
