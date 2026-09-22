@@ -26,8 +26,9 @@ export function InventoryCatalogPanel({workspace,onChanged,onOpenMaterials,canMa
   const balanceSummary=useMemo(()=>{
     const summary=new Map();
     for(const row of workspace.balances||[]){
-      const current=summary.get(row.inventory_item_id)||{quantity:0,warehouses:new Set()};
+      const current=summary.get(row.inventory_item_id)||{quantity:0,value:0,warehouses:new Set()};
       current.quantity+=Number(row.quantity_on_hand||0);
+      current.value+=Number(row.inventory_value||0);
       if(row.warehouse_name)current.warehouses.add(row.warehouse_name);
       summary.set(row.inventory_item_id,current);
     }
@@ -133,12 +134,15 @@ export function InventoryCatalogPanel({workspace,onChanged,onOpenMaterials,canMa
       {catalog.map(item=>{
         const isRaw=item.item_type==="raw_material";
         const selected=links[item.id]??item.material_id??"";
-        const summary=balanceSummary.get(item.id)||{quantity:0,value:0,warehouses:new Set()};\n        const averageCost=summary.quantity?summary.value/summary.quantity:0;
+        const summary=balanceSummary.get(item.id)||{quantity:0,value:0,warehouses:new Set()};
+        const averageCost=summary.quantity?summary.value/summary.quantity:0;
         const availableMaterials=materials.filter(material=>material.id===item.material_id||!linkedMaterialIds.has(material.id));
         return <tr key={item.id}>
           <td><span className="inventory-item-name"><strong>{item.name}</strong><small>{item.unit||"وحدة"}</small></span></td>
           <td>{item.sku||"—"}</td>
           <td>{money(summary.quantity)}</td>
+          <td>{canViewFinancials?money(summary.value):"محجوبة"}</td>
+          <td>{canViewFinancials?money(averageCost):"محجوبة"}</td>
           <td>{[...summary.warehouses].join("، ")||"لا يوجد رصيد"}</td>
           <td><span className={`inventory-status${item.active===false?" is-inactive":""}`}>{item.active===false?"غير نشط":"نشط"}</span></td>
           <td>{isRaw
