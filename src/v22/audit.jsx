@@ -16,11 +16,41 @@ const TABLE_LABELS = {
 };
 const ACTION_LABELS = {
   insert:"إضافة", update:"تعديل", delete:"حذف", archive:"أرشفة", restore:"استعادة",
+  production_order_cancelled:"إلغاء أمر إنتاج",
+  production_order_released:"إصدار أمر إنتاج",
+  production_material_partial_issue:"صرف خامات للإنتاج",
+  customer_receipt_classified:"تحصيل عميل",
+  supplier_payment_classified:"دفعة مورد",
+  payroll_draft_created:"إنشاء مسير راتب",
+  payroll_draft_deleted:"حذف مسودة راتب",
+  project_closed:"إغلاق مشروع",
+  project_completed:"إكمال مشروع",
   role_change_attempt:"محاولة تغيير دور",
   privilege_change_attempt:"محاولة تغيير صلاحيات",
   profile_delete_attempt:"محاولة حذف حساب",
   owner_bootstrap:"ترقية مالك النظام",
 };
+
+const FIELD_LABELS = {
+  status:"الحالة", lifecycle:"دورة المشروع", project_name:"اسم المشروع", project_code:"كود المشروع",
+  name:"الاسم", amount:"المبلغ", total:"الإجمالي", revenue:"الإيراد", qty:"الكمية",
+  note:"البيان", reason:"السبب", cancellation_reason:"سبب الإلغاء", reversal_reason:"سبب العكس",
+  receipt_date:"تاريخ التحصيل", payment_date:"تاريخ الدفع", scheduled_work_days:"أيام العمل",
+  scheduled_minutes:"دقائق العمل", transaction_classification:"تصنيف الحركة",
+};
+const TECHNICAL_KEYS = new Set([
+  "id","command_id","created_by","updated_by","approved_by","rejected_by","cancelled_by","reversed_by",
+  "project_closed_by","project_completed_by","lifecycle_changed_by","review_updated_by","attendance_reviewed_by",
+  "created_at","updated_at","approved_at","rejected_at","cancelled_at","reversed_at"
+]);
+
+function readableValue(value){
+  if(value===null||value===undefined||value==="")return "—";
+  if(typeof value==="object"){
+    try{return JSON.stringify(value).slice(0,90)}catch{return "بيانات مرتبطة"}
+  }
+  return String(value).slice(0,90);
+}
 export const PERMISSION_LABELS = {
   projects_view:"عرض المشاريع",projects_create:"إنشاء المشاريع",projects_edit:"تعديل المشاريع",projects_delete:"حذف المشاريع",
   project_files_view:"عرض ملفات المشاريع",project_files_upload:"رفع ملفات المشاريع",project_files_delete:"أرشفة واستعادة ملفات المشاريع",
@@ -44,5 +74,10 @@ function summarize(row){
   if(row.action==="delete")return"تم حذف السجل";
   if(row.action.endsWith("_attempt"))return row.metadata?.allowed ? "تم السماح بالتغيير بعد التحقق الأمني" : `تم الرفض: ${row.metadata?.reason||"مخالفة التسلسل الإداري"}`;
   if(row.action==="owner_bootstrap")return"تمت ترقية حساب موجود يدويًا إلى مالك النظام دون تغيير بيانات الدخول";
-  const before=row.old_data||{};const after=row.new_data||{};const changed=Object.keys(after).filter((key)=>JSON.stringify(before[key])!==JSON.stringify(after[key])&&!['updated_at'].includes(key));return changed.slice(0,4).map((key)=>`${key}: ${String(after[key]??"—").slice(0,28)}`).join(" · ")||"تم إنشاء السجل";
+  if(row.action==="production_order_cancelled")return `تم إلغاء أمر الإنتاج${row.new_data?.cancellation_reason?`: ${row.new_data.cancellation_reason}`:""}`;
+  if(row.action==="customer_receipt_classified")return `تم تسجيل تحصيل عميل بقيمة ${readableValue(row.new_data?.amount)}`;
+  const before=row.old_data||{};
+  const after=row.new_data||{};
+  const changed=Object.keys(after).filter((key)=>JSON.stringify(before[key])!==JSON.stringify(after[key])&&!TECHNICAL_KEYS.has(key));
+  return changed.slice(0,4).map((key)=>`${FIELD_LABELS[key]||key}: ${readableValue(after[key])}`).join(" · ")||"تم تسجيل العملية";
 }
