@@ -1,7 +1,7 @@
 -- Fix PL/pgSQL parameter ambiguity in customer adjustment reversal.
 create or replace function public.reverse_customer_adjustment(
   target_adjustment uuid,
-  reversal_reason_value text
+  reason text
 )
 returns jsonb
 language plpgsql
@@ -14,7 +14,7 @@ begin
   if auth.uid() is null or public.current_identity_role() not in ('owner','manager') then
     raise exception using errcode='42501',message='Owner or manager role required';
   end if;
-  if nullif(btrim(reversal_reason_value),'') is null then
+  if nullif(btrim(reverse_customer_adjustment.reason),'') is null then
     raise exception using errcode='22023',message='Reversal reason is required';
   end if;
 
@@ -22,7 +22,7 @@ begin
   set status='reversed',
       reversed_by=auth.uid(),
       reversed_at=now(),
-      reversal_reason=btrim(reversal_reason_value)
+      reversal_reason=btrim(reverse_customer_adjustment.reason)
   where ca.id=target_adjustment
     and ca.status='posted'
   returning ca.* into saved;
