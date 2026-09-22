@@ -75,7 +75,11 @@ function summarize(row){
   if(row.action.endsWith("_attempt"))return row.metadata?.allowed ? "تم السماح بالتغيير بعد التحقق الأمني" : `تم الرفض: ${row.metadata?.reason||"مخالفة التسلسل الإداري"}`;
   if(row.action==="owner_bootstrap")return"تمت ترقية حساب موجود يدويًا إلى مالك النظام دون تغيير بيانات الدخول";
   if(row.action==="production_order_cancelled")return `تم إلغاء أمر الإنتاج${row.new_data?.cancellation_reason?`: ${row.new_data.cancellation_reason}`:""}`;
-  if(row.action==="customer_receipt_classified")return `تم تسجيل تحصيل عميل بقيمة ${readableValue(row.new_data?.amount)}`;\n  if(row.action==="customer_adjustment_posted")return `تم تسجيل تسوية غير نقدية للعميل بقيمة ${readableValue(row.new_data?.amount)}${row.new_data?.reason?` · ${row.new_data.reason}`:""}`;\n  if(row.action==="customer_adjustment_reversed")return `تم عكس تسوية العميل${row.new_data?.reversal_reason?` · ${row.new_data.reversal_reason}`:""}`;\n  if(row.action==="project_closed")return `تم إغلاق المشروع ${row.new_data?.project_code||row.new_data?.project_name||row.record_id||""}`.trim();\n  if(row.action==="project_completed")return `تم إكمال المشروع ${row.new_data?.project_code||row.new_data?.project_name||row.record_id||""}`.trim();
+  if(row.action==="customer_receipt_classified")return `تم تسجيل تحصيل عميل بقيمة ${readableValue(row.new_data?.amount)}`;
+  if(row.action==="customer_adjustment_posted")return `تم تسجيل تسوية غير نقدية للعميل بقيمة ${readableValue(row.new_data?.amount)}${row.new_data?.reason?` · ${row.new_data.reason}`:""}`;
+  if(row.action==="customer_adjustment_reversed")return `تم عكس تسوية العميل${row.new_data?.reversal_reason?` · ${row.new_data.reversal_reason}`:""}`;
+  if(row.action==="project_closed")return `تم إغلاق المشروع ${row.new_data?.project_code||row.new_data?.project_name||row.record_id||""}`.trim();
+  if(row.action==="project_completed")return `تم إكمال المشروع ${row.new_data?.project_code||row.new_data?.project_name||row.record_id||""}`.trim();
   const before=row.old_data||{};
   const after=row.new_data||{};
   const changed=Object.keys(after).filter((key)=>JSON.stringify(before[key])!==JSON.stringify(after[key])&&!TECHNICAL_KEYS.has(key));
