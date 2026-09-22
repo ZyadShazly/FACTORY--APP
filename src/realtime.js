@@ -19,7 +19,7 @@ export const REALTIME_TABLE_TO_KEY = Object.freeze({
   suppliers: "suppliers",
   supplier_payments: "supplierPayments",
   customers: "customers",
-  customer_receipts: "customerReceipts",
+  customer_receipts: "customerReceipts",\n  customer_adjustments: "customerAdjustments",
   project_costs: "projectCosts",
   audit_log: "auditLog",
   departments: "departments",
