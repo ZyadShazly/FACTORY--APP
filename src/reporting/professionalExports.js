@@ -48,7 +48,7 @@ function meta(reportTitle, filters, actor) {
 
 function download(name, title, filters, actor, sheets) {
   const stamp = new Date().toISOString().slice(0, 10);
-  downloadExcelWorkbook({ filename: `${name}-${stamp}.xls`, meta: meta(title, filters, actor), sheets });
+  downloadExcelWorkbook({ filename: `${name}-${stamp}.xml`, meta: meta(title, filters, actor), sheets });
 }
 
 export async function exportPayrollWorkbook({ dateFrom, dateTo }) {
@@ -257,8 +257,8 @@ export async function exportInventoryWorkbook() {
         { label: "رقم الحركة", key: "movement_number", width: 120 },
         { label: "النوع", width: 125, value: (r) => movementTypeLabel(r.movement_type) },
         { label: "التاريخ", key: "posted_at", type: "date", width: 110 },
-        { label: "الصنف", key: "inventory_item_id", width: 140 },
-        { label: "المخزن", key: "warehouse_id", width: 140 },
+        { label: "الصنف", width: 160, value: (r) => r.item_name || r.inventory_item_id },
+        { label: "المخزن", width: 150, value: (r) => r.warehouse_name || r.warehouse_id },
         { label: "تغير الكمية", key: "quantity_delta", type: "number", width: 95 },
         { label: "تكلفة الوحدة", key: "unit_cost", type: "currency", width: 100 },
         { label: "تغير القيمة", key: "value_delta", type: "currency", width: 100 },
