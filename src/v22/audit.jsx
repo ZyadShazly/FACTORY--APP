@@ -119,7 +119,6 @@ function summarize(row){
     if(after.lifecycle==="closed")return `تم إغلاق المشروع ${projectLabel}`.trim();
     if(after.lifecycle==="completed")return `تم إكمال المشروع ${projectLabel}`.trim();
   }
-  const after=row.new_data||{};
   const changed=Object.keys(after).filter((key)=>JSON.stringify(before[key])!==JSON.stringify(after[key])&&!TECHNICAL_KEYS.has(key));
   return changed.slice(0,4).map((key)=>`${FIELD_LABELS[key]||key}: ${readableValue(after[key])}`).join(" · ")||"تم تسجيل العملية";
 }
