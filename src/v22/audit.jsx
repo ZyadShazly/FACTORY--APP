@@ -20,6 +20,8 @@ const ACTION_LABELS = {
   production_order_released:"إصدار أمر إنتاج",
   production_material_partial_issue:"صرف خامات للإنتاج",
   customer_receipt_classified:"تحصيل عميل",
+  customer_adjustment_posted:"تسوية عميل",
+  customer_adjustment_reversed:"عكس تسوية عميل",
   supplier_payment_classified:"دفعة مورد",
   payroll_draft_created:"إنشاء مسير راتب",
   payroll_draft_deleted:"حذف مسودة راتب",
