@@ -8,7 +8,8 @@ import{ASSET_TYPES,ASSIGNMENT_STATUS,buildConfirmationUrl,CONFIRMATION_METHOD_LA
 import{AssignmentEmergencyActions,ConfirmationBadge,EmergencyActionModal,EMERGENCY_ACTIONS,ReturnEmergencyActions}from"./EmergencyControls";
 import"./assets.css";
 
-const ASSET_ALERT_LABELS={assignment_overdue:"عهدة متأخرة عن الإرجاع",confirmation_pending:"بانتظار تأكيد المستلم",warranty_expiring:"الضمان يوشك على الانتهاء",maintenance_due:"موعد صيانة قريب"};\nconst blankAsset=()=>({name:"",asset_type:"tool",category_id:"",tracking_mode:"serialized",quantity:1,unit:"قطعة",brand:"",model:"",serial_number:"",qr_value:"",barcode_value:"",purchase_date:"",purchase_cost:"",supplier_id:"",warranty_until:"",operational_status:"working",current_location_id:"",warehouse:"",shelf:"",notes:""});
+const ASSET_ALERT_LABELS={assignment_overdue:"عهدة متأخرة عن الإرجاع",confirmation_pending:"بانتظار تأكيد المستلم",warranty_expiring:"الضمان يوشك على الانتهاء",maintenance_due:"موعد صيانة قريب"};
+const blankAsset=()=>({name:"",asset_type:"tool",category_id:"",tracking_mode:"serialized",quantity:1,unit:"قطعة",brand:"",model:"",serial_number:"",qr_value:"",barcode_value:"",purchase_date:"",purchase_cost:"",supplier_id:"",warranty_until:"",operational_status:"working",current_location_id:"",warehouse:"",shelf:"",notes:""});
 async function rpc(name,args){const result=await supabase.rpc(name,args);console.info(`[Assets] ${name}`,result);if(result.error)throw new Error(userFacingError(result.error));if(result.data?.ok===false)throw new Error(userFacingError(result.data.error));return result.data}
 export function AssetsPage({data,profile,permissions,refresh}){
  const [tab,setTab]=useState("overview"),[search,setSearch]=useState(new URLSearchParams(location.search).get("assetQr")||""),[type,setType]=useState(""),[status,setStatus]=useState("");
