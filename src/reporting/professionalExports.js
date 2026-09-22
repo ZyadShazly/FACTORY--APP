@@ -247,6 +247,7 @@ export async function exportInventoryWorkbook() {
         { label: "الوحدة", width: 70, value: (r) => r.item.unit || "—" },
         { label: "الكمية المتاحة", key: "quantity_on_hand", type: "number", width: 100 },
         { label: "قيمة المخزون", key: "inventory_value", type: "currency", width: 110 },
+        { label: "متوسط تكلفة الوحدة", key: "average_unit_cost", type: "currency", width: 115 },
         { label: "آخر تحديث", key: "updated_at", type: "date", width: 110 },
       ],
       rows: balances,
