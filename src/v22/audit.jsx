@@ -70,6 +70,9 @@ export const PERMISSION_LABELS = {
   assets_view:"عرض الأصول",assets_manage:"إدارة الأصول",assets_issue:"إصدار عهدة",assets_receive:"تأكيد الاستلام",assets_return:"إرجاع عهدة",assets_adjust:"تسوية الأرصدة",assets_approve_loss:"اعتماد الخسائر",assets_reports:"تقارير وتكلفة الأصول",
   daily_labor_view:"عرض العمالة اليومية",daily_labor_create:"إضافة ورديات",daily_labor_edit:"تعديل الورديات",
   daily_labor_delete:"حذف الورديات",daily_labor_pay:"دفع العمالة",audit_log_view:"عرض سجل التدقيق",
+  accounting_view:"عرض المحاسبة",accounting_accounts_manage:"إدارة شجرة الحسابات",accounting_journal_create:"إنشاء قيود",
+  accounting_journal_post:"ترحيل القيود",accounting_journal_reverse:"عكس القيود",accounting_journal_edit_posted:"تعديل قيد مرحّل — الماستر فقط",
+  accounting_reports_view:"عرض التقارير المحاسبية",accounting_settings_manage:"إدارة إعدادات المحاسبة",accounting_period_manage:"إدارة الفترات المحاسبية",
 };
 
 const GENERIC_AUDIT_ACTIONS = new Set(["insert","update","delete"]);
