@@ -84,7 +84,7 @@ const PAGE_LABELS = {
 function permissionsForProfile(profile) {
   const actions = actionPermissions(profile);
   if (isAdministrativeRole(profile?.role)) return {
-    pages: ALL_PAGE_IDS,
+    pages: profile?.role === "owner" ? ALL_PAGE_IDS : ALL_PAGE_IDS.filter((page) => page !== "accounting" || actions.accounting_view),
     can_delete: true,
     view_financials: true,
     can_create_products: true,
