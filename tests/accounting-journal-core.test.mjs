@@ -61,7 +61,9 @@ test("journal numbering is transactional by fiscal year", () => {
   assert.match(migration, /private\.accounting_journal_counters/);
   assert.match(migration, /fiscal_year integer primary key/);
   assert.match(migration, /update private\.accounting_journal_counters[\s\S]*returning next_number-1 into allocated/);
-  assert.match(migration, /JE.*OB.*RV/s);
+  assert.match(migration, /when 'opening' then 'OB'/);
+  assert.match(migration, /when 'reversal' then 'RV'/);
+  assert.match(migration, /else 'JE'/);
 });
 
 test("journal RPCs are not callable by anon or PUBLIC", () => {
