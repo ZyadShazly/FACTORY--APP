@@ -24,3 +24,12 @@ test("واجهة الأصول تعرض تنبيهات مترجمة وتوضح م
   assert.match(css,/asset-tabs button\{flex:1 1 110px/);
   assert.match(css,/@media\(max-width:700px\)[\s\S]*asset-tabs button\{flex:0 0 auto/);
 });
+
+
+test("التاب النشط في الأصول يستخدم لون ثيم معرف وواضح",async()=>{
+  const css=await readFile(new URL("../src/assets/assets.css",import.meta.url),"utf8");
+  assert.match(css,/\.asset-tabs button\.active\{[^}]*background:var\(--color-wood\)/);
+  assert.match(css,/\.asset-tabs button\.active\{[^}]*color:#fff/);
+  assert.match(css,/\.asset-tabs button\.active\{[^}]*font-weight:800/);
+  assert.doesNotMatch(css,/color-charcoal/);
+});
