@@ -8,6 +8,8 @@ export const ACTION_PERMISSIONS = Object.freeze([
   "payroll_calendar_view", "payroll_calendar_manage", "payroll_calendar_approve", "payroll_calendar_stale_override",
   "daily_labor_view", "daily_labor_create", "daily_labor_edit", "daily_labor_delete", "daily_labor_pay", "audit_log_view",
   "assets_view", "assets_manage", "assets_issue", "assets_receive", "assets_return", "assets_adjust", "assets_approve_loss", "assets_reports",
+  "accounting_view", "accounting_accounts_manage", "accounting_journal_create", "accounting_journal_post",
+  "accounting_journal_reverse", "accounting_journal_edit_posted", "accounting_reports_view", "accounting_settings_manage", "accounting_period_manage",
 ]);
 
 const ACCOUNTANT_DEFAULTS = Object.freeze([
@@ -15,6 +17,7 @@ const ACCOUNTANT_DEFAULTS = Object.freeze([
   "project_budget_view", "project_budget_create", "project_budget_edit", "project_budget_submit", "project_budget_reject", "project_budget_view_financials",
   "payroll_view", "payroll_create", "payroll_edit", "payroll_mark_paid", "daily_labor_view",
   "daily_labor_create", "daily_labor_edit", "daily_labor_pay",
+  "accounting_view", "accounting_accounts_manage", "accounting_journal_create", "accounting_journal_post", "accounting_journal_reverse", "accounting_reports_view",
 ]);
 
 export function actionPermissions(profile) {
@@ -28,6 +31,12 @@ export function actionPermissions(profile) {
       resolved[key] = profile?.permissions?.[key] === true;
     }
     resolved.project_budget_override_activation = false;
+    for (const key of ACTION_PERMISSIONS.filter((permission) => permission.startsWith("accounting_"))) {
+      resolved[key] = profile?.permissions?.[key] === true;
+    }
+    resolved.accounting_journal_edit_posted = false;
+    resolved.accounting_settings_manage = false;
+    resolved.accounting_period_manage = false;
     return resolved;
   }
 
@@ -38,8 +47,14 @@ export function actionPermissions(profile) {
   );
 
   resolved.audit_log_view = false;
+  resolved.accounting_journal_edit_posted = false;
+  resolved.accounting_settings_manage = false;
+  resolved.accounting_period_manage = false;
 
   if (profile?.role === "production") {
+    for (const key of ACTION_PERMISSIONS.filter((permission) => permission.startsWith("accounting_"))) {
+      resolved[key] = false;
+    }
     for (const key of ACTION_PERMISSIONS.filter((permission) => permission.startsWith("payroll_calendar_"))) {
       resolved[key] = false;
     }
