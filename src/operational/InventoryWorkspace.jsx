@@ -145,7 +145,7 @@ export function InventoryWorkspace({canViewFinancials=true,onNavigate,allowedPag
         {TABS.map(item=><button key={item.id} type="button" aria-selected={tab===item.id} onClick={()=>openTab(item.id)}>{item.label}</button>)}
       </nav>
 
-      {tab==="items"&&<InventoryCatalogPanel workspace={workspace} onChanged={load} onOpenMaterials={canOpenMaterials&&onNavigate?()=>onNavigate("materials"):null} canManage={canManage} createRequest={createRequest}/>}
+      {tab==="items"&&<InventoryCatalogPanel workspace={workspace} onChanged={load} onOpenMaterials={canOpenMaterials&&onNavigate?()=>onNavigate("materials"):null} canManage={canManage} canViewFinancials={canViewFinancials} createRequest={createRequest}/>}
 
       {tab==="opening"&&(canManage
         ?<OpeningInventoryPanel workspace={workspace} onChanged={load} canViewFinancials={canViewFinancials}/>

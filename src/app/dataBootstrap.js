@@ -1,6 +1,6 @@
 export const EMPTY_DATA = Object.freeze({
   materials: [], materialPurchases: [], products: [], productionOrders: [],
-  sales: [], rentals: [], suppliers: [], supplierPayments: [], customers: [], customerReceipts: [], expenses: [],
+  sales: [], rentals: [], suppliers: [], supplierPayments: [], customers: [], customerReceipts: [], customerAdjustments: [], expenses: [],
   profiles: [], projects: [], projectFiles: [], projectActivities: [], projectMilestones: [], projectMembers: [], projectRealtimeSignal: [], employees: [], payroll: [], dailyLabor: [], projectCosts: [], auditLog: [],
   departments: [], workSchedules: [], workScheduleDays: [], holidayCalendar: [], holidayScopes: [],
   assetCategories: [], assetLocations: [], assets: [], assetAssignments: [], assetAssignmentItems: [], assetReturnEvents: [], assetReturnItems: [], assetSettlements: [], assetMaintenanceOrders: [], assetMovements: [], assetAttachments: [], assetAlerts: [],

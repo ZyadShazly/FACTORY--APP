@@ -5,6 +5,28 @@ const num = (value) => Number(value || 0);
 const sum = (rows, key) => rows.reduce((total, row) => total + num(row[key]), 0);
 const statusLabel = (value) => ({ draft: "مسودة", rejected: "مرفوض", approved: "معتمد", paid: "مدفوع", pending: "قيد المراجعة", unpaid: "غير مدفوع", partial: "مدفوع جزئيًا", partially_paid: "مدفوع جزئيًا", active: "نشط", archived: "مؤرشف" }[value] || value || "—");
 const dateOnly = (value) => value ? String(value).slice(0, 10) : "";
+const movementTypeLabel = (value) => ({
+  receipt:"استلام مشتريات",
+  receipt_reversal:"عكس استلام",
+  project_issue:"صرف لمشروع",
+  project_issue_reversal:"عكس صرف مشروع",
+  production_issue:"صرف للإنتاج",
+  production_issue_reversal:"عكس صرف إنتاج",
+  production_receipt:"استلام منتج تام",
+  production_receipt_reversal:"عكس استلام منتج تام",
+  production_return:"مرتجع إنتاج",
+  sale_issue:"صرف مبيعات",
+  sale_issue_reversal:"عكس صرف مبيعات",
+  rental_issue:"صرف إيجار",
+  rental_issue_reversal:"عكس صرف إيجار",
+  transfer_in:"تحويل وارد",
+  transfer_out:"تحويل صادر",
+  adjustment_in:"تسوية زيادة",
+  adjustment_out:"تسوية نقص",
+  opening_balance:"رصيد افتتاحي",
+  waste_out:"هالك",
+  damage_out:"تالف",
+}[value] || value || "—");
 
 async function generatedBy() {
   const { data: auth } = await supabase.auth.getUser();
@@ -26,7 +48,7 @@ function meta(reportTitle, filters, actor) {
 
 function download(name, title, filters, actor, sheets) {
   const stamp = new Date().toISOString().slice(0, 10);
-  downloadExcelWorkbook({ filename: `${name}-${stamp}.xls`, meta: meta(title, filters, actor), sheets });
+  downloadExcelWorkbook({ filename: `${name}-${stamp}.xml`, meta: meta(title, filters, actor), sheets });
 }
 
 export async function exportPayrollWorkbook({ dateFrom, dateTo }) {
@@ -225,6 +247,7 @@ export async function exportInventoryWorkbook() {
         { label: "الوحدة", width: 70, value: (r) => r.item.unit || "—" },
         { label: "الكمية المتاحة", key: "quantity_on_hand", type: "number", width: 100 },
         { label: "قيمة المخزون", key: "inventory_value", type: "currency", width: 110 },
+        { label: "متوسط تكلفة الوحدة", key: "average_unit_cost", type: "currency", width: 115 },
         { label: "آخر تحديث", key: "updated_at", type: "date", width: 110 },
       ],
       rows: balances,
@@ -233,10 +256,10 @@ export async function exportInventoryWorkbook() {
       name: "الحركات",
       columns: [
         { label: "رقم الحركة", key: "movement_number", width: 120 },
-        { label: "النوع", key: "movement_type", width: 100 },
+        { label: "النوع", width: 125, value: (r) => movementTypeLabel(r.movement_type) },
         { label: "التاريخ", key: "posted_at", type: "date", width: 110 },
-        { label: "الصنف", key: "inventory_item_id", width: 140 },
-        { label: "المخزن", key: "warehouse_id", width: 140 },
+        { label: "الصنف", width: 160, value: (r) => r.item_name || r.inventory_item_id },
+        { label: "المخزن", width: 150, value: (r) => r.warehouse_name || r.warehouse_id },
         { label: "تغير الكمية", key: "quantity_delta", type: "number", width: 95 },
         { label: "تكلفة الوحدة", key: "unit_cost", type: "currency", width: 100 },
         { label: "تغير القيمة", key: "value_delta", type: "currency", width: 100 },

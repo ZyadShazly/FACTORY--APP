@@ -50,7 +50,7 @@ test("mutation الفاشلة لا تنفذ refetch", async () => {
 });
 
 test("هوية سجل التدقيق تعرض الاسم ثم البريد ثم النظام ثم UUID", () => {
-  assert.equal(auditActorLabel({ actor: { full_name: "زياد شاذلي", email: "z@example.com" }, actor_id: "user-id" }), "زياد شاذلي");
+  assert.equal(auditActorLabel({ actor: { full_name: "زياد شاذلي", email: "z@example.com" }, actor_id: "user-id" }), "زياد شاذلي · z@example.com");
   assert.equal(auditActorLabel({ actor: { full_name: "", email: "z@example.com" }, actor_id: "user-id" }), "z@example.com");
   assert.equal(auditActorLabel({ actor_id: null }), "النظام");
   assert.equal(auditActorLabel({ actor_id: "6775d4cb-0000-4000-8000-000000000000" }), "6775d4cb-0000-4000-8000-000000000000");

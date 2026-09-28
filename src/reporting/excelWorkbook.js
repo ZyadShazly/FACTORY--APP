@@ -98,11 +98,11 @@ export function buildExcelWorkbook({ meta, sheets }) {
 
 export function downloadExcelWorkbook({ filename, meta, sheets }) {
   const xml = buildExcelWorkbook({ meta, sheets });
-  const blob = new Blob(["\ufeff", xml], { type: "application/vnd.ms-excel;charset=utf-8" });
+  const blob = new Blob(["\ufeff", xml], { type: "application/xml;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download = filename.endsWith(".xls") ? filename : `${filename}.xls`;
+  anchor.download = /\.xml$/i.test(filename) ? filename : `${filename}.xml`;
   document.body.appendChild(anchor);
   anchor.click();
   anchor.remove();

@@ -35,6 +35,7 @@ import { MaterialsCatalogWorkspace } from "./operational/MaterialsCatalogWorkspa
 import { ProductionWorkspace } from "./operational/ProductionWorkspace";
 import { ProcurementWorkspace } from "./operational/ProcurementWorkspace";
 import { CommercialAdvancesPanel } from "./operational/CommercialAdvancesPanel";
+import { CustomerAdjustmentsPanel } from "./operational/CustomerAdjustmentsPanel";
 import { useInventoryWorkspace } from "./operational/useInventoryWorkspace";
 import { ArchiveSection } from "./ui/foundation";
 import { aggregateInventoryByMaterial, aggregateInventoryByProduct, canonicalFinishedProductAlerts, canonicalMaterialAlerts } from "./domain/inventoryBalances";
@@ -671,7 +672,7 @@ export default function App() {
         {activeTab === "sales" && <SalesTab data={data} refresh={() => refetchTable("sales")} canManage={isAdministrativeRole(role)} />}
         {activeTab === "rentals" && <RentalsTab data={data} refresh={() => refetchTable("rentals")} canManage={isAdministrativeRole(role)} />}
         {activeTab === "suppliers" && <SuppliersTab data={data} refresh={() => refetchTables("suppliers", "supplierPayments")} canManage={isAdministrativeRole(role)} />}
-        {activeTab === "customers" && <CustomersTab data={data} refresh={() => refetchTables("customers", "customerReceipts")} canManage={isAdministrativeRole(role)} />}
+        {activeTab === "customers" && <CustomersTab data={data} refresh={() => refetchTables("customers", "customerReceipts", "customerAdjustments")} canManage={isAdministrativeRole(role)} />}
         {activeTab === "employees" && role !== "production" && <EmployeesTab data={data} profile={profile} refresh={refetchTable} />}
         {activeTab === "workCalendar" && permissions.payroll_calendar_view && <WorkCalendarTab data={data} profile={profile} permissions={permissions} refresh={refetchTable} />}
         {activeTab === "payroll" && permissions.payroll_view && data.payroll.some((row) => row.status === "draft" && row.calendar_stale) && <div className="module-state error compact"><AlertCircle size={20}/><div><strong>مسودة الراتب تحتاج إعادة حساب</strong><p>تغير تقويم العمل بعد إنشاء المسودة. تمنع قاعدة البيانات اعتمادها حتى إعادة الحساب أو استخدام صلاحية التجاوز الموثقة.</p></div></div>}
@@ -1424,7 +1425,7 @@ function CustomersTab({ data, refresh, canManage }) {
                     <button onClick={() => setExpanded(expanded === c.id ? null : c.id)} style={{ background: "none", border: "none", color: C.brass, cursor: "pointer", fontSize: 12.5 }}>{expanded === c.id ? "إخفاء الحركات" : "عرض الحركات"}</button>
                   </Td>
                 </tr>
-                {expanded === c.id && <tr><Td colSpan={7} style={{ background: C.panelAlt }}><CustomerLedger customerId={c.id} data={data} /><CommercialAdvancesPanel partyType="customer" partyId={c.id} canReverse={canManage} onChanged={refresh}/></Td></tr>}
+                {expanded === c.id && <tr><Td colSpan={7} style={{ background: C.panelAlt }}><CustomerLedger customerId={c.id} data={data} /><CustomerAdjustmentsPanel customerId={c.id} due={balances.due} rows={data.customerAdjustments||[]} canReverse={canManage} onChanged={refresh}/><CommercialAdvancesPanel partyType="customer" partyId={c.id} canReverse={canManage} onChanged={refresh}/></Td></tr>}
               </React.Fragment>
             ); })}
           </Table>
@@ -1447,7 +1448,8 @@ function CustomerLedger({ customerId, data }) {
   const rentals = data.rentals.filter((r) => r.customer_id === customerId).map((r) => ({ date: r.start_date, type: r.status === "cancelled" ? "إيجار ملغي" : "إيجار", amount: r.status === "cancelled" ? 0 : r.rental_fee, note: `${data.products.find((p) => p.id === r.product_id)?.name || "—"}${r.status === "cancelled" ? ` — ${r.cancellation_reason || "ملغي"}` : ""}` }));
   const projects = (data.projects || []).filter((p) => p.customer_id === customerId && p.lifecycle === "closed" && num(p.revenue) > 0).map((p) => ({ date: String(p.project_closed_at || p.lifecycle_changed_at || p.delivery_date || p.updated_at || "").slice(0,10), type: "إقفال مشروع", amount: num(p.revenue), note: `${p.project_code || "مشروع"} · ${p.project_name || "—"}` }));
   const receipts = data.customerReceipts.filter((r) => r.customer_id === customerId).map((r) => ({ date: r.receipt_date, type: transactionClassLabel(r), amount: r.status === "reversed" ? 0 : -r.amount, note: r.reversal_reason ? `${r.note || ""}${r.note ? " · " : ""}سبب العكس: ${r.reversal_reason}` : r.note }));
-  const rows = [...sales, ...rentals, ...projects, ...receipts].sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+  const adjustments = (data.customerAdjustments || []).filter((r) => r.customer_id === customerId).map((r) => ({ date: r.adjustment_date, type: r.status === "reversed" ? "تسوية عميل معكوسة" : "تسوية عميل", amount: r.status === "reversed" ? 0 : -r.amount, note: `${r.reason || "—"}${r.reversal_reason ? ` · سبب العكس: ${r.reversal_reason}` : ""}` }));
+  const rows = [...sales, ...rentals, ...projects, ...receipts, ...adjustments].sort((a, b) => (a.date || "").localeCompare(b.date || ""));
   if (rows.length === 0) return <div style={{ color: C.muted, fontSize: 13 }}>لا توجد حركات مسجلة</div>;
   return <Table headers={["التاريخ", "النوع", "البيان", "المبلغ"]}>{rows.map((r, i) => <tr key={i}><Td>{r.date}</Td><Td style={{ color: r.type === "تحصيل" ? C.green : C.brass }}>{r.type}</Td><Td>{r.note || "—"}</Td><Td>{formatMoney(Math.abs(r.amount))}</Td></tr>)}</Table>;
 }

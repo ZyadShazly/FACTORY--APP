@@ -36,7 +36,7 @@ test("operations expose receive issue transfer adjustment and count one at a tim
 });
 
 test("inventory item table shows required fields and separates raw from finished links",()=>{
-  for(const heading of["الاسم","الكود","الكمية","المخزن","الحالة","الارتباط","الإجراءات"])assert.match(catalog,new RegExp(heading));
+  for(const heading of["الاسم","الكود","الكمية","قيمة المخزون","متوسط التكلفة","المخزن","الحالة","الارتباط","الإجراءات"])assert.match(catalog,new RegExp(heading));
   for(const action of["إنشاء صنف خام","حفظ ربط المادة","فك ربط المادة","تنشيط","تعطيل"])assert.match(catalog,new RegExp(action));
   assert.match(catalog,/مرتبط تلقائيًا بالمنتج/);
   assert.match(catalog,/يحتاج مراجعة الربط/);
