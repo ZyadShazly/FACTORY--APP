@@ -4,10 +4,21 @@ import test from "node:test";
 import { permissionsForProfile } from "../src/app/permissions.js";
 import { APP_TAB_IDS } from "../src/app/navigationRegistry.js";
 
-test("administrative roles retain every registered page and full legacy controls", () => {
-  for (const role of ["owner", "manager"]) {
-    const resolved = permissionsForProfile({ role, status: "active", permissions: {} });
-    assert.deepEqual(resolved.pages, APP_TAB_IDS);
+test("owner retains every registered page while manager accounting page is explicitly permissioned", () => {
+  const owner = permissionsForProfile({ role: "owner", status: "active", permissions: {} });
+  assert.deepEqual(owner.pages, APP_TAB_IDS);
+
+  const manager = permissionsForProfile({ role: "manager", status: "active", permissions: {} });
+  assert.deepEqual(manager.pages, APP_TAB_IDS.filter((page) => page !== "accounting"));
+
+  const accountingManager = permissionsForProfile({
+    role: "manager",
+    status: "active",
+    permissions: { accounting_view: true },
+  });
+  assert.deepEqual(accountingManager.pages, APP_TAB_IDS);
+
+  for (const resolved of [owner, manager, accountingManager]) {
     assert.equal(resolved.can_delete, true);
     assert.equal(resolved.view_financials, true);
     assert.equal(resolved.can_create_products, true);

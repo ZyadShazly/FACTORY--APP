@@ -6,8 +6,11 @@ export function permissionsForProfile(profile) {
   const actions = actionPermissions(profile);
 
   if (isAdministrativeRole(profile?.role)) {
+    const administrativePages = profile?.role === "owner"
+      ? APP_TAB_IDS
+      : APP_TAB_IDS.filter((page) => page !== "accounting" || actions.accounting_view);
     return {
-      pages: APP_TAB_IDS,
+      pages: administrativePages,
       can_delete: true,
       view_financials: true,
       can_create_products: true,
@@ -47,6 +50,7 @@ export function permissionsForProfile(profile) {
     actions.payroll_calendar_view && "workCalendar",
     actions.payroll_view && "payroll",
     actions.daily_labor_view && "dailyLabor",
+    actions.accounting_view && "accounting",
   ].filter(Boolean);
 
   if (actions.audit_log_view) modulePages.push("auditLog");
