@@ -1552,6 +1552,7 @@ const PERMISSION_SECTIONS = [
   { id: "payroll", label: "الرواتب", type: "permission", keys: ACTION_PERMISSIONS.filter((key) => key.startsWith("payroll")) },
   { id: "labor", label: "العمالة اليومية", type: "permission", keys: ACTION_PERMISSIONS.filter((key) => key.startsWith("daily_labor")) },
   { id: "assets", label: "الأصول والعِدّة", type: "permission", keys: ACTION_PERMISSIONS.filter((key) => key.startsWith("assets_")) },
+  { id: "accounting", label: "المحاسبة", type: "permission", keys: ACTION_PERMISSIONS.filter((key) => key.startsWith("accounting_")) },
   { id: "audit", label: "التدقيق", type: "permission", keys: ["audit_log_view"] },
 ];
 
@@ -1585,6 +1586,7 @@ function TeamTab({ profiles, employees, refresh, currentProfile }) {
   }
 
   function itemAllowed(role, section, key) {
+    if (["accounting_journal_edit_posted", "accounting_settings_manage", "accounting_period_manage"].includes(key)) return role === "owner";
     if (role === "production") return (section.type === "page" && PRODUCTION_ALLOWED_PAGES.includes(key)) || (section.type === "permission" && [
       "assets_view", "assets_issue", "assets_return", "projects_view", "project_files_view",
       "project_files_upload", "projects_manage_milestones", "projects_update_progress",
