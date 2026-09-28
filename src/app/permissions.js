@@ -47,6 +47,7 @@ export function permissionsForProfile(profile) {
     actions.payroll_calendar_view && "workCalendar",
     actions.payroll_view && "payroll",
     actions.daily_labor_view && "dailyLabor",
+    actions.accounting_view && "accounting",
   ].filter(Boolean);
 
   if (actions.audit_log_view) modulePages.push("auditLog");
