@@ -1,6 +1,7 @@
 import {
   BadgeDollarSign,
   BarChart3,
+  BookOpen,
   Boxes,
   BriefcaseBusiness,
   CalendarClock,
@@ -37,6 +38,7 @@ export const APP_TABS = Object.freeze([
   { id: "rentals", label: "الإيجارات", icon: CalendarClock, description: "إدارة عمليات الإيجار وحالة الوحدات المستأجرة." },
   { id: "suppliers", label: "الموردين", icon: Truck, description: "متابعة الموردين والمستحقات والمدفوعات." },
   { id: "customers", label: "العملاء", icon: Users, description: "إدارة بيانات العملاء والأرصدة والتحصيلات." },
+  { id: "accounting", label: "المحاسبة", icon: BookOpen, description: "إدارة شجرة الحسابات وإعداد الطبقة المحاسبية الجديدة دون المساس بالعمليات الحالية." },
   { id: "employees", label: "الموظفون", icon: UserRoundCog, description: "إدارة فريق العمل والبيانات الوظيفية." },
   { id: "workCalendar", label: "تقويم العمل والعطلات", icon: CalendarClock, description: "إدارة أسبوع العمل والورديات والعطلات بإصدارات تاريخية قابلة للتدقيق." },
   { id: "payroll", label: "المرتبات", icon: BadgeDollarSign, description: "إعداد الرواتب ومراجعتها واعتماد دورة الصرف." },
@@ -61,7 +63,7 @@ export const APP_PAGE_LABELS = Object.freeze({
 
 export const DEFAULT_TABS_BY_ROLE = Object.freeze({
   manager: Object.freeze(["dashboard", "projects", "projectFiles", "inventory", "purchases", "expenses", "materials", "products", "production", "sales", "rentals", "suppliers", "customers", "employees", "payroll", "dailyLabor", "reports", "auditLog", "team"]),
-  accountant: Object.freeze(["projects", "projectFiles", "inventory", "purchases", "expenses", "materials", "products", "production", "sales", "rentals", "suppliers", "customers", "employees", "payroll", "dailyLabor"]),
+  accountant: Object.freeze(["projects", "projectFiles", "inventory", "purchases", "expenses", "materials", "products", "production", "sales", "rentals", "suppliers", "customers", "accounting", "employees", "payroll", "dailyLabor"]),
   production: Object.freeze(["projects", "projectFiles", "inventory", "production"]),
 });
 
