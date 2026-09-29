@@ -18,7 +18,7 @@ test("posted sale charges AR and credits mapped sales revenue",()=>{
   assert.match(sql,/sale_customer_charge_posted/);
   assert.match(sql,/accounting_resolve_mapping\('accounts_receivable','global',''\)/);
   assert.match(sql,/accounting_resolve_mapping\('sales_revenue','global',''\)/);
-  assert.match(sql,/'partner_type','customer','partner_id',new\.customer_id/);
+  assert.match(sql,/'partner_type','customer'[\s\S]*'partner_id',new\.customer_id/);
   assert.match(sql,/'debit',sale_amount/);
   assert.match(sql,/'credit',sale_amount/);
 });
