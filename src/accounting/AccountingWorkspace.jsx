@@ -10,6 +10,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { supabase } from "../supabaseClient";
+import { JournalWorkspace } from "./JournalWorkspace";
 import "./accountingWorkspace.css";
 
 const TYPE_LABELS = {
@@ -170,6 +171,7 @@ export function AccountingWorkspace({ profile, permissions }) {
   const [editor, setEditor] = useState(null);
   const [conversion, setConversion] = useState(null);
   const [state, setState] = useState({ loading: true, busy: false, error: "", success: "" });
+  const [section, setSection] = useState("accounts");
 
   const canManage = Boolean(permissions?.accounting_accounts_manage);
   const isOwner = profile?.role === "owner";
@@ -300,13 +302,20 @@ export function AccountingWorkspace({ profile, permissions }) {
       <div className="page-header-copy">
         <div className="page-eyebrow"><FolderTree size={14}/><span>المالية والمحاسبة</span></div>
         <h2>المحاسبة</h2>
-        <p>شجرة حسابات مرنة قابلة للتوسع. لا يتم إنشاء قيود تلقائية من العمليات القديمة أو الحالية في هذه المرحلة.</p>
+        <p>شجرة حسابات مرنة ودفتر قيود محمي. الربط التلقائي مع العمليات التشغيلية سيأتي في مرحلة مستقلة.</p>
       </div>
-      <div className="accounting-head-actions">
+      {section === "accounts" && <div className="accounting-head-actions">
         <button type="button" className="accounting-button ghost" onClick={load} disabled={state.loading}><RefreshCw size={15}/>تحديث</button>
         {canManage && <button type="button" className="accounting-button primary" onClick={() => openCreate()}><CirclePlus size={16}/>إضافة حساب</button>}
-      </div>
+      </div>}
     </header>
+
+    <nav className="accounting-main-tabs" aria-label="أقسام المحاسبة">
+      <button type="button" className={section === "accounts" ? "active" : ""} onClick={() => setSection("accounts")}>شجرة الحسابات</button>
+      <button type="button" className={section === "journals" ? "active" : ""} onClick={() => setSection("journals")}>القيود اليومية</button>
+    </nav>
+
+    {section === "journals" ? <JournalWorkspace accounts={accounts} profile={profile} permissions={permissions}/> : <>
 
     <div className="accounting-stage-note">
       <ShieldCheck size={17}/>
@@ -382,5 +391,6 @@ export function AccountingWorkspace({ profile, permissions }) {
         </div>
       </div>
     </div>}
+    </>}
   </div>;
 }

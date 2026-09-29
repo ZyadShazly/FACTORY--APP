@@ -59,3 +59,53 @@
   .accounting-head-actions{width:100%}
   .accounting-head-actions .accounting-button{flex:1;justify-content:center}
 }
+
+.accounting-main-tabs{display:flex;gap:6px;overflow-x:auto;padding:5px;background:var(--color-surface);border:1px solid var(--color-border);border-radius:12px}
+.accounting-main-tabs button{border:0;background:transparent;color:var(--color-text-muted);font:inherit;font-weight:800;padding:9px 14px;border-radius:9px;white-space:nowrap;cursor:pointer}
+.accounting-main-tabs button.active{background:var(--color-wood);color:#fff}
+.journal-workspace{display:grid;gap:16px}
+.journal-section-title{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:12px}
+.journal-section-title h3{margin:0 0 3px}
+.journal-section-title p{margin:0;color:var(--color-text-muted);font-size:12px}
+.journal-settings-grid,.journal-period-create{display:flex;gap:10px;align-items:end;flex-wrap:wrap}
+.journal-settings-grid label,.journal-period-create label,.journal-edit-reason{display:grid;gap:5px;color:var(--color-text-muted);font-size:12px;font-weight:700}
+.journal-settings-grid input,.journal-period-create input,.journal-edit-reason textarea{border:1px solid var(--color-border);background:var(--color-app-bg);color:var(--color-text);border-radius:8px;padding:8px 9px;font:inherit}
+.journal-period-create{margin-top:14px;padding-top:14px;border-top:1px solid var(--color-border)}
+.journal-period-list{display:grid;gap:7px;margin-top:12px}
+.journal-period-row{display:flex;gap:10px;align-items:center;justify-content:space-between;border:1px solid var(--color-border);border-radius:9px;padding:8px 10px;flex-wrap:wrap}
+.journal-toolbar{display:flex;justify-content:space-between;gap:10px;align-items:end;flex-wrap:wrap;margin-bottom:14px}
+.journal-filters{display:flex;gap:8px;align-items:end;flex-wrap:wrap}
+.journal-filters label{display:grid;gap:4px;color:var(--color-text-muted);font-size:12px;font-weight:700}
+.journal-filters input{border:1px solid var(--color-border);background:var(--color-app-bg);color:var(--color-text);border-radius:8px;padding:8px 9px;font:inherit}
+.journal-list{display:grid;gap:10px}
+.journal-card{border:1px solid var(--color-border);border-radius:11px;padding:12px;background:var(--color-surface)}
+.journal-card-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.journal-card-head>div{display:grid;gap:3px}
+.journal-card-head span,.journal-card p,.journal-source{color:var(--color-text-muted);font-size:12px}
+.journal-card p{margin:9px 0}
+.journal-card-totals{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
+.journal-card details{border-top:1px solid var(--color-border);padding-top:8px;margin-top:8px}
+.journal-card summary{cursor:pointer;font-weight:800;font-size:12px}
+.journal-lines-view{display:grid;gap:5px;margin-top:8px}
+.journal-lines-view>div{display:flex;justify-content:space-between;gap:10px;padding:6px 8px;border-radius:7px;background:var(--color-surface-muted);font-size:12px}
+.journal-source{margin-top:7px}
+.journal-card .accounting-row-actions{margin-top:10px}
+.journal-modal{width:min(980px,100%)}
+.journal-lines-editor{display:grid;gap:8px;margin-top:16px}
+.journal-lines-head{display:flex;justify-content:space-between;align-items:center}
+.journal-line-row{display:grid;grid-template-columns:minmax(220px,1.4fr) minmax(100px,.55fr) minmax(100px,.55fr) minmax(180px,1fr) 36px;gap:7px}
+.journal-line-row select,.journal-line-row input{width:100%;border:1px solid var(--color-border);background:var(--color-app-bg);color:var(--color-text);border-radius:8px;padding:8px 9px;font:inherit}
+.journal-remove-line{border:1px solid var(--color-border);background:var(--color-surface);color:var(--color-danger);border-radius:8px;font-size:18px;cursor:pointer}
+.journal-remove-line:disabled{opacity:.4;cursor:default}
+.journal-balance-strip{display:flex;gap:16px;align-items:center;flex-wrap:wrap;padding:10px 12px;border-radius:9px;background:var(--color-surface-muted);margin-top:12px;font-size:12px}
+.journal-balance-strip .balanced{color:var(--color-success)}
+.journal-balance-strip .unbalanced{color:var(--color-danger)}
+.journal-edit-reason{margin-top:12px}
+@media(max-width:760px){
+  .journal-line-row{grid-template-columns:1fr 1fr}
+  .journal-line-row select,.journal-line-row input:nth-of-type(3){grid-column:1/-1}
+  .journal-remove-line{min-height:38px}
+  .journal-toolbar,.journal-filters{align-items:stretch}
+  .journal-filters{width:100%}
+  .journal-filters label{flex:1}
+}
