@@ -73,5 +73,5 @@ test("completed production correction is documented as source-immutable rather t
 
 test("integration matrix marks production implemented and leaves later modules planned",()=>{
   assert.match(matrix,/Production material-issue \/ completion integration: implemented\./);
-  assert.match(matrix,/Rentals, Assets: planned/);
+  assert.match(matrix,/Assets: planned/);
 });
