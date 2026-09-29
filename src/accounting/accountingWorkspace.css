@@ -109,3 +109,52 @@
   .journal-filters{width:100%}
   .journal-filters label{flex:1}
 }
+
+
+.accounting-reports-workspace{display:grid;gap:12px}
+.accounting-report-tabs{display:flex;gap:6px;overflow-x:auto}
+.accounting-report-tabs button{border:1px solid var(--color-border);background:var(--color-surface);color:var(--color-text-muted);border-radius:9px;padding:8px 12px;font:inherit;font-weight:800;white-space:nowrap;cursor:pointer}
+.accounting-report-tabs button.active{background:var(--color-wood);color:#fff;border-color:var(--color-wood)}
+.accounting-report-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:13px}
+.accounting-report-heading h3{margin:0 0 4px}
+.accounting-report-heading p{margin:0;color:var(--color-text-muted);font-size:12px}
+.accounting-report-controls{display:flex;gap:9px;align-items:end;flex-wrap:wrap;margin-bottom:14px}
+.accounting-report-field{display:grid;gap:5px;min-width:140px;color:var(--color-text-muted);font-size:12px;font-weight:700}
+.accounting-report-field select,.accounting-report-field input{min-height:39px;border:1px solid var(--color-border);background:var(--color-app-bg);color:var(--color-text);border-radius:8px;padding:7px 9px;font:inherit}
+.accounting-report-field select{min-width:190px}
+.accounting-report-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:9px;margin-bottom:14px}
+.accounting-report-kpis>div{border:1px solid var(--color-border);background:var(--color-surface-muted);border-radius:9px;padding:10px;display:grid;gap:3px}
+.accounting-report-kpis span,.accounting-report-kpis small{color:var(--color-text-muted);font-size:11.5px}
+.accounting-report-kpis b{font-size:17px}
+.accounting-report-table-wrap{overflow-x:auto;border:1px solid var(--color-border);border-radius:10px}
+.accounting-report-table{width:100%;border-collapse:collapse;min-width:920px}
+.accounting-report-table th,.accounting-report-table td{padding:9px 10px;border-bottom:1px solid var(--color-border);text-align:right;vertical-align:top;font-size:12px}
+.accounting-report-table th{background:var(--color-surface-muted);color:var(--color-text-muted);font-weight:800;position:sticky;top:0}
+.accounting-report-table td small{display:block;color:var(--color-text-muted);margin-top:2px}
+.accounting-report-table tr:last-child td{border-bottom:0}
+.accounting-report-table .group-row{font-weight:800;background:var(--color-surface-muted)}
+.accounting-report-account-link{border:0;background:transparent;color:var(--color-text);font:inherit;text-align:right;cursor:pointer;padding:0;padding-inline-start:calc(var(--report-depth) * 18px)}
+.accounting-report-account-link:hover{text-decoration:underline}
+.accounting-report-balance-status{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:9px 11px;border:1px solid var(--color-border);border-radius:9px;margin-bottom:12px;font-size:12px}
+.accounting-report-balance-status .ok,.balance-sheet-equation.ok{color:var(--color-success)}
+.accounting-report-balance-status .bad,.balance-sheet-equation.bad{color:var(--color-danger)}
+.accounting-report-note{margin-top:10px;color:var(--color-text-muted);font-size:11.5px;line-height:1.7}
+.balance-sheet-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:14px}
+.balance-sheet-section{border:1px solid var(--color-border);border-radius:10px;overflow:hidden}
+.balance-sheet-section h4{margin:0;padding:10px 12px;background:var(--color-surface-muted)}
+.balance-sheet-row{border-top:1px solid var(--color-border)}
+.balance-sheet-row button{width:100%;display:flex;justify-content:space-between;gap:10px;border:0;background:transparent;color:var(--color-text);padding:8px 10px;padding-inline-start:calc(10px + (var(--report-depth,0) * 16px));font:inherit;text-align:right;cursor:pointer;font-size:12px}
+.balance-sheet-row.group button{font-weight:800;background:var(--color-surface-muted)}
+.balance-sheet-derived,.balance-sheet-total{display:flex;justify-content:space-between;gap:10px;padding:9px 10px;border-top:1px solid var(--color-border);font-size:12px}
+.balance-sheet-derived{background:var(--color-surface-muted)}
+.balance-sheet-total{font-weight:900}
+.balance-sheet-equation{display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;padding:11px 13px;border:1px solid var(--color-border);border-radius:10px;font-size:12px;font-weight:800}
+@media(max-width:980px){
+  .balance-sheet-grid{grid-template-columns:1fr}
+}
+@media(max-width:700px){
+  .accounting-report-controls{align-items:stretch}
+  .accounting-report-field{width:100%}
+  .accounting-report-field select{width:100%}
+  .accounting-report-heading{align-items:stretch;flex-direction:column}
+}
