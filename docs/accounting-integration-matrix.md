@@ -36,8 +36,8 @@ Status: implementation contract for the additive GL integration.
 | Inventory | Inventory adjustment | Mapped inventory gain/loss account or Inventory | Inventory or mapped gain/loss account | When approved count/adjustment posts | Opposite source adjustment | Inventory + adjustment mappings | None before activation |
 | Cash | Bank/Cash transfer | Destination Bank/Cash | Source Bank/Cash | When transfer is posted | Source transfer reversal | Source/destination account mappings | None before activation |
 | Production | Material issue to production | Production WIP | Inventory | When production issue posts | Reverse source issue | WIP + Inventory | None before activation |
-| Production | Production completion | Finished Goods / Inventory | Production WIP | When completion quantity/cost is finalized | Reverse/correct source completion | FG/Inventory + WIP | None before activation |
-| Production | Labor / overhead absorbed to production | Production WIP | Payroll/Labor Payable or configured absorption/clearing account | When the canonical production cost event is posted | Source reversal/correction | WIP + labor/overhead mappings | None before activation |
+| Production | Production completion | Finished Goods / Inventory | Production WIP, plus mapped production-cost variance when required | When the canonical production receipt finalizes quantity and cost | Source is currently operationally immutable after completion; no silent GL reversal/edit. A future operational completion-correction contract is required before completed-order reversal is supported | FG/Inventory + WIP + Production Cost Variance | None before activation |
+| Production | Labor / overhead absorbed to production | Production WIP | Configured labor / overhead clearing accounts | At the canonical production receipt because the current operational model has no separate labor/overhead posting event | Completion is currently operationally immutable; correction follows any future source-level completion correction contract | WIP + labor/overhead clearing mappings | None before activation |
 | Payroll | Payroll accrual | Payroll Expense | Payroll Payable, with approved employee-receivable recoveries reducing the mapped Employee Advances/Receivable asset within the same balanced payroll journal | On payroll posting/approval, not draft creation | Payroll source reversal/recalculation contract | Payroll Expense, Payroll Payable, Employee Advances/Receivable | None before activation |
 | Payroll | Payroll payment | Payroll Payable | Bank/Cash | When payroll is marked paid | Source payment reversal | Payroll Payable + Bank/Cash | None before activation |
 | Daily labor | Labor accrual | Daily Labor Expense | Daily Labor Payable | When the payable labor batch is approved | Source accrual reversal | Daily Labor Expense + Payable | None before activation |
@@ -55,4 +55,5 @@ Status: implementation contract for the additive GL integration.
 - Procurement receipt / supplier-invoice integration: implemented.
 - Sales customer-charge / sale-inventory integration: implemented.
 - Inventory project-issue / adjustment integration: implemented.
-- Production, Expenses, Payroll, Daily Labor, Rentals, Assets: planned from this matrix and must be implemented module-by-module after inspecting each canonical source.
+- Production material-issue / completion integration: implemented.
+- Expenses, Payroll, Daily Labor, Rentals, Assets: planned from this matrix and must be implemented module-by-module after inspecting each canonical source.
