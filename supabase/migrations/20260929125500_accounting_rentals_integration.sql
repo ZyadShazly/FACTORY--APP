@@ -1,5 +1,5 @@
 -- NextEP accounting integration: rental customer charge and cancellation reversal.
--- Rental inventory issue/return is operational custody of owned inventory, not a sale/COGS event.
+-- Rental inventory issue/return is operational custody of owned inventory, not a sale-cost event.
 -- Existing historical rentals are not backfilled.
 
 create or replace function private.accounting_rental_gl_trigger()
