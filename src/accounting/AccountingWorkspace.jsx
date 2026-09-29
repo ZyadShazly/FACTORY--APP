@@ -12,6 +12,7 @@ import {
 import { supabase } from "../supabaseClient";
 import { JournalWorkspace } from "./JournalWorkspace";
 import { AccountingReportsWorkspace } from "./AccountingReportsWorkspace";
+import { AccountingMappingsWorkspace } from "./AccountingMappingsWorkspace";
 import "./accountingWorkspace.css";
 
 const TYPE_LABELS = {
@@ -315,10 +316,12 @@ export function AccountingWorkspace({ profile, permissions, projects = [] }) {
       <button type="button" className={section === "accounts" ? "active" : ""} onClick={() => setSection("accounts")}>شجرة الحسابات</button>
       <button type="button" className={section === "journals" ? "active" : ""} onClick={() => setSection("journals")}>القيود اليومية</button>
       {permissions?.accounting_reports_view && <button type="button" className={section === "reports" ? "active" : ""} onClick={() => setSection("reports")}>التقارير المحاسبية</button>}
+      <button type="button" className={section === "mappings" ? "active" : ""} onClick={() => setSection("mappings")}>ربط الحسابات</button>
     </nav>
 
     {section === "journals" ? <JournalWorkspace accounts={accounts} profile={profile} permissions={permissions}/> :
-     section === "reports" ? <AccountingReportsWorkspace accounts={accounts} projects={projects}/> : <>
+     section === "reports" ? <AccountingReportsWorkspace accounts={accounts} projects={projects}/> :
+     section === "mappings" ? <AccountingMappingsWorkspace accounts={accounts} profile={profile}/> : <>
 
     <div className="accounting-stage-note">
       <ShieldCheck size={17}/>
