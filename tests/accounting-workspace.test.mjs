@@ -26,13 +26,15 @@ test("accounting workspace uses protected COA RPCs only", () => {
   assert.doesNotMatch(ui, /supabase\.from\("accounting_accounts"\)/);
 });
 
-test("accounting workspace exposes accounts, journal and reports tabs", () => {
+test("accounting workspace exposes accounts, journal, reports and mappings tabs", () => {
   assert.match(ui, /أقسام المحاسبة/);
   assert.match(ui, /شجرة الحسابات/);
   assert.match(ui, /القيود اليومية/);
   assert.match(ui, /<JournalWorkspace/);
   assert.match(ui, /التقارير المحاسبية/);
   assert.match(ui, /<AccountingReportsWorkspace/);
+  assert.match(ui, /ربط الحسابات/);
+  assert.match(ui, /<AccountingMappingsWorkspace/);
 });
 
 test("COA UI supports tree navigation, search and filters", () => {
