@@ -133,11 +133,12 @@ function BalanceSheetReport({onOpenLedger}){
   useEffect(()=>{void load()},[load]);
 
   const rows=report?.rows||[];
+  const cyplId=report?.current_year_profit_loss_mapping?.account_id||"";
   const groups=useMemo(()=>({
     asset:rows.filter((r)=>r.account_type==="asset"),
     liability:rows.filter((r)=>r.account_type==="liability"),
-    equity:rows.filter((r)=>r.account_type==="equity"),
-  }),[rows]);
+    equity:rows.filter((r)=>r.account_type==="equity"&&r.id!==cyplId),
+  }),[rows,cyplId]);
   const s=report?.summary||{};
   const pl=report?.profit_loss||{};
 
