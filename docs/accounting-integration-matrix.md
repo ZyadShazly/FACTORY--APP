@@ -32,7 +32,7 @@ Status: implementation contract for the additive GL integration.
 | Customers / Cash | Customer advance allocation | Customer Advances | Accounts Receivable | When an advance is allocated to a valid customer charge | Reverse allocation from source | Customer Advances + AR | None before activation |
 | Customers | Non-cash customer adjustment | Mapped discount / tax / charge account by adjustment type | Accounts Receivable, or inverse for debit adjustments | When protected adjustment posts | Source adjustment reversal | Adjustment-type mappings | None before activation |
 | Expenses | Expense posting | Mapped Expense / asset + VAT Input when applicable | Bank/Cash or Payable according to source settlement state | On protected expense posting/approval | Source reversal | Expense category, VAT, cash/payable mappings | None before activation |
-| Inventory | Project / production material issue | Project/Production Cost or WIP | Inventory | When the inventory issue posts | Reverse/adjust inventory source movement | Inventory + project/production/WIP mapping | None before activation |
+| Inventory | Project material issue (non-production) | Project Cost or mapped WIP | Inventory | When the project inventory issue posts | Reverse from the project inventory source movement | Inventory + Project Material Cost mapping | None before activation |
 | Inventory | Inventory adjustment | Mapped inventory gain/loss account or Inventory | Inventory or mapped gain/loss account | When approved count/adjustment posts | Opposite source adjustment | Inventory + adjustment mappings | None before activation |
 | Cash | Bank/Cash transfer | Destination Bank/Cash | Source Bank/Cash | When transfer is posted | Source transfer reversal | Source/destination account mappings | None before activation |
 | Production | Material issue to production | Production WIP | Inventory | When production issue posts | Reverse source issue | WIP + Inventory | None before activation |
@@ -54,4 +54,5 @@ Status: implementation contract for the additive GL integration.
 - Cash & advance integration: implemented.
 - Procurement receipt / supplier-invoice integration: implemented.
 - Sales customer-charge / sale-inventory integration: implemented.
-- Inventory, Production, Expenses, Payroll, Daily Labor, Rentals, Assets: planned from this matrix and must be implemented module-by-module after inspecting each canonical source.
+- Inventory project-issue / adjustment integration: implemented.
+- Production, Expenses, Payroll, Daily Labor, Rentals, Assets: planned from this matrix and must be implemented module-by-module after inspecting each canonical source.
