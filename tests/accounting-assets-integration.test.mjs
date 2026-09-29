@@ -9,11 +9,11 @@ const sql=fs.readFileSync(
 const matrix=fs.readFileSync("docs/accounting-integration-matrix.md","utf8");
 
 test("asset registry and custody operations do not create automatic accounting",()=>{
-  assert.doesNotMatch(sql,/after insert on public\.assets/);
-  assert.doesNotMatch(sql,/after update on public\.assets/);
-  assert.doesNotMatch(sql,/asset_assignments[\s\S]*accounting_post_source_journal/);
-  assert.doesNotMatch(sql,/asset_return_events[\s\S]*accounting_post_source_journal/);
-  assert.doesNotMatch(sql,/purchase_cost[\s\S]*accounting_post_source_journal/);
+  assert.doesNotMatch(sql,/on public\.assets\b/);
+  assert.doesNotMatch(sql,/on public\.asset_assignments\b/);
+  assert.doesNotMatch(sql,/on public\.asset_return_events\b/);
+  assert.doesNotMatch(sql,/on public\.asset_movements\b/);
+  assert.doesNotMatch(sql,/new\.purchase_cost/);
   assert.match(matrix,/purchase_cost.*registry metadata/);
 });
 
