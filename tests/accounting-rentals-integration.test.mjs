@@ -51,5 +51,5 @@ test("rental trigger is private and has no hard-coded generated account UUIDs",(
 
 test("integration matrix marks rentals implemented and leaves assets planned",()=>{
   assert.match(matrix,/Rental customer-charge \/ cancellation integration: implemented\./);
-  assert.match(matrix,/Assets: planned/);
+  assert.match(matrix,/All Integration Matrix modules above now have an explicit accounting behavior/);
 });
