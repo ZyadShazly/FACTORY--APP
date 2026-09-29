@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 
-const sql=fs.readFileSync("supabase/migrations/20260929095000_accounting_mapping_core.sql","utf8");
+const sql=fs.readFileSync("supabase/migrations/20260929065411_accounting_mapping_core.sql","utf8");
 
 test("mapping definitions catalog is additive and typed",()=>{
   assert.match(sql,/create table public\.accounting_mapping_definitions/);
