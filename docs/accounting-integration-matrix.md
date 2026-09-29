@@ -42,7 +42,7 @@ Status: implementation contract for the additive GL integration.
 | Payroll | Payroll payment | Payroll Payable | Default Bank/Cash | When `mark_payroll_paid` moves approved to paid, and only if the payroll already has an active accrual GL link | Paid payroll is currently operationally immutable; no artificial payment-reversal API is introduced | Payroll Payable + Default Bank/Cash | None before activation |
 | Daily labor | Labor accrual | Daily Labor Expense | Daily Labor Payable + configurable Daily Labor Deductions Clearing when applicable | When `review_daily_labor(..., approve=true)` moves draft to approved | Rejected shifts may be corrected before approval; approved/paid shifts are currently operationally immutable, so no artificial reversal API is introduced | Daily Labor Expense + Daily Labor Payable + Daily Labor Deductions Clearing | None before activation |
 | Daily labor | Labor payment | Daily Labor Payable | Default Bank/Cash | When `pay_daily_labor` marks an approved shift paid, and only if an active accrual GL link already exists | Paid shifts are currently operationally immutable; no artificial payment-reversal API is introduced | Daily Labor Payable + Default Bank/Cash | None before activation |
-| Rentals | Rental revenue/customer charge | Accounts Receivable | Rental Revenue | When the rental charge becomes financially due/posted | Source cancellation/reversal | AR + Rental Revenue | None before activation |
+| Rentals | Rental revenue/customer charge | Accounts Receivable | Rental Revenue | When `post_rental` creates an active rental with a positive rental fee | `cancel_rental` reverses the linked revenue journal; rental issue/return remains operational custody only and does not create COGS | Accounts Receivable + Rental Revenue | None before activation |
 | Assets / Tools | Financially valued asset loss / maintenance | Mapped loss/maintenance expense | Relevant asset/tool control account or payable/cash as defined by the source event | Only when the source event carries a financial valuation | Source event reversal/correction | Asset/tool + loss/maintenance/payable/cash mappings | None before activation |
 | Opening | Opening balance journal | Explicit debit lines | Explicit credit lines | Owner-created opening JE on/after accounting activation strategy | Normal opening-JE reversal/correction controls | Opening Balance Equity and chosen posting accounts | Explicit only; never auto-backfilled |
 
@@ -59,4 +59,5 @@ Status: implementation contract for the additive GL integration.
 - Expense operational integration: implemented.
 - Payroll approval/payment integration: implemented.
 - Daily Labor approval/payment integration: implemented.
-- Rentals, Assets: planned from this matrix and must be implemented module-by-module after inspecting each canonical source.
+- Rental customer-charge / cancellation integration: implemented.
+- Assets: planned from this matrix and must be implemented module-by-module after inspecting each canonical source.
