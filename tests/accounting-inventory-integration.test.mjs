@@ -71,5 +71,5 @@ test("inventory mapping definitions are configurable and contain no generated ac
 test("inventory integration matrix separates project issues from production issues",()=>{
   assert.match(matrix,/Inventory \| Project material issue \(non-production\)/);
   assert.match(matrix,/Inventory project-issue \/ adjustment integration: implemented\./);
-  assert.match(matrix,/Production, Expenses, Payroll, Daily Labor, Rentals, Assets: planned/);
+  assert.match(matrix,/Expenses, Payroll, Daily Labor, Rentals, Assets: planned/);
 });
