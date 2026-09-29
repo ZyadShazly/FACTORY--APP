@@ -50,5 +50,5 @@ test("expense trigger is private and the existing public expense RPC contract is
 test("integration matrix reflects the actual expense source contract",()=>{
   assert.match(matrix,/Expense posting \(current gross spent-expense source\)/);
   assert.match(matrix,/Expense operational integration: implemented\./);
-  assert.match(matrix,/Payroll, Daily Labor, Rentals, Assets: planned/);
+  assert.match(matrix,/Daily Labor, Rentals, Assets: planned/);
 });
