@@ -38,7 +38,13 @@ set search_path=''
 as $$
 declare
   actor uuid:=coalesce(auth.uid(),new.approved_by);
-  accrual_date date:=coalesce(new.payroll_month,current_date);
+  accrual_date date:=greatest(
+    new.payroll_month,
+    least(
+      (new.payroll_month+interval '1 month - 1 day')::date,
+      coalesce(new.approved_at::date,current_date)
+    )
+  );
   payment_date date:=coalesce(new.paid_at::date,current_date);
   payroll_expense_account uuid;
   payroll_payable_account uuid;
@@ -162,6 +168,21 @@ begin
   if old.status='approved'
      and new.status='paid'
      and old.status is distinct from new.status then
+
+    -- Do not create an orphan payment for payroll that was approved before
+    -- accounting activation/enablement and therefore has no GL accrual.
+    if not exists(
+      select 1
+      from public.accounting_source_links l
+      where lower(btrim(l.source_module))='payroll'
+        and lower(btrim(l.source_event))='payroll_accrual_posted'
+        and l.source_record_id=new.id::text
+        and l.source_line_id is null
+        and l.source_revision=1
+        and l.link_status='active'
+    ) then
+      return new;
+    end if;
 
     net_base:=round(coalesce(new.net_salary,0),2);
 
