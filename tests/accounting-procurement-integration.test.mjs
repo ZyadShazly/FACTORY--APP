@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 
 const sql=fs.readFileSync(
-  "supabase/migrations/20260929081000_accounting_procurement_integration.sql",
+  "supabase/migrations/20260929080611_accounting_procurement_integration.sql",
   "utf8",
 );
 const matrix=fs.readFileSync("docs/accounting-integration-matrix.md","utf8");
