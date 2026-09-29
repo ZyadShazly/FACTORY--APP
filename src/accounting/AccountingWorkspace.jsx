@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { supabase } from "../supabaseClient";
 import { JournalWorkspace } from "./JournalWorkspace";
+import { AccountingReportsWorkspace } from "./AccountingReportsWorkspace";
 import "./accountingWorkspace.css";
 
 const TYPE_LABELS = {
@@ -163,7 +164,7 @@ function AccountEditor({ editor, accounts, onChange, onClose, onSave, busy }) {
   </div>;
 }
 
-export function AccountingWorkspace({ profile, permissions }) {
+export function AccountingWorkspace({ profile, permissions, projects = [] }) {
   const [accounts, setAccounts] = useState([]);
   const [expanded, setExpanded] = useState(new Set());
   const [query, setQuery] = useState("");
@@ -313,9 +314,11 @@ export function AccountingWorkspace({ profile, permissions }) {
     <nav className="accounting-main-tabs" aria-label="أقسام المحاسبة">
       <button type="button" className={section === "accounts" ? "active" : ""} onClick={() => setSection("accounts")}>شجرة الحسابات</button>
       <button type="button" className={section === "journals" ? "active" : ""} onClick={() => setSection("journals")}>القيود اليومية</button>
+      {permissions?.accounting_reports_view && <button type="button" className={section === "reports" ? "active" : ""} onClick={() => setSection("reports")}>التقارير المحاسبية</button>}
     </nav>
 
-    {section === "journals" ? <JournalWorkspace accounts={accounts} profile={profile} permissions={permissions}/> : <>
+    {section === "journals" ? <JournalWorkspace accounts={accounts} profile={profile} permissions={permissions}/> :
+     section === "reports" ? <AccountingReportsWorkspace accounts={accounts} projects={projects}/> : <>
 
     <div className="accounting-stage-note">
       <ShieldCheck size={17}/>
