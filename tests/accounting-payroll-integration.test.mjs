@@ -63,5 +63,5 @@ test("payroll integration does not invent approved or paid reversal workflows",(
 test("payroll integration has no historical backfill and leaves later modules planned",()=>{
   assert.doesNotMatch(sql,/insert into public\.accounting_journal_entries[\s\S]*select[\s\S]*from public\.payroll/i);
   assert.match(matrix,/Payroll approval\/payment integration: implemented\./);
-  assert.match(matrix,/Daily Labor, Rentals, Assets: planned/);
+  assert.match(matrix,/Rentals, Assets: planned/);
 });
