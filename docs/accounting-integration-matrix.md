@@ -52,4 +52,6 @@ Status: implementation contract for the additive GL integration.
 - Ledger / Trial Balance / Balance Sheet: implemented.
 - Mapping catalog/workspace: implemented.
 - Cash & advance integration: implemented.
-- Procurement receipt / supplier-invoice integration: implemented.\n- Sales, Inventory, Production, Expenses, Payroll, Daily Labor, Rentals, Assets: planned from this matrix and must be implemented module-by-module after inspecting each canonical source.
+- Procurement receipt / supplier-invoice integration: implemented.
+- Sales customer-charge / sale-inventory integration: implemented.
+- Inventory, Production, Expenses, Payroll, Daily Labor, Rentals, Assets: planned from this matrix and must be implemented module-by-module after inspecting each canonical source.
