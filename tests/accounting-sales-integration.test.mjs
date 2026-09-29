@@ -56,5 +56,5 @@ test("sales trigger functions are private and not directly executable by API rol
 
 test("integration matrix marks both sales charge and sale inventory issue as implemented",()=>{
   assert.match(matrix,/Sales customer-charge \/ sale-inventory integration: implemented\./);
-  assert.match(matrix,/Assets: planned/);
+  assert.match(matrix,/All Integration Matrix modules above now have an explicit accounting behavior/);
 });

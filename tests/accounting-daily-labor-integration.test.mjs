@@ -60,5 +60,5 @@ test("daily labor integration does not invent approved or paid reversal APIs",()
 test("daily labor integration has no historical backfill and later modules stay planned",()=>{
   assert.doesNotMatch(sql,/insert into public\.accounting_journal_entries[\s\S]*select[\s\S]*from public\.daily_labor/i);
   assert.match(matrix,/Daily Labor approval\/payment integration: implemented\./);
-  assert.match(matrix,/Assets: planned/);
+  assert.match(matrix,/All Integration Matrix modules above now have an explicit accounting behavior/);
 });
