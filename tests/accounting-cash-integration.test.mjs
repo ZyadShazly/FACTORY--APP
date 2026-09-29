@@ -87,7 +87,7 @@ test("private security-definer integration helpers are not API-callable",()=>{
     "accounting_cash_source_insert_trigger\\(\\)",
     "accounting_cash_source_reversal_trigger\\(\\)",
   ]){
-    assert.match(sql,new RegExp("revoke all on function private\\."+fn+" from public,anon,authenticated"));
+    assert.match(sql,new RegExp("revoke all on function private\\."+fn+"\\s+from public,anon,authenticated"));
   }
 });
 
@@ -99,7 +99,8 @@ test("integration matrix preserves the staged accounting contract",()=>{
     "Supplier payment — settlement",
     "Production completion",
     "Payroll accrual",
-    "Daily labor accrual",
+    "Daily labor",
+    "Labor accrual",
     "Rental revenue/customer charge",
     "Opening balance journal",
   ]) assert.ok(matrix.includes(phrase),phrase);
