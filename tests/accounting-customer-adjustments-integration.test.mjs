@@ -45,6 +45,27 @@ test("customer adjustment trigger is private and public source RPCs stay untouch
 });
 
 test("matrix states the current adjustment direction explicitly",()=>{
-  assert.match(matrix,/Customer non-cash adjustment \(current source always reduces AR\)/);
+  assert.match(matrix,/Non-cash customer adjustment \(current source always reduces AR\)/);
   assert.match(matrix,/Mapped adjustment account by adjustment type \| Accounts Receivable/);
+});
+
+
+test("deployment prepares required accounts and mappings before installing the trigger",()=>{
+  for(const code of["4.4","1.1.09","1.1.10"]){
+    assert.match(sql,new RegExp(`'${code}'`));
+  }
+  for(const key of[
+    "customer_adjustment_commercial_discount",
+    "customer_adjustment_withholding_tax",
+    "customer_adjustment_retention",
+    "customer_adjustment_bank_charge",
+    "customer_adjustment_other",
+  ]){
+    assert.match(sql,new RegExp(`'${key}'`));
+  }
+  assert.match(sql,/Customer adjustment accounting mapping is missing or invalid/);
+  assert.ok(
+    sql.indexOf("insert into public.accounting_account_mappings")
+      < sql.indexOf("create or replace function private.accounting_customer_adjustment_gl_trigger"),
+  );
 });
