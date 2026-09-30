@@ -682,7 +682,122 @@ Affected helpers:
 
 ## Task 7 — Full Existing System Regression
 
-- **Status:** NOT STARTED
+- **Status:** PASS
+
+### Checks performed
+
+- تم إعادة قراءة ملف حالة التحقق وفحص `main` الحالي عند commit `9f9d511a7acf8ee75637f2614aea3a9b1a2fcb61`.
+- تم التأكد أن Tasks 1–6 ما زالت مكتملة.
+- تمت مقارنة baseline المحاسبي `48534c7bd0615176cc09a3dfa9de2c03c30abab0` مع `main` الحالي.
+- التغيير الوظيفي الوحيد بعد baseline كان ACL hardening في Task 1؛ باقي commits من Task 2 إلى Task 6 غيّرت ملف التحقق فقط.
+- تمت مراجعة عدم وجود accounting-caused regression في:
+  - Projects
+  - Purchases / Procurement
+  - Sales
+  - Expenses
+  - Inventory
+  - Production
+  - Custody / operational source cost handling
+  - Supplier flows
+  - Customer flows
+  - Supplier Payments
+  - Customer Receipts
+  - Existing reporting
+  - Project actual cost / profitability-related reporting
+  - Navigation
+  - Existing permissions
+- تم التحقق أن accounting integration أضاف triggers/helpers حول المصادر التشغيلية بدون حذف أو استبدال عقود RPC التشغيلية الأساسية.
+- تم التحقق live من بقاء operational RPCs الأساسية بأسماء مستقرة وبدون duplicate overloads غير مقصودة، ومنها:
+  - project lifecycle / budget / cost RPCs
+  - `approve_supplier_invoice`
+  - `record_supplier_payment`
+  - `record_customer_receipt`
+  - `post_sale` / `cancel_sale`
+  - `post_expense` / `cancel_expense`
+  - inventory create/adjust/transfer/reverse RPCs
+  - production create/issue/complete/cancel RPCs
+- تم التحقق من وجود بيانات تشغيلية فعلية live في الوحدات الرئيسية، ما يؤكد أن الجداول والعلاقات التشغيلية ما زالت مستخدمة وليست متضررة:
+  - Projects: **5**
+  - Supplier Invoices: **9**
+  - Supplier Payments: **10**
+  - Sales: **6**
+  - Customer Receipts: **10**
+  - Expenses: **13**
+  - Inventory Movements: **49**
+  - Production Orders: **7**
+  - Suppliers: **6**
+  - Customers: **5**
+- تم التحقق من التقارير القديمة كـOwner عبر RPCs فعلية:
+  - `get_reporting_workspace` رجع JSON object
+  - `get_operational_reporting_summary` رجع JSON object
+  - `get_project_actual_cost_snapshot` رجع JSON object لمشروع موجود
+- تم التحقق من أن navigation/permissions الحالية ما زالت سليمة من خلال الاختبارات الموجودة ونتيجة الـQuality Gate بعد ACL fix.
+
+### Bugs found
+
+- لا يوجد accounting-caused regression تم اكتشافه في نطاق Task 7.
+- محاولة اختبار واحدة استخدمت اسم جدول افتراضي `custody_transactions` غير موجود؛ تم تصحيح الاختبار بعد فحص schema الفعلي. هذا خطأ في test harness وليس bug في النظام.
+- محاولة read مباشرة على `projects` بدور `authenticated` رُفضت كما هو متوقع بسبب حماية الوصول؛ تم تعديل الاختبار لاستخدام RPC contract الصحيح. هذا ليس regression.
+
+### Fixes applied
+
+- لا يوجد تعديل مطلوب.
+
+### Files changed
+
+- `docs/accounting-verification-status.md` فقط.
+
+### Tests run
+
+- مراجعة repository test coverage الخاصة بالوحدات التشغيلية، بما فيها:
+  - project lifecycle/budget/cost/UAT tests
+  - procurement and supplier invoice tests
+  - sales tests
+  - expense tests
+  - inventory and warehouse tests
+  - production tests
+  - customer/supplier advances and cancellation flows
+  - reporting tests
+  - navigation/deep-link tests
+  - permissions tests
+- تم التحقق من GitHub Actions Quality Gate على commit `bba578fe3c04c34fe67e6e58cbb099672eb6241b`:
+  - Run #644
+  - Conclusion: **success**
+  - Migration validation: **PASS**
+  - Test step: **PASS**
+  - Clean tree after tests: **PASS**
+  - Build: **PASS**
+  - Clean tree after build: **PASS**
+- لأن commits بعد `bba578f` وحتى بدء Task 7 كانت توثيقية فقط، فإن نفس نتيجة الـQuality Gate ما زالت تمثل نفس التطبيق/قاعدة الكود الوظيفية الحالية.
+- Live operational schema/RPC inspection:
+  - operational RPCs الأساسية موجودة
+  - لا توجد duplicate overloads غير مقصودة في المسارات التي تمت مراجعتها
+- Live read-only operational data smoke:
+  - تم قراءة counts للوحدات الرئيسية بنجاح
+- Live reporting smoke كـOwner:
+  - reporting workspace = object
+  - operational reporting summary = object
+  - project actual cost snapshot = object
+
+### Test results
+
+- Projects regression: **PASS**
+- Purchases / Procurement regression: **PASS**
+- Sales regression: **PASS**
+- Expenses regression: **PASS**
+- Inventory regression: **PASS**
+- Production regression: **PASS**
+- Supplier / Customer flows: **PASS**
+- Payments / Receipts: **PASS**
+- Existing reports / project cost reporting: **PASS**
+- Navigation / permissions regression: **PASS**
+- Accounting-caused regression detected: **NONE**
+
+### Remaining risks
+
+- Task 7 لم ينشئ transactions تشغيلية جديدة في live لكل module حتى لا يلوث بيانات الإنتاج؛ اعتمد على existing regression suite + live read-only/RPC smoke.
+- لم يتم تشغيل browser E2E كامل على production UI في Task 7؛ Playwright UAT branch/PR #126 ما زال غير مدمج.
+- الـfull current-head technical validation شامل test suite/build/type/lint/migration validation سيُعاد صراحةً في Task 8.
 
 ## Task 8 — Final Technical Validation
 
