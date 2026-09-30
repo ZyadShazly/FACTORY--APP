@@ -95,3 +95,9 @@ test("manager accounting navigation follows explicit permission while owner alwa
   assert.ok(managerOn.pages.includes("accounting"));
   assert.ok(owner.pages.includes("accounting"));
 });
+
+
+test("runtime sidebar navigation includes accounting under the finance flow", () => {
+  assert.match(app, /\{ id: "accounting", label: "المحاسبة", icon: BookOpen \}/);
+  assert.match(app, /\{ id: "customers"[\s\S]*\{ id: "accounting"[\s\S]*\{ id: "employees"/);
+});
