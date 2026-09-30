@@ -120,7 +120,104 @@ Affected helpers:
 
 ## Task 2 — Chart of Accounts & Journal Entries
 
-- **Status:** NOT STARTED
+- **Status:** PASS
+
+### Checks performed
+
+- Re-read this status file before starting Task 2 and inspected current `main` at `bba578fe3c04c34fe67e6e58cbb099672eb6241b`.
+- Confirmed Task 1 is complete and no later commit on `main` supersedes its accounting database fix.
+- Inspected repository implementations:
+  - `supabase/migrations/20260928191257_accounting_coa_core.sql`
+  - `supabase/migrations/20260928192958_accounting_journal_core.sql`
+  - `tests/accounting-coa-core.test.mjs`
+  - `tests/accounting-journal-core.test.mjs`
+- Inspected live Supabase constraints, trigger definitions, indexes, and accounting RPC definitions.
+- Verified Chart of Accounts behavior:
+  - root accounts and subaccounts
+  - three-level hierarchy
+  - circular hierarchy protection
+  - parent/group accounts cannot become posting accounts while children exist
+  - inactive parent protection while active children exist
+  - account-type consistency across hierarchy
+  - inactive/group accounts cannot receive journal lines
+  - account deletion is blocked when children or journal activity exist through RESTRICT foreign keys
+  - hierarchy aggregation returns the same descendant balance at each ancestor level while report totals count direct activity once
+- Verified Journal Entry behavior:
+  - balanced journal posts successfully
+  - unbalanced journal posting is rejected atomically and journal remains draft
+  - zero-value lines are rejected
+  - debit and credit on the same line are rejected
+  - draft status lifecycle
+  - posted status lifecycle
+  - posted journal cannot be edited through the draft-edit RPC
+  - duplicate posting is rejected
+  - reversal creates a posted reversal and marks the original reversed
+  - second reversal of the original is rejected
+  - posting to inactive accounts is blocked
+  - posting to group/parent accounts is blocked
+  - manual/system reversal boundaries remain enforced
+  - source-link uniqueness and one-reversal uniqueness constraints are present
+
+### Bugs found
+
+- None in Task 2 scope.
+- Two failed verification attempts were test-harness issues only:
+  - authenticated role correctly could not SELECT accounting tables directly because the accounting data layer is RPC-only
+  - `create_accounting_journal` returns the journal snapshot directly, not under an `entry` property
+- Both harness issues were corrected without changing application code or database state.
+
+### Fixes applied
+
+- None required.
+
+### Files changed
+
+- `docs/accounting-verification-status.md` only.
+
+### Tests run
+
+- Existing repository static regression coverage reviewed:
+  - `tests/accounting-coa-core.test.mjs`
+  - `tests/accounting-journal-core.test.mjs`
+- Live constraint and trigger introspection.
+- Rollback-safe COA runtime smoke:
+  - created root → child → grandchild hierarchy
+  - rejected circular parent assignment
+  - rejected converting parent with children into posting account
+  - rejected deactivating parent with active child
+  - rejected deleting parent with children
+  - rejected journal posting to group account
+  - rejected journal posting to inactive account
+  - rejected deleting account with journal activity
+  - all test rows rolled back
+- Rollback-safe authenticated journal lifecycle smoke:
+  - created balanced draft
+  - posted successfully
+  - rejected draft edit after posting
+  - rejected duplicate post
+  - reversed successfully
+  - rejected second reversal
+  - rejected zero-value line
+  - rejected debit+credit on the same line
+  - rejected unbalanced posting and confirmed journal remained draft
+  - all test data and audit rows rolled back
+- Rollback-safe deep-hierarchy aggregation smoke:
+  - created 3-level asset hierarchy with 100 debit on the leaf
+  - root, child, and leaf each reported 100 period debit
+  - scoped report total remained 100, proving parent presentation does not double-count direct GL activity
+  - all test rows rolled back
+
+### Test results
+
+- All Task 2 runtime checks: **PASS**
+- No persistent test data left in Supabase.
+- No application/schema fix required.
+
+### Remaining risks
+
+- Full report semantics will be verified again in Task 4; Task 2 only verified the hierarchy aggregation behavior required for COA safety.
+- Task 2 did not rerun the full repository test suite or production build because those belong to Task 8 unless a Task 2 code change had been required.
+- Direct database superuser/service-role writes can bypass application RPC workflow controls by design; normal authenticated users have no direct table DML grants.
 
 ## Task 3 — Existing Module Accounting Integration
 
