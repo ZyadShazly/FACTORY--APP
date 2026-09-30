@@ -80,7 +80,7 @@ function JournalEditor({editor,accounts,busy,onChange,onClose,onSave}){
   </div>;
 }
 
-export function JournalWorkspace({accounts,profile,permissions}){
+export function JournalWorkspace({accounts,profile,permissions,focusJournalId="",onFocusConsumed}){
   const [filters,setFilters]=useState({from:"",to:""});
   const [workspace,setWorkspace]=useState({settings:{},periods:[],journals:[]});
   const [editor,setEditor]=useState(null);
@@ -88,6 +88,7 @@ export function JournalWorkspace({accounts,profile,permissions}){
   const [settingsDraft,setSettingsDraft]=useState({activation_date:"",enabled:false});
   const [periodDraft,setPeriodDraft]=useState({start:"",end:""});
   const [periodAction,setPeriodAction]=useState(null);
+  const [sourceTrace,setSourceTrace]=useState(null);
   const [state,setState]=useState({loading:true,busy:false,error:"",success:""});
 
   const isOwner=profile?.role==="owner";
@@ -110,6 +111,29 @@ export function JournalWorkspace({accounts,profile,permissions}){
   },[filters.from,filters.to]);
 
   useEffect(()=>{void load()},[load]);
+
+  useEffect(()=>{
+    if(!focusJournalId||state.loading)return;
+    const details=document.getElementById("journal-details-"+focusJournalId);
+    const card=document.getElementById("journal-"+focusJournalId);
+    if(details)details.open=true;
+    if(card){
+      card.scrollIntoView({behavior:"smooth",block:"center"});
+      card.classList.add("focused");
+      window.setTimeout(()=>card.classList.remove("focused"),1800);
+    }
+    onFocusConsumed?.();
+  },[focusJournalId,state.loading,workspace.journals,onFocusConsumed]);
+
+  const openSourceTrace=async(row)=>{
+    setSourceTrace({loading:true,error:"",data:null,journal:row});
+    const result=await supabase.rpc("get_accounting_source_trace",{target_journal:row.id});
+    if(result.error){
+      setSourceTrace({loading:false,error:result.error.message||"تعذر تحميل العملية الأصلية.",data:null,journal:row});
+      return;
+    }
+    setSourceTrace({loading:false,error:"",data:result.data||{},journal:row});
+  };
 
   const patchEditor=(patch)=>setEditor((current)=>({...current,...patch}));
 
@@ -194,11 +218,11 @@ export function JournalWorkspace({accounts,profile,permissions}){
 
   return <div className="journal-workspace">
     <div className="accounting-stage-note">
-      <span>دفتر الأستاذ منفصل حاليًا عن العمليات التشغيلية: لا توجد قيود تلقائية من المبيعات أو المشتريات أو المخزون حتى مرحلة الربط.</span>
+      <span>دفتر الأستاذ مرتبط بالعمليات التشغيلية المفعّلة محاسبيًا، وكل قيد تلقائي يحتفظ بمرجع العملية الأصلية للمراجعة.</span>
     </div>
 
     {isOwner&&<section className="accounting-panel">
-      <div className="journal-section-title"><div><h3>إعداد التفعيل والفترات</h3><p>تفعيل الدفتر يسمح بترحيل القيود اليدوية فقط في هذه المرحلة.</p></div></div>
+      <div className="journal-section-title"><div><h3>إعداد التفعيل والفترات</h3><p>تاريخ التفعيل والفترات المفتوحة يتحكمان في القيود اليدوية والتلقائية من العمليات المتكاملة.</p></div></div>
       <div className="journal-settings-grid">
         <label>تاريخ بدء المحاسبة<input type="date" value={settingsDraft.activation_date} onChange={(e)=>setSettingsDraft((s)=>({...s,activation_date:e.target.value}))}/></label>
         <label className="accounting-check"><input type="checkbox" checked={settingsDraft.enabled} onChange={(e)=>setSettingsDraft((s)=>({...s,enabled:e.target.checked}))}/><span>السماح بترحيل القيود</span></label>
@@ -231,19 +255,22 @@ export function JournalWorkspace({accounts,profile,permissions}){
       {!workspace.settings?.enabled&&<div className="accounting-notice">الترحيل متوقف حاليًا. يمكن حفظ مسودات، لكن لا يمكن ترحيلها قبل تفعيل المحاسبة وفتح فترة.</div>}
 
       {state.loading?<div className="accounting-empty">جارِ تحميل القيود...</div>:workspace.journals.length===0?<div className="accounting-empty">لا توجد قيود في الفترة المحددة.</div>:<div className="journal-list">
-        {workspace.journals.map((row)=><article className="journal-card" key={row.id}>
+        {workspace.journals.map((row)=><article id={"journal-"+row.id} className="journal-card" key={row.id}>
           <div className="journal-card-head">
             <div><strong>{row.entry_number}</strong><span>{row.entry_date} · {ORIGIN_LABELS[row.entry_origin]||row.entry_origin}</span></div>
             <span className={"accounting-badge "+(row.status==="posted"?"active":row.status==="reversed"?"disabled":"group")}>{STATUS_LABELS[row.status]||row.status}</span>
           </div>
           <p>{row.description}</p>
           <div className="journal-card-totals"><span>مدين <b>{money(row.total_debit)}</b></span><span>دائن <b>{money(row.total_credit)}</b></span>{row.master_overridden&&<span className="accounting-badge group">تعديل Master · Rev {row.revision_number}</span>}</div>
-          <details><summary>عرض الأطراف والمصدر</summary>
+          <details id={"journal-details-"+row.id}><summary>عرض الأطراف والمصدر</summary>
             <div className="journal-lines-view">{(row.lines||[]).map((line)=><div key={line.id||line.line_number}>
               <span>{accounts.find((a)=>a.id===line.account_id)?.account_code||"—"} · {accounts.find((a)=>a.id===line.account_id)?.name_ar||"حساب"}</span>
               <span>{amount(line.debit)>0?"مدين "+money(line.debit):"دائن "+money(line.credit)}</span>
             </div>)}</div>
-            {(row.source_module||row.source_record_id)&&<div className="journal-source">المصدر: {row.source_module||"—"} · {row.source_record_id||"—"}</div>}
+            {(row.source_module||row.source_record_id)&&<div className="journal-source">
+              <span>المصدر: {row.source_module||"—"} · {row.source_event||"—"} · {row.source_record_id||"—"}</span>
+              <button type="button" className="accounting-link-button" onClick={()=>openSourceTrace(row)}>عرض العملية الأصلية</button>
+            </div>}
           </details>
           <div className="accounting-row-actions">
             {row.status==="draft"&&canCreate&&<button type="button" onClick={()=>setEditor(editorFromJournal(row,"draft-edit"))}>تعديل المسودة</button>}
@@ -265,6 +292,32 @@ export function JournalWorkspace({accounts,profile,permissions}){
           <label className="accounting-span-2">سبب العكس<textarea rows={4} value={reverse.reason} onChange={(e)=>setReverse((r)=>({...r,reason:e.target.value}))}/></label>
         </div>
         <div className="accounting-modal-actions"><button type="button" className="accounting-button ghost" onClick={()=>setReverse(null)}>رجوع</button><button type="button" className="accounting-button primary" disabled={state.busy} onClick={reverseJournal}>تأكيد العكس</button></div>
+      </div>
+    </div>}
+
+    {sourceTrace&&<div className="accounting-modal-layer" role="dialog" aria-modal="true" aria-label="العملية الأصلية للقيد">
+      <div className="accounting-modal source-trace-modal">
+        <div className="accounting-modal-head">
+          <div><span>{sourceTrace.journal?.entry_number||"القيد"}</span><h3>العملية الأصلية</h3></div>
+          <button type="button" className="accounting-close" onClick={()=>setSourceTrace(null)}>×</button>
+        </div>
+        {sourceTrace.loading?<div className="accounting-empty">جارِ تحميل العملية الأصلية...</div>:
+         sourceTrace.error?<div className="accounting-notice error">{sourceTrace.error}</div>:
+         !sourceTrace.data?.available?<div className="accounting-notice">{sourceTrace.data?.reason||"لا يوجد مصدر تشغيلي لهذا القيد."}</div>:
+         <>
+           <div className="source-trace-meta">
+             <span><b>الموديول:</b> {sourceTrace.data.source_module}</span>
+             <span><b>الحدث:</b> {sourceTrace.data.source_event}</span>
+             <span><b>الجدول:</b> {sourceTrace.data.source_table}</span>
+             <span><b>Record ID:</b> {sourceTrace.data.source_record_id}</span>
+           </div>
+           <div className="source-trace-fields">
+             {Object.entries(sourceTrace.data.record||{}).filter(([,value])=>value!==null&&typeof value!=="object").slice(0,40).map(([key,value])=>
+               <div key={key}><span>{key}</span><b>{String(value)}</b></div>
+             )}
+           </div>
+         </>}
+        <div className="accounting-modal-actions"><button type="button" className="accounting-button ghost" onClick={()=>setSourceTrace(null)}>إغلاق</button></div>
       </div>
     </div>}
 
