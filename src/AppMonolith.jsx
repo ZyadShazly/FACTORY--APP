@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Package, Layers, Factory, ShoppingCart, Truck, Users,
   BarChart3, Plus, Trash2, AlertCircle, CheckCircle2, Wallet, Boxes,
   CalendarClock, ShieldCheck, Pencil, X, ReceiptText, ClipboardList,
-  BriefcaseBusiness, FolderOpen, UserRoundCog, BadgeDollarSign, HardHat, ScrollText, ChevronDown, Settings, Wrench, Archive, RotateCcw,
+  BriefcaseBusiness, FolderOpen, UserRoundCog, BadgeDollarSign, HardHat, ScrollText, ChevronDown, Settings, Wrench, Archive, RotateCcw, BookOpen,
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
@@ -639,6 +639,7 @@ export default function App() {
     { id: "rentals", label: "الإيجارات", icon: CalendarClock },
     { id: "suppliers", label: "الموردين", icon: Truck },
     { id: "customers", label: "العملاء", icon: Users },
+    { id: "accounting", label: "المحاسبة", icon: BookOpen },
     { id: "employees", label: "الموظفون", icon: UserRoundCog },
     { id: "workCalendar", label: "تقويم العمل والعطلات", icon: CalendarClock },
     { id: "payroll", label: "المرتبات", icon: BadgeDollarSign },
