@@ -14,7 +14,7 @@ function Controls({children}){return <div className="accounting-report-controls"
 function Field({label,children}){return <label className="accounting-report-field"><span>{label}</span>{children}</label>}
 function Empty({children}){return <div className="accounting-empty">{children}</div>}
 
-function LedgerReport({accounts,projects,initialAccountId,onAccountConsumed}){
+function LedgerReport({accounts,projects,initialAccountId,onAccountConsumed,onOpenJournal}){
   const [filters,setFilters]=useState({account_id:initialAccountId||"",from:yearStart(),to:today(),project_id:""});
   const [report,setReport]=useState(null);
   const [state,setState]=useState({loading:false,error:""});
@@ -61,7 +61,7 @@ function LedgerReport({accounts,projects,initialAccountId,onAccountConsumed}){
       {tx.length===0?<Empty>لا توجد حركات على الحساب في الفترة المحددة.</Empty>:<div className="accounting-report-table-wrap"><table className="accounting-report-table">
         <thead><tr><th>التاريخ</th><th>القيد</th><th>البيان</th><th>المرجع</th><th>مدين</th><th>دائن</th><th>الرصيد الجاري</th><th>المصدر</th></tr></thead>
         <tbody>{tx.map((row)=><tr key={row.line_id}>
-          <td>{row.entry_date}</td><td><b>{row.entry_number}</b>{row.master_overridden&&<small>Master Rev {row.revision_number}</small>}</td>
+          <td>{row.entry_date}</td><td><button type="button" className="accounting-report-journal-link" onClick={()=>onOpenJournal?.(row.journal_entry_id)}><b>{row.entry_number}</b></button>{row.master_overridden&&<small>Master Rev {row.revision_number}</small>}</td>
           <td>{row.line_description||row.journal_description||"—"}</td><td>{row.line_reference||row.journal_reference||"—"}</td>
           <td>{num(row.debit)?money(row.debit):"—"}</td><td>{num(row.credit)?money(row.credit):"—"}</td><td><b>{money(row.running_balance)}</b><small>{sideLabel(row.running_side)}</small></td>
           <td>{row.source_module?<><b>{row.source_module}</b><small>{row.source_record_id||"—"}</small></>:(row.entry_origin||"—")}</td>
@@ -170,7 +170,7 @@ function BalanceSheetReport({onOpenLedger}){
   </section>;
 }
 
-export function AccountingReportsWorkspace({accounts=[],projects=[]}){
+export function AccountingReportsWorkspace({accounts=[],projects=[],onOpenJournal}){
   const [reportTab,setReportTab]=useState("trial");
   const [ledgerAccount,setLedgerAccount]=useState("");
 
@@ -182,7 +182,7 @@ export function AccountingReportsWorkspace({accounts=[],projects=[]}){
       <button type="button" className={reportTab==="trial"?"active":""} onClick={()=>setReportTab("trial")}>ميزان المراجعة</button>
       <button type="button" className={reportTab==="balance"?"active":""} onClick={()=>setReportTab("balance")}>الميزانية</button>
     </nav>
-    {reportTab==="ledger"&&<LedgerReport accounts={accounts} projects={projects} initialAccountId={ledgerAccount} onAccountConsumed={()=>setLedgerAccount("")}/>}
+    {reportTab==="ledger"&&<LedgerReport accounts={accounts} projects={projects} initialAccountId={ledgerAccount} onAccountConsumed={()=>setLedgerAccount("")} onOpenJournal={onOpenJournal}/>} 
     {reportTab==="trial"&&<TrialBalanceReport accounts={accounts} projects={projects} onOpenLedger={openLedger}/>}
     {reportTab==="balance"&&<BalanceSheetReport onOpenLedger={openLedger}/>}
   </div>;
