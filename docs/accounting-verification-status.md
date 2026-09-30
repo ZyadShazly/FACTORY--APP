@@ -221,7 +221,157 @@ Affected helpers:
 
 ## Task 3 — Existing Module Accounting Integration
 
-- **Status:** NOT STARTED
+- **Status:** PASS
+
+### Checks performed
+
+- Re-read the verification status file and inspected current `main` at `cc45f7883d09ea94388627dd71e5c763d5b3dd78`.
+- Confirmed Tasks 1–2 are complete and no later application/schema commit supersedes those results.
+- Audited `docs/accounting-integration-matrix.md` against the actual repository migrations, integration tests, and live Supabase triggers/functions.
+- Verified the shared source-posting contract:
+  - canonical `source_module`, `source_event`, and `source_record_id`
+  - advisory transaction locking
+  - one active source identity / duplicate-post protection
+  - source-link uniqueness
+  - source-driven reversal using current posted journal lines
+  - repost-after-reversal protection
+  - configurable account mapping through `private.accounting_resolve_mapping`
+  - no generated account UUIDs embedded in integration migrations
+  - activation-date gating through `private.accounting_source_event_in_scope`
+  - no automatic historical backfill
+- Verified live accounting integration triggers are installed on the canonical operational tables:
+  - `customer_receipts`
+  - `supplier_payments`
+  - `customer_advance_allocations`
+  - `supplier_advance_allocations`
+  - `supplier_invoices`
+  - `sales`
+  - `customer_adjustments`
+  - `expenses`
+  - `inventory_movements`
+  - `production_material_issues`
+  - `payroll`
+  - `daily_labor`
+  - `rentals`
+  - `asset_settlements`
+  - `asset_maintenance_orders`
+- Verified Procurement contract:
+  - goods receipt: Dr Inventory / Cr GRNI
+  - supplier invoice approval: Dr GRNI + VAT Input + supported variance / Cr AP
+  - receipt reversal blocked after approved/paid supplier invoice until invoice reversal
+  - invoice cancellation/reversal reverses linked system journal
+- Verified Cash / Advances contract:
+  - customer receipt settlement: Dr Bank/Cash / Cr AR
+  - customer receipt advance: Dr Bank/Cash / Cr Customer Advances
+  - supplier payment settlement: Dr AP / Cr Bank/Cash
+  - supplier payment advance: Dr Supplier Advances / Cr Bank/Cash
+  - customer advance allocation: Dr Customer Advances / Cr AR
+  - supplier advance allocation: Dr AP / Cr Supplier Advances
+- Verified Sales contract:
+  - posted sale/customer charge: Dr AR / Cr Sales Revenue
+  - sale inventory issue: Dr COGS / Cr Inventory
+  - cancellation / stock reversal follows source-linked reversal
+- Verified Customer Adjustment contract:
+  - supported non-cash adjustments debit configured adjustment mapping and credit AR
+  - reversal follows current linked journal
+- Verified Expense contract:
+  - current gross spent-expense source: Dr Expense Default / Cr Bank/Cash
+  - project link is carried to GL
+  - `project_actual_cost_entries` is not independently posted
+- Verified Inventory contract:
+  - non-production project issue: Dr Project Material Cost / Cr Inventory
+  - adjustment-in: Dr Inventory / Cr Inventory Gain
+  - adjustment-out: Dr Inventory Loss / Cr Inventory
+  - production and transfer movements are not double-posted by the generic inventory trigger
+- Verified Production contract:
+  - material issue: Dr Production WIP / Cr Inventory
+  - completion/receipt: Dr Finished Goods/Inventory / Cr WIP with explicit production-cost variance handling
+  - labor/overhead absorption is tied to the canonical production receipt
+  - production material issues suppress the generic project-issue accounting path to prevent duplicate GL
+- Verified Payroll contract:
+  - approval accrual: Dr Payroll Expense / Cr Payroll Payable + Employee Advances/Receivable recovery + configurable deductions clearing
+  - payment: Dr Payroll Payable / Cr Bank/Cash
+  - payment requires an active accrual source link
+- Verified Daily Labor contract:
+  - approval accrual: Dr Daily Labor Expense / Cr Daily Labor Payable + deductions clearing
+  - payment: Dr Daily Labor Payable / Cr Bank/Cash
+  - payment requires an active accrual source link
+- Verified Rentals contract:
+  - active positive-fee rental: Dr AR / Cr Rental Revenue
+  - cancellation reverses linked revenue journal
+  - rental custody issue/return does not invent COGS
+- Verified Assets / Tools contract:
+  - registry creation/update, assignment, return, and quantity-only movement create no automatic GL
+  - approved valued settlement: Dr Asset Loss Expense / Cr Asset Control
+  - completed maintenance actual cost: Dr Asset Maintenance Expense / Cr configurable maintenance credit account
+- Verified intentional no-source behavior:
+  - no automatic Bank/Cash-transfer GL exists because the current operational model has no canonical financial transfer transaction
+  - inventory warehouse transfers are not mislabeled as financial cash transfers
+
+### Bugs found
+
+- None in Task 3 scope.
+
+### Fixes applied
+
+- None required.
+
+### Files changed
+
+- `docs/accounting-verification-status.md` only.
+
+### Tests run
+
+- Reviewed source-specific repository integration tests:
+  - `tests/accounting-cash-integration.test.mjs`
+  - `tests/accounting-procurement-integration.test.mjs`
+  - `tests/accounting-sales-integration.test.mjs`
+  - `tests/accounting-customer-adjustments-integration.test.mjs`
+  - `tests/accounting-expense-integration.test.mjs`
+  - `tests/accounting-inventory-integration.test.mjs`
+  - `tests/accounting-production-integration.test.mjs`
+  - `tests/accounting-payroll-integration.test.mjs`
+  - `tests/accounting-daily-labor-integration.test.mjs`
+  - `tests/accounting-rentals-integration.test.mjs`
+  - `tests/accounting-assets-integration.test.mjs`
+  - `tests/accounting-source-repost-guard.test.mjs`
+  - `tests/accounting-integration-matrix-contract.test.mjs`
+- Live Supabase trigger inventory confirmed canonical integrations are installed once on their operational sources.
+- Live shared-helper inspection confirmed:
+  - `accounting_post_source_journal`
+  - `accounting_reverse_source_journal`
+  - `accounting_source_event_in_scope`
+  - `accounting_resolve_mapping`
+- Rollback-safe runtime source-post smoke:
+  - `2026-09-29` (before activation): out of scope
+  - `2026-09-30` (activation date): in scope
+  - `2026-10-01` (after activation): in scope
+  - resolved configured Bank/Cash and AR mappings
+  - posted a balanced synthetic system journal
+  - duplicate same source identity returned the original journal rather than creating another
+  - confirmed exactly one source link
+  - source reversal created a reversal journal
+  - repost after reversal was rejected
+  - all synthetic journals/source links/audit effects rolled back
+- Historical safety recheck after runtime test:
+  - system journals before activation: **0**
+  - source links before activation: **0**
+  - persistent Task 3 synthetic journals: **0**
+  - persistent Task 3 synthetic source links: **0**
+
+### Test results
+
+- Task 3 repository contract review: **PASS**
+- Live integration-trigger inventory: **PASS**
+- Shared source-posting runtime verification: **PASS**
+- Historical-data protection recheck: **PASS**
+
+### Remaining risks
+
+- Task 3 did not create a full live operational transaction for every business module because doing so would require constructing production business records and dependencies in the live operational database. Source-specific posting semantics are instead covered by the repository integration tests plus live trigger/function inspection.
+- Full existing-module business-flow regression remains Task 7.
+- Full repository test suite/build/type/lint execution remains Task 8.
+- Modules documented as operationally immutable after approval/completion intentionally have no invented post-approval reversal API; this remains a business-source limitation, not an accounting inconsistency.
 
 ## Task 4 — Account Ledger & Trial Balance
 
