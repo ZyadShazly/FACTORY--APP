@@ -80,7 +80,9 @@ function JournalEditor({editor,accounts,busy,onChange,onClose,onSave}){
   </div>;
 }
 
-export function JournalWorkspace({accounts,profile,permissions}){
+const SOURCE_PAGE={sales:"sales",inventory:"inventory",production:"production",expenses:"expenses",payroll:"payroll",daily_labor:"dailyLabor",rentals:"rentals",assets:"assets",customers:"customers",procurement:"purchases",suppliers:"suppliers"};
+
+export function JournalWorkspace({accounts,profile,permissions,initialJournalId="",onJournalConsumed,onNavigate}){
   const [filters,setFilters]=useState({from:"",to:""});
   const [workspace,setWorkspace]=useState({settings:{},periods:[],journals:[]});
   const [editor,setEditor]=useState(null);
@@ -110,6 +112,12 @@ export function JournalWorkspace({accounts,profile,permissions}){
   },[filters.from,filters.to]);
 
   useEffect(()=>{void load()},[load]);
+
+  useEffect(()=>{
+    if(!initialJournalId||state.loading)return;
+    const target=document.getElementById(`accounting-journal-${initialJournalId}`);
+    if(target){target.scrollIntoView({block:"center"});onJournalConsumed?.()}
+  },[initialJournalId,state.loading,onJournalConsumed]);
 
   const patchEditor=(patch)=>setEditor((current)=>({...current,...patch}));
 
@@ -231,19 +239,19 @@ export function JournalWorkspace({accounts,profile,permissions}){
       {!workspace.settings?.enabled&&<div className="accounting-notice">الترحيل متوقف حاليًا. يمكن حفظ مسودات، لكن لا يمكن ترحيلها قبل تفعيل المحاسبة وفتح فترة.</div>}
 
       {state.loading?<div className="accounting-empty">جارِ تحميل القيود...</div>:workspace.journals.length===0?<div className="accounting-empty">لا توجد قيود في الفترة المحددة.</div>:<div className="journal-list">
-        {workspace.journals.map((row)=><article className="journal-card" key={row.id}>
+        {workspace.journals.map((row)=><article id={"accounting-journal-"+row.id} className={"journal-card "+(row.id===initialJournalId?"focused":"")} key={row.id}>
           <div className="journal-card-head">
             <div><strong>{row.entry_number}</strong><span>{row.entry_date} · {ORIGIN_LABELS[row.entry_origin]||row.entry_origin}</span></div>
             <span className={"accounting-badge "+(row.status==="posted"?"active":row.status==="reversed"?"disabled":"group")}>{STATUS_LABELS[row.status]||row.status}</span>
           </div>
           <p>{row.description}</p>
           <div className="journal-card-totals"><span>مدين <b>{money(row.total_debit)}</b></span><span>دائن <b>{money(row.total_credit)}</b></span>{row.master_overridden&&<span className="accounting-badge group">تعديل Master · Rev {row.revision_number}</span>}</div>
-          <details><summary>عرض الأطراف والمصدر</summary>
+          <details open={row.id===initialJournalId}><summary>عرض الأطراف والمصدر</summary>
             <div className="journal-lines-view">{(row.lines||[]).map((line)=><div key={line.id||line.line_number}>
               <span>{accounts.find((a)=>a.id===line.account_id)?.account_code||"—"} · {accounts.find((a)=>a.id===line.account_id)?.name_ar||"حساب"}</span>
               <span>{amount(line.debit)>0?"مدين "+money(line.debit):"دائن "+money(line.credit)}</span>
             </div>)}</div>
-            {(row.source_module||row.source_record_id)&&<div className="journal-source">المصدر: {row.source_module||"—"} · {row.source_record_id||"—"}</div>}
+            {(row.source_module||row.source_record_id)&&<div className="journal-source"><span>المصدر: {row.source_module||"—"} · {row.source_event||"—"} · {row.source_record_id||"—"}</span>{onNavigate&&SOURCE_PAGE[row.source_module]&&<button type="button" className="accounting-button ghost" onClick={()=>onNavigate(SOURCE_PAGE[row.source_module])}>فتح الوحدة الأصلية</button>}</div>}
           </details>
           <div className="accounting-row-actions">
             {row.status==="draft"&&canCreate&&<button type="button" onClick={()=>setEditor(editorFromJournal(row,"draft-edit"))}>تعديل المسودة</button>}
