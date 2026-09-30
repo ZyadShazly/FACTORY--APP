@@ -461,7 +461,109 @@ Affected helpers:
 
 ## Task 5 — Balance Sheet
 
-- **Status:** NOT STARTED
+- **Status:** PASS
+
+### Checks performed
+
+- تم إعادة قراءة ملف حالة التحقق وفحص `main` الحالي عند commit `6ad1f3f5dc559bbaffb15a6dc432159750e9693a`.
+- تم التأكد أن Tasks 1–4 ما زالت مكتملة ولم يحدث تعديل لاحق في schema/application يلغي نتائجها.
+- تمت مراجعة:
+  - `supabase/migrations/20260929064016_accounting_reports_core.sql`
+  - `supabase/migrations/20260930082013_accounting_balance_sheet_rollforward.sql`
+  - `tests/accounting-reports-core.test.mjs`
+  - `tests/accounting-balance-sheet-rollforward.test.mjs`
+- تم التحقق من تصنيف الميزانية من خلال شجرة الحسابات:
+  - الأصول المتداولة تحت `1.1 Current Assets`
+  - الأصول غير المتداولة/الثابتة تحت `1.2 Fixed Assets`
+  - الالتزامات المتداولة تحت `2.1 Current Liabilities`
+  - الالتزامات طويلة الأجل تحت `2.2 Long-Term Liabilities`
+  - رأس المال `3.1`
+  - الأرباح المبقاة `3.2`
+  - ربح/خسارة العام الحالي `3.3`
+- تم التحقق أن تقرير الميزانية مشتق من القيود الحالية ولا توجد له table مستقلة أو backfill.
+- تم التحقق من تجميع parent/child hierarchy بدون double counting.
+- تم التحقق أن Current P&L يحسب كالتالي:
+  - Revenue
+  - Cost of Sales
+  - Expenses
+  - Current Period Profit/Loss
+- تم التحقق أن prior unclosed P&L يذهب إلى عرض Retained Earnings بدون إنشاء قيد تلقائي.
+- تم التحقق أن Current Year Profit/Loss وRetained Earnings يستخدمان configurable mappings وليس UUIDs ثابتة.
+- تم التحقق أن المعادلة:
+  - Assets = Liabilities + Equity
+  - difference = 0 ضمن tolerance
+  - is_balanced = true
+- تم التحقق من حالة عدم وجود أرصدة/قيود قبل التاريخ المطلوب.
+
+### Bugs found
+
+- لا يوجد bug في نطاق Task 5.
+
+### Fixes applied
+
+- لا يوجد تعديل مطلوب.
+
+### Files changed
+
+- `docs/accounting-verification-status.md` فقط.
+
+### Tests run
+
+- مراجعة اختبارات report-core وbalance-sheet roll-forward الموجودة في repository.
+- اختبار live rollback-safe للميزانية:
+  - Current Asset = 500 ثم +100 من أرباح الفترة
+  - Non-current Asset = 300
+  - Current Liability = 200
+  - Long-term Liability = 100
+  - Capital = 500
+  - Revenue = 150
+  - Expense = 50
+  - Current Period Profit = **100**
+  - Total Assets = **900**
+  - Total Liabilities = **300**
+  - Total Equity = **600**
+  - Liabilities + Equity = **900**
+  - Difference = **0**
+  - Is Balanced = **true**
+- تم التحقق من سطور التصنيف:
+  - Current Asset row = **600**
+  - Non-current Asset row = **300**
+  - Current Liability row = **200**
+  - Non-current Liability row = **100**
+- اختبار roll-forward للأرباح السابقة:
+  - Prior unclosed profit = **50**
+  - Current profit = **100**
+  - Cumulative unclosed profit = **150**
+  - Retained Earnings presentation adjustment = **50**
+  - Current Year P&L presentation = **100**
+  - Total Assets = **650**
+  - Total Equity = **650**
+  - الميزانية متوازنة
+- اختبار empty balance sheet بتاريخ سابق:
+  - Assets = 0
+  - Liabilities = 0
+  - Equity = 0
+  - Difference = 0
+  - Is Balanced = true
+- بعد rollback:
+  - Task 5 test accounts = **0**
+  - Task 5 test journals = **0**
+
+### Test results
+
+- Balance Sheet classification: **PASS**
+- Current/non-current Assets & Liabilities: **PASS**
+- Capital / Retained Earnings / Current P&L: **PASS**
+- Hierarchy aggregation / no double counting: **PASS**
+- Prior-year unclosed P&L roll-forward: **PASS**
+- Empty balance sheet: **PASS**
+- Assets = Liabilities + Equity: **PASS**
+
+### Remaining risks
+
+- تصنيف Current/Non-current يعتمد على شجرة الحسابات القياسية وأسماء/مواقع الحسابات تحت `1.1/1.2/2.1/2.2`، وليس على حقل classification مستقل داخل كل account row.
+- لم يتم تنفيذ year-end closing workflow فعلي كامل؛ تم التحقق من سلوك التقرير عند وجود prior unclosed P&L، وهو نطاق Task 5.
+- الاختبارات الكاملة للـrepository/build/type/lint ما زالت مؤجلة إلى Task 8.
 
 ## Task 6 — Permissions & Security
 
