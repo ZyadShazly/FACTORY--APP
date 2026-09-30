@@ -375,7 +375,89 @@ Affected helpers:
 
 ## Task 4 — Account Ledger & Trial Balance
 
-- **Status:** NOT STARTED
+- **Status:** PASS
+
+### Checks performed
+
+- Re-read the verification status file and inspected current `main` at `d79c49764953f12a6b2fc8df542948a4c6b47a33`.
+- Confirmed Tasks 1–3 remain complete and no later schema/application commit supersedes their accounting results.
+- Inspected `supabase/migrations/20260929064016_accounting_reports_core.sql` and `tests/accounting-reports-core.test.mjs`.
+- Verified Account Ledger behavior:
+  - opening balance derives from posted/reversed GL lines before `date_from`
+  - period transactions include debit, credit, entry date, entry number, journal/line IDs, references, source fields, revision fields, and running balance
+  - running balance ordering is deterministic by date, entry number, line number, and line ID
+  - closing balance equals opening plus in-period net activity
+  - no-opening case returns zero opening correctly
+  - empty-period case returns zero transactions while preserving opening/closing balance
+  - invalid date range is rejected
+- Verified Trial Balance behavior:
+  - opening debit/credit activity
+  - period debit/credit
+  - closing debit/credit
+  - date filters
+  - account filter / descendant scope
+  - account-type filter
+  - parent/child/deep hierarchy aggregation
+  - parent presentation does not double-count direct GL activity in scope totals
+  - empty periods return zero period activity
+  - full-GL period debit equals credit
+  - full-GL cumulative debit equals credit
+
+### Bugs found
+
+- None in Task 4 scope.
+
+### Fixes applied
+
+- None required.
+
+### Files changed
+
+- `docs/accounting-verification-status.md` only.
+
+### Tests run
+
+- Reviewed repository report-core contract tests in `tests/accounting-reports-core.test.mjs`.
+- Rollback-safe live ledger / trial-balance scenario:
+  - created a 3-level asset hierarchy plus offset liability
+  - opening transaction: 100 debit
+  - period movement 1: +40 debit
+  - period movement 2: 10 credit
+  - verified ledger opening = **100**
+  - verified running balances = **140**, then **130**
+  - verified ledger closing = **130**
+  - verified 2 in-period transactions
+  - verified journal/line drilldown fields and running-balance fields are present
+  - verified TB opening debit = **100**
+  - verified TB period debit = **40**
+  - verified TB period credit = **10**
+  - root, child, and leaf each aggregate the same descendant activity for presentation
+  - scoped totals count direct GL activity once, not once per hierarchy level
+  - empty future period returns zero period debit/credit
+  - full GL period balance check returned true
+  - full GL cumulative balance check returned true
+- Rollback-safe no-opening / empty-ledger scenario:
+  - activation-date transaction produced opening = **0**, closing = **25**
+  - later empty ledger period produced zero transactions with opening/closing = **25**
+  - account-type filter returned expected asset scope
+  - invalid date range was rejected
+- Persistence check after rollback:
+  - Task 4 test accounts: **0**
+  - Task 4 test journals: **0**
+
+### Test results
+
+- Account Ledger runtime verification: **PASS**
+- Trial Balance runtime verification: **PASS**
+- Hierarchy/no-double-count verification: **PASS**
+- Empty/no-opening/date-validation cases: **PASS**
+- Full GL debit = credit verification: **PASS**
+
+### Remaining risks
+
+- Project-filter behavior is implemented in both ledger and trial-balance SQL and is covered structurally; Task 4 did not manufacture a dedicated live project solely for a project-filter runtime case.
+- Balance Sheet semantics are intentionally deferred to Task 5.
+- Full repository test/build/type/lint execution remains Task 8.
 
 ## Task 5 — Balance Sheet
 
