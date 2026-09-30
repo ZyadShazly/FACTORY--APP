@@ -143,7 +143,7 @@ where not exists(
     and m.is_active
 );
 
-do $
+do $$
 declare
   invalid_key text;
 begin
@@ -180,7 +180,7 @@ begin
       detail=invalid_key;
   end if;
 end
-$;
+$$;
 
 create or replace function private.accounting_customer_adjustment_gl_trigger()
 returns trigger
