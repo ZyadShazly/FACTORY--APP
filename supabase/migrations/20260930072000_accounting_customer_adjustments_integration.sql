@@ -72,6 +72,116 @@ on conflict(mapping_key) do update set
   sort_order=excluded.sort_order,
   is_active=true;
 
+
+-- Required posting accounts and mappings are prepared before the trigger so an
+-- already-enabled GL never has a window where customer adjustments can post
+-- without a valid accounting destination. Existing user mappings win.
+insert into public.accounting_accounts(
+  account_code,name_ar,name_en,parent_id,account_type,normal_balance,
+  is_contra,is_posting,is_active,description
+)
+select
+  '4.4','خصومات تجارية للعملاء','Customer Commercial Discounts',
+  p.id,'revenue','debit',true,true,true,
+  'حساب مقابل للإيراد للخصومات التجارية التي تخفض ذمة العميل'
+from public.accounting_accounts p
+where p.account_code='4'
+  and not exists(
+    select 1 from public.accounting_accounts a where lower(btrim(a.account_code))='4.4'
+  );
+
+insert into public.accounting_accounts(
+  account_code,name_ar,name_en,parent_id,account_type,normal_balance,
+  is_contra,is_posting,is_active,description
+)
+select
+  '1.1.09','ضريبة استقطاع مستحقة التحصيل','Withholding Tax Receivable',
+  p.id,'asset','debit',false,true,true,
+  'أصل متداول يمثل ضريبة الاستقطاع المحتجزة من العميل'
+from public.accounting_accounts p
+where p.account_code='1.1'
+  and not exists(
+    select 1 from public.accounting_accounts a where lower(btrim(a.account_code))='1.1.09'
+  );
+
+insert into public.accounting_accounts(
+  account_code,name_ar,name_en,parent_id,account_type,normal_balance,
+  is_contra,is_posting,is_active,description
+)
+select
+  '1.1.10','مبالغ محتجزة لدى العملاء','Customer Retention Receivable',
+  p.id,'asset','debit',false,true,true,
+  'أصل متداول يمثل مبالغ Retention المحتجزة لدى العميل'
+from public.accounting_accounts p
+where p.account_code='1.1'
+  and not exists(
+    select 1 from public.accounting_accounts a where lower(btrim(a.account_code))='1.1.10'
+  );
+
+with seed(mapping_key,account_code) as (
+  values
+    ('customer_adjustment_commercial_discount','4.4'),
+    ('customer_adjustment_withholding_tax','1.1.09'),
+    ('customer_adjustment_retention','1.1.10'),
+    ('customer_adjustment_bank_charge','6.8'),
+    ('customer_adjustment_other','6.9')
+)
+insert into public.accounting_account_mappings(
+  mapping_key,scope_type,scope_value,account_id,is_active
+)
+select
+  s.mapping_key,'global','',a.id,true
+from seed s
+join public.accounting_accounts a
+  on lower(btrim(a.account_code))=lower(btrim(s.account_code))
+where not exists(
+  select 1
+  from public.accounting_account_mappings m
+  where lower(btrim(m.mapping_key))=lower(btrim(s.mapping_key))
+    and lower(btrim(m.scope_type))='global'
+    and btrim(m.scope_value)=''
+    and m.is_active
+);
+
+do $
+declare
+  invalid_key text;
+begin
+  select d.mapping_key
+  into invalid_key
+  from public.accounting_mapping_definitions d
+  left join public.accounting_account_mappings m
+    on lower(btrim(m.mapping_key))=lower(btrim(d.mapping_key))
+   and lower(btrim(m.scope_type))='global'
+   and btrim(m.scope_value)=''
+   and m.is_active
+  left join public.accounting_accounts a on a.id=m.account_id
+  where d.mapping_key in (
+    'customer_adjustment_commercial_discount',
+    'customer_adjustment_withholding_tax',
+    'customer_adjustment_retention',
+    'customer_adjustment_bank_charge',
+    'customer_adjustment_other'
+  )
+    and (
+      m.id is null
+      or a.id is null
+      or not a.is_active
+      or not a.is_posting
+      or not (a.account_type=any(d.expected_account_types))
+    )
+  order by d.mapping_key
+  limit 1;
+
+  if invalid_key is not null then
+    raise exception using
+      errcode='23514',
+      message='Customer adjustment accounting mapping is missing or invalid',
+      detail=invalid_key;
+  end if;
+end
+$;
+
 create or replace function private.accounting_customer_adjustment_gl_trigger()
 returns trigger
 language plpgsql
