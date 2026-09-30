@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 
 const sql=fs.readFileSync(
-  "supabase/migrations/20260930100000_accounting_private_helper_acl.sql",
+  "supabase/migrations/20260930100959_accounting_private_helper_acl.sql",
   "utf8",
 );
 
