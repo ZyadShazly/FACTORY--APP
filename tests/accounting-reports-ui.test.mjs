@@ -55,3 +55,10 @@ test("accounting shell supplies project filters from existing project data",()=>
   assert.match(app,/<AccountingWorkspace profile=\{profile\} permissions=\{permissions\} projects=\{data\.projects\}/);
   assert.match(ui,/كل المشاريع/);
 });
+
+
+test("ledger drills into the exact journal entry instead of showing an inert number",()=>{
+  assert.match(ui,/accounting-report-journal-link/);
+  assert.match(ui,/onOpenJournal\?\.\(row\.journal_entry_id\)/);
+  assert.match(shell,/setFocusedJournalId\(journalId\); setSection\("journals"\)/);
+});
