@@ -63,5 +63,5 @@ Status: implementation contract for the additive GL integration.
 - Daily Labor approval/payment integration: implemented.
 - Rental customer-charge / cancellation integration: implemented.
 - Asset valued-settlement / maintenance integration: implemented.
-- All existing canonical operational sources above now have an explicit accounting behavior, including operations intentionally defined as no automatic GL.
+- All Integration Matrix modules above now have an explicit accounting behavior, including operations intentionally defined as no automatic GL.
 - Bank/Cash transfer is documented as a future/no-source case: the current app has inventory warehouse transfers, but no canonical financial Bank/Cash transfer transaction. No GL is invented until such an operational source exists.
