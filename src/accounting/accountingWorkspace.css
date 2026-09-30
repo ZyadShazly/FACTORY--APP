@@ -181,3 +181,9 @@
   .mapping-row{grid-template-columns:1fr}
   .mapping-module-head{align-items:flex-start}
 }
+
+
+.accounting-report-journal-link{border:0;background:transparent;color:var(--color-wood);font:inherit;padding:0;cursor:pointer}
+.accounting-report-journal-link:hover{text-decoration:underline}
+.journal-card.focused{outline:2px solid var(--color-wood);outline-offset:2px}
+.journal-source{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
