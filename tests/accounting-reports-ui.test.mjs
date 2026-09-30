@@ -5,6 +5,7 @@ import fs from "node:fs";
 const ui=fs.readFileSync("src/accounting/AccountingReportsWorkspace.jsx","utf8");
 const shell=fs.readFileSync("src/accounting/AccountingWorkspace.jsx","utf8");
 const app=fs.readFileSync("src/AppMonolith.jsx","utf8");
+const journal=fs.readFileSync("src/accounting/JournalWorkspace.jsx","utf8");
 
 test("accounting workspace exposes protected reports tab",()=>{
   assert.match(shell,/التقارير المحاسبية/);
@@ -54,4 +55,26 @@ test("balance sheet displays accounting equation and derived current period prof
 test("accounting shell supplies project filters from existing project data",()=>{
   assert.match(app,/<AccountingWorkspace profile=\{profile\} permissions=\{permissions\} projects=\{data\.projects\}/);
   assert.match(ui,/كل المشاريع/);
+});
+
+
+test("ledger drills into the exact journal entry",()=>{
+  assert.match(ui,/onOpenJournal\?\.\(row\.journal_entry_id\)/);
+  assert.match(shell,/setFocusedJournalId\(journalId\);setSection\("journals"\)/);
+  assert.match(journal,/open=\{row\.id===initialJournalId\}/);
+  assert.match(journal,/accounting-journal-"\+row\.id/);
+});
+
+test("journal preserves source identity and navigates only through known source modules",()=>{
+  assert.match(journal,/source_event/);
+  assert.match(journal,/source_record_id/);
+  assert.match(journal,/SOURCE_PAGE/);
+  assert.match(journal,/فتح الوحدة الأصلية/);
+  assert.match(app,/AccountingWorkspace[\s\S]*onNavigate=\{navigate\}/);
+});
+
+test("accounting copy no longer claims integrations are inactive",()=>{
+  assert.doesNotMatch(shell,/سيأتي في مرحلة مستقلة/);
+  assert.doesNotMatch(shell,/غير مفعلة للترحيل التلقائي/);
+  assert.match(shell,/لا يتم إنشاء قيود تاريخية تلقائيًا/);
 });
