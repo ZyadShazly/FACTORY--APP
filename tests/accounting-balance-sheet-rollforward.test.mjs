@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 
 const sql=fs.readFileSync(
-  "supabase/migrations/20260930090000_accounting_balance_sheet_rollforward.sql",
+  "supabase/migrations/20260930082013_accounting_balance_sheet_rollforward.sql",
   "utf8",
 );
 
