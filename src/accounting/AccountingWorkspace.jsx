@@ -174,6 +174,7 @@ export function AccountingWorkspace({ profile, permissions, projects = [] }) {
   const [conversion, setConversion] = useState(null);
   const [state, setState] = useState({ loading: true, busy: false, error: "", success: "" });
   const [section, setSection] = useState("accounts");
+  const [focusedJournalId, setFocusedJournalId] = useState("");
 
   const canManage = Boolean(permissions?.accounting_accounts_manage);
   const isOwner = profile?.role === "owner";
@@ -304,7 +305,7 @@ export function AccountingWorkspace({ profile, permissions, projects = [] }) {
       <div className="page-header-copy">
         <div className="page-eyebrow"><FolderTree size={14}/><span>المالية والمحاسبة</span></div>
         <h2>المحاسبة</h2>
-        <p>شجرة حسابات مرنة ودفتر قيود محمي. الربط التلقائي مع العمليات التشغيلية سيأتي في مرحلة مستقلة.</p>
+        <p>شجرة حسابات مرنة ودفتر قيود محمي ومتكامل مع العمليات التشغيلية وفق تاريخ التفعيل وربط الحسابات.</p>
       </div>
       {section === "accounts" && <div className="accounting-head-actions">
         <button type="button" className="accounting-button ghost" onClick={load} disabled={state.loading}><RefreshCw size={15}/>تحديث</button>
@@ -319,13 +320,13 @@ export function AccountingWorkspace({ profile, permissions, projects = [] }) {
       <button type="button" className={section === "mappings" ? "active" : ""} onClick={() => setSection("mappings")}>ربط الحسابات</button>
     </nav>
 
-    {section === "journals" ? <JournalWorkspace accounts={accounts} profile={profile} permissions={permissions}/> :
-     section === "reports" ? <AccountingReportsWorkspace accounts={accounts} projects={projects}/> :
+    {section === "journals" ? <JournalWorkspace accounts={accounts} profile={profile} permissions={permissions} focusJournalId={focusedJournalId} onFocusConsumed={() => setFocusedJournalId("")}/> :
+     section === "reports" ? <AccountingReportsWorkspace accounts={accounts} projects={projects} onOpenJournal={(journalId) => { setFocusedJournalId(journalId); setSection("journals"); }}/> :
      section === "mappings" ? <AccountingMappingsWorkspace accounts={accounts} profile={profile}/> : <>
 
     <div className="accounting-stage-note">
       <ShieldCheck size={17}/>
-      <span>المحاسبة غير مفعلة للترحيل التلقائي بعد. هذه الشاشة لإعداد شجرة الحسابات فقط.</span>
+      <span>الحسابات والقيود مترابطة مع العمليات التشغيلية حسب إعدادات التفعيل والفترات وربط الحسابات. الحسابات التجميعية لا تقبل قيودًا مباشرة.</span>
     </div>
 
     <section className="accounting-panel">
@@ -372,7 +373,7 @@ export function AccountingWorkspace({ profile, permissions, projects = [] }) {
           })}
         </div>
       }
-      <div className="accounting-footnote">الرصيد سيظهر هنا بعد تشغيل دفتر الأستاذ والقيود. الحسابات التجميعية لا تقبل قيودًا مباشرة.</div>
+      <div className="accounting-footnote">الحسابات التجميعية لا تقبل قيودًا مباشرة، وأرصدة التقارير تُشتق من القيود المرحّلة.</div>
     </section>
 
     {editor && <AccountEditor

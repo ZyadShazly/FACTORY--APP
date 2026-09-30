@@ -101,3 +101,10 @@ test("runtime sidebar navigation includes accounting under the finance flow", ()
   assert.match(app, /\{ id: "accounting", label: "المحاسبة", icon: BookOpen \}/);
   assert.match(app, /\{ id: "customers"[\s\S]*\{ id: "accounting"[\s\S]*\{ id: "employees"/);
 });
+
+
+test("accounting workspace no longer claims auto-posting is disabled",()=>{
+  assert.match(ui,/متكامل مع العمليات التشغيلية وفق تاريخ التفعيل/);
+  assert.doesNotMatch(ui,/المحاسبة غير مفعلة للترحيل التلقائي بعد/);
+  assert.doesNotMatch(ui,/هذه الشاشة لإعداد شجرة الحسابات فقط/);
+});

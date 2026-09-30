@@ -45,3 +45,20 @@ test("journal editor keeps debit and credit mutually exclusive per line",()=>{
   assert.match(ui,/إجمالي المدين/);
   assert.match(ui,/إجمالي الدائن/);
 });
+
+
+test("focused journal opens its details and source trace uses protected RPC",()=>{
+  assert.match(ui,/focusJournalId/);
+  assert.match(ui,/journal-details-/);
+  assert.match(ui,/get_accounting_source_trace/);
+  assert.match(ui,/عرض العملية الأصلية/);
+  assert.match(ui,/source_record_id/);
+  assert.match(ui,/source_table/);
+  assert.doesNotMatch(ui,/supabase\.from\("(sales|expenses|payroll|inventory_movements|supplier_invoices)"/);
+});
+
+test("journal copy reflects that operational auto-posting is live",()=>{
+  assert.match(ui,/مرتبط بالعمليات التشغيلية المفعّلة محاسبيًا/);
+  assert.doesNotMatch(ui,/لا توجد قيود تلقائية/);
+  assert.doesNotMatch(ui,/القيود اليدوية فقط/);
+});

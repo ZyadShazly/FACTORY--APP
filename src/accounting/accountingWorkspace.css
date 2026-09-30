@@ -181,3 +181,16 @@
   .mapping-row{grid-template-columns:1fr}
   .mapping-module-head{align-items:flex-start}
 }
+
+
+.accounting-report-journal-link,.accounting-link-button{border:0;background:transparent;color:var(--color-wood);font:inherit;font-weight:800;cursor:pointer;padding:0;text-decoration:underline;text-underline-offset:2px}
+.journal-card.focused{outline:2px solid var(--color-wood);outline-offset:2px}
+.journal-source{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.source-trace-modal{width:min(900px,100%)}
+.source-trace-meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:14px}
+.source-trace-meta span{border:1px solid var(--color-border);background:var(--color-surface-muted);border-radius:8px;padding:8px;font-size:12px;overflow-wrap:anywhere}
+.source-trace-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;max-height:52vh;overflow:auto}
+.source-trace-fields>div{display:grid;gap:3px;border:1px solid var(--color-border);border-radius:8px;padding:8px;min-width:0}
+.source-trace-fields span{color:var(--color-text-muted);font-size:11px}
+.source-trace-fields b{font-size:12px;overflow-wrap:anywhere}
+@media(max-width:700px){.source-trace-meta,.source-trace-fields{grid-template-columns:1fr}}
