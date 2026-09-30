@@ -165,7 +165,7 @@ function AccountEditor({ editor, accounts, onChange, onClose, onSave, busy }) {
   </div>;
 }
 
-export function AccountingWorkspace({ profile, permissions, projects = [] }) {
+export function AccountingWorkspace({ profile, permissions, projects = [], onNavigate }) {
   const [accounts, setAccounts] = useState([]);
   const [expanded, setExpanded] = useState(new Set());
   const [query, setQuery] = useState("");
@@ -174,6 +174,7 @@ export function AccountingWorkspace({ profile, permissions, projects = [] }) {
   const [conversion, setConversion] = useState(null);
   const [state, setState] = useState({ loading: true, busy: false, error: "", success: "" });
   const [section, setSection] = useState("accounts");
+  const [focusedJournalId, setFocusedJournalId] = useState("");
 
   const canManage = Boolean(permissions?.accounting_accounts_manage);
   const isOwner = profile?.role === "owner";
@@ -304,7 +305,7 @@ export function AccountingWorkspace({ profile, permissions, projects = [] }) {
       <div className="page-header-copy">
         <div className="page-eyebrow"><FolderTree size={14}/><span>المالية والمحاسبة</span></div>
         <h2>المحاسبة</h2>
-        <p>شجرة حسابات مرنة ودفتر قيود محمي. الربط التلقائي مع العمليات التشغيلية سيأتي في مرحلة مستقلة.</p>
+        <p>شجرة حسابات ودفتر قيود وتقارير مترابطة. الترحيل التلقائي يخضع لإعدادات وتاريخ التفعيل، ولا يتم إنشاء قيود تاريخية تلقائيًا.</p>
       </div>
       {section === "accounts" && <div className="accounting-head-actions">
         <button type="button" className="accounting-button ghost" onClick={load} disabled={state.loading}><RefreshCw size={15}/>تحديث</button>
@@ -319,13 +320,13 @@ export function AccountingWorkspace({ profile, permissions, projects = [] }) {
       <button type="button" className={section === "mappings" ? "active" : ""} onClick={() => setSection("mappings")}>ربط الحسابات</button>
     </nav>
 
-    {section === "journals" ? <JournalWorkspace accounts={accounts} profile={profile} permissions={permissions}/> :
-     section === "reports" ? <AccountingReportsWorkspace accounts={accounts} projects={projects}/> :
+    {section === "journals" ? <JournalWorkspace accounts={accounts} profile={profile} permissions={permissions} initialJournalId={focusedJournalId} onJournalConsumed={()=>setFocusedJournalId("")} onNavigate={onNavigate}/> :
+     section === "reports" ? <AccountingReportsWorkspace accounts={accounts} projects={projects} onOpenJournal={(journalId)=>{setFocusedJournalId(journalId);setSection("journals")}}/> :
      section === "mappings" ? <AccountingMappingsWorkspace accounts={accounts} profile={profile}/> : <>
 
     <div className="accounting-stage-note">
       <ShieldCheck size={17}/>
-      <span>المحاسبة غير مفعلة للترحيل التلقائي بعد. هذه الشاشة لإعداد شجرة الحسابات فقط.</span>
+      <span>الترحيل التلقائي يعتمد على حالة المحاسبة وتاريخ التفعيل والفترة المفتوحة. العمليات السابقة لتاريخ التفعيل لا تُرحّل تلقائيًا.</span>
     </div>
 
     <section className="accounting-panel">
