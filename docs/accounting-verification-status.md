@@ -567,7 +567,118 @@ Affected helpers:
 
 ## Task 6 — Permissions & Security
 
-- **Status:** NOT STARTED
+- **Status:** PASS
+
+### Checks performed
+
+- تم إعادة قراءة ملف حالة التحقق وفحص `main` الحالي عند commit `df0cce125eb53bc6ad86edcae239a609223c3904`.
+- تم التأكد أن Tasks 1–5 ما زالت مكتملة ولم يحدث تعديل لاحق في schema/application يلغي نتائجها.
+- تمت مراجعة نظام الصلاحيات الحالي فقط، بدون إنشاء نظام صلاحيات ثانٍ:
+  - `src/app/actionPermissions.js`
+  - `src/app/permissions.js`
+  - `src/app/navigationRegistry.js`
+  - `src/accounting/AccountingWorkspace.jsx`
+  - `src/accounting/JournalWorkspace.jsx`
+  - `src/accounting/AccountingMappingsWorkspace.jsx`
+  - `tests/app-permissions.test.mjs`
+  - `tests/accounting-mapping-ui.test.mjs`
+  - `tests/accounting-reports-ui.test.mjs`
+- تم التحقق من صلاحيات الأدوار الحالية:
+  - Owner: جميع صلاحيات المحاسبة
+  - Accountant: العرض، إدارة الحسابات، إنشاء القيود، الترحيل، العكس، والتقارير
+  - Accountant: لا يمكنه تعديل قيد مرحّل كـMaster، ولا إدارة إعدادات المحاسبة أو الفترات
+  - Manager: لا يحصل على المحاسبة افتراضيًا؛ يحتاج explicit permission
+  - Production: كل صلاحيات المحاسبة معطلة
+- تم التحقق من الـnavigation/page access:
+  - صفحة المحاسبة مرتبطة بـ`accounting_view`
+  - Owner يرى كل الصفحات
+  - Manager لا يرى المحاسبة إلا إذا تم منحه `accounting_view`
+  - Accountant يرى المحاسبة افتراضيًا
+  - Production لا يرى المحاسبة
+- تم التحقق من الـUI action guards:
+  - إضافة/تعديل الحسابات تعتمد على `accounting_accounts_manage`
+  - إنشاء القيد يعتمد على `accounting_journal_create`
+  - ترحيل القيد يعتمد على `accounting_journal_post`
+  - عكس القيد يعتمد على `accounting_journal_reverse`
+  - تعديل القيد المرحّل يتطلب Owner + `accounting_journal_edit_posted`
+  - التقارير تظهر فقط مع `accounting_reports_view`
+  - إعدادات التفعيل والفترات تظهر للـOwner فقط
+  - تعديل account mappings متاح للـOwner فقط، والمستخدم غير Owner يستطيع المشاهدة فقط عند دخوله المحاسبة
+- تم التحقق من Database/RPC authorization:
+  - `private.accounting_permission_allowed` يستخدم profile role/status/permissions الحالية
+  - لا يعتمد على user-editable metadata
+  - private accounting helpers غير قابلة للتنفيذ مباشرة من `anon` أو `authenticated`
+  - public accounting RPCs غير قابلة للتنفيذ من `anon`
+  - authenticated يمكنه استدعاء public RPC endpoint لكن كل عملية حساسة تُفحص داخل الـRPC حسب الصلاحية
+- تم التحقق من RLS/direct-table bypass:
+  - كل جداول `accounting_*` التسعة عليها RLS
+  - لا يوجد SELECT/INSERT/UPDATE/DELETE مباشر لـ`anon`
+  - لا يوجد SELECT/INSERT/UPDATE/DELETE مباشر لـ`authenticated`
+  - طبقة المحاسبة تظل RPC-only للمستخدمين العاديين
+
+### Bugs found
+
+- لا يوجد bug في نطاق Task 6.
+
+### Fixes applied
+
+- لا يوجد تعديل مطلوب.
+
+### Files changed
+
+- `docs/accounting-verification-status.md` فقط.
+
+### Tests run
+
+- مراجعة static لنظام الصلاحيات الحالي واختبارات UI/RBAC الموجودة.
+- اختبار live permission matrix باستخدام profiles حقيقية نشطة لكل role:
+  - Owner:
+    - accounting_view = true
+    - accounting_accounts_manage = true
+    - accounting_journal_create = true
+    - accounting_journal_post = true
+    - accounting_journal_reverse = true
+    - accounting_journal_edit_posted = true
+    - accounting_reports_view = true
+    - accounting_settings_manage = true
+    - accounting_period_manage = true
+  - Accountant:
+    - view/manage accounts/create/post/reverse/reports = true
+    - edit posted/settings/period manage = false
+  - Manager بدون explicit accounting permissions:
+    - جميع accounting permissions = false
+  - Production:
+    - جميع accounting permissions = false
+- اختبار live RPC authorization داخل transaction مع rollback:
+  - Accountant استطاع قراءة شجرة الحسابات
+  - Accountant مُنع من `owner_configure_accounting`
+  - Manager بدون permission مُنع من `get_accounting_accounts`
+  - Production مُنع من `get_accounting_accounts`
+  - Owner استطاع قراءة الحسابات وتنفيذ owner configuration path
+  - كل التغييرات تم rollback
+- فحص grants:
+  - جميع private accounting helpers: `anon_exec=false`, `auth_exec=false`
+  - public accounting RPCs: `anon_exec=false`
+- فحص جداول المحاسبة:
+  - RLS enabled على جميع الجداول
+  - direct DML grants = false للـanon/authenticated
+
+### Test results
+
+- Role permission matrix: **PASS**
+- Navigation/page authorization contract: **PASS**
+- UI action guards: **PASS**
+- RPC authorization: **PASS**
+- Private-helper ACL: **PASS**
+- RLS/direct-DML protection: **PASS**
+- لا يوجد bypass تم اكتشافه في نطاق Task 6.
+
+### Remaining risks
+
+- التطبيق يعتمد على tab/page authorization وليس URL router مستقل لكل صفحة؛ لذلك direct-URL bypass للمحاسبة ليس مسارًا منفصلًا في البنية الحالية. الحماية الحقيقية موجودة كذلك في الـRPC/database layer.
+- Manager explicit accounting permissions لم يتم إضافتها مؤقتًا لمستخدم live للاختبار حتى لا نغير بيانات صلاحيات حقيقية؛ منطقها تمت مراجعته في الكود، بينما حالة Manager بدون منح صريح تم اختبارها live.
+- PR #126 الخاص بـPlaywright UAT/RBAC ما زال مفتوحًا وغير مدمج، لذلك لم يتم الاعتماد عليه كدليل على `main`.
+- Full regression لباقي النظام في Task 7، والـfull technical suite/build/type/lint في Task 8.
 
 ## Task 7 — Full Existing System Regression
 
