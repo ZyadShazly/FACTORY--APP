@@ -801,7 +801,123 @@ Affected helpers:
 
 ## Task 8 — Final Technical Validation
 
-- **Status:** NOT STARTED
+- **Status:** PASS
+
+### Checks performed
+
+- تم إعادة قراءة ملف حالة التحقق وفحص `main` الحالي عند commit `0a116f5365bc62f057d35e3d203e2eed2e0e56ce`.
+- تم التأكد أن Tasks 1–7 مكتملة.
+- تم التحقق من GitHub Actions Quality Gate على current HEAD:
+  - Run #650
+  - Workflow: `quality-gate`
+  - Conclusion: **success**
+  - `npm ci`: PASS
+  - `npm run validate:migrations`: PASS
+  - `npm test`: PASS
+  - clean tree after tests: PASS
+  - `npm run build`: PASS
+  - clean tree after build: PASS
+- تمت مراجعة `package.json` وworkflow:
+  - المشروع JavaScript/Vite وليس TypeScript
+  - لا يوجد `typecheck` script
+  - لا يوجد `lint` script أو ESLint dependency
+  - لذلك TypeScript/lint ليسا اختبارات قابلة للتشغيل حاليًا؛ لم يتم الادعاء بأنهما PASS.
+- تمت مراجعة migration parity:
+  - repository migrations: **182**
+  - live migrations: **182**
+  - duplicate repository versions: **0**
+  - duplicate live versions: **0**
+  - توجد 7 version/timestamp mismatches قديمة غير محاسبية موثقة سابقًا، مع semantic equivalents على live.
+  - accounting migration chain نفسها متطابقة مع live.
+- تم فحص code-smell markers في نطاق المحاسبة:
+  - TODO accounting: **0**
+  - FIXME accounting: **0**
+  - `console.log` في `src/accounting`: **0**
+  - `console.log` في accounting-related migrations: **0**
+- أعيد تأكيد عدم وجود generated account UUID hardcoding في accounting integration logic؛ الربط يعتمد على `accounting_account_mappings` و`private.accounting_resolve_mapping`.
+- تم التحقق من سلامة قاعدة البيانات live:
+  - posted/reversed journals غير المتوازنة: **0**
+  - orphan accounting source links: **0**
+  - duplicate active source identities: **0**
+  - duplicate reversal links: **0**
+  - system journals قبل Activation Date: **0**
+- تم تشغيل Supabase Advisors بتاريخ Task 8 ومراجعة النتائج:
+  - accounting tables تظهر ضمن `rls_enabled_no_policy` كـINFO، وهذا intentional لأن الطبقة RPC-only مع عدم وجود direct grants للـanon/authenticated.
+  - لا يوجد accounting function ضمن `anon_security_definer_function_executable`.
+  - accounting public RPCs تظهر ضمن authenticated security-definer advisor لأنها callable للـauthenticated، لكن authorization الداخلي تم التحقق منه runtime في Task 6.
+  - باقي advisor findings عامة/قديمة على مستوى المشروع، منها unindexed foreign keys وunused indexes وmultiple permissive policies وبعض Auth configuration notices؛ لم يظهر blocker محاسبي جديد.
+- تم فحص المخاطر التقنية المطلوبة:
+  - duplicate posting protection موجود ومختبر
+  - source identity uniqueness موجود ومختبر
+  - reversal duplication protection موجود ومختبر
+  - atomic posting/balance guards موجودة ومختبرة
+  - mapping failures fail closed
+  - integration triggers تعتمد على transaction semantics؛ لا يوجد partial GL posting منفصل
+  - race protection عبر advisory transaction lock في source posting
+  - no historical automatic backfill
+  - error paths في UI تعرض RPC errors بدل silent success
+
+### Bugs found
+
+- لا يوجد bug جديد في نطاق Task 8.
+- محاولتان SQL أثناء integrity smoke استخدمتا أسماء أعمدة غير صحيحة في test harness (`status` بدل `link_status`، و`reversed_entry_id` بدل `reversed_by_entry_id`). تم تصحيح الاستعلام فقط؛ لا يوجد تغيير في التطبيق أو البيانات.
+
+### Fixes applied
+
+- لا يوجد تعديل تطبيقي أو schema مطلوب.
+
+### Files changed
+
+- `docs/accounting-verification-status.md` فقط.
+
+### Tests run
+
+- Current-head GitHub Quality Gate #650:
+  - migration validation: PASS
+  - full repository test suite: PASS
+  - production build: PASS
+  - clean-tree assertions: PASS
+- Repository code scans:
+  - TODO/FIXME accounting
+  - debug console usage
+  - accounting hard-coded mapping review
+- Repository ↔ live migration parity:
+  - 182 / 182 migrations
+  - no duplicate versions
+  - known 7 non-accounting historical timestamp drifts only
+- Live DB integrity smoke:
+  - unbalanced posted entries = 0
+  - orphan source links = 0
+  - duplicate active source links = 0
+  - duplicate reversals = 0
+  - pre-activation system entries = 0
+- Supabase security advisor review.
+- Supabase performance advisor review.
+
+### Test results
+
+- Full repository tests: **PASS**
+- Production build: **PASS**
+- Migration validator: **PASS**
+- Current-head CI Quality Gate: **PASS**
+- Live accounting integrity checks: **PASS**
+- Accounting security review: **PASS**
+- TypeScript: **N/A — project is JavaScript and has no typecheck configuration**
+- Lint: **N/A — no lint script/configuration exists**
+- Browser E2E: **not part of merged main; static/UAT regression coverage passes, while Playwright PR #126 remains unmerged**
+
+### Remaining risks
+
+- Full clean replay of all 182 migrations on a brand-new disposable Supabase branch was not repeated because creating a paid branch requires separate cost confirmation. Existing upgrade path/live parity and migration validator pass.
+- Seven historical non-accounting migration timestamp/version drifts remain documented and unchanged.
+- Project-wide Supabase Advisor notices remain, including:
+  - RLS enabled/no-policy INFO: https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy
+  - authenticated security-definer WARN: https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable
+  - unindexed foreign keys INFO: https://supabase.com/docs/guides/database/database-linter?lint=0001_unindexed_foreign_keys
+  - multiple permissive policies WARN: https://supabase.com/docs/guides/database/database-linter?lint=0006_multiple_permissive_policies
+- لا يوجد TypeScript/lint gate في المشروع حاليًا.
+- Playwright browser E2E PR #126 غير مدمج، لذلك current main يعتمد على repository/UAT contract tests والـbuild بدل browser E2E كامل.
+- هذه النقاط ليست accounting blockers وفق الاختبارات الحالية، لكنها يجب أن تظهر بوضوح في التقرير النهائي Task 9.
 
 ## Task 9 — Final Verification Report
 
