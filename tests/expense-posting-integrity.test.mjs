@@ -23,7 +23,7 @@ test("expense posting validates project state and records audit evidence", () =>
 });
 
 test("expense UI retries with the same command and has no direct insert", () => {
-  assert.match(ui, /supabase\.rpc\("post_expense"/);
+  assert.match(ui, /supabase\.rpc\("post_expense(?:_with_tax)?"/);
   assert.match(ui, /scope: "expenses:post"/);
   assert.match(ui, /\.from\("expenses"\)\.select\("id,cancelled_at"\)\.eq\("command_id", commandId\)/);
   assert.doesNotMatch(ui, /insertRow\("expenses"/);
