@@ -986,3 +986,106 @@ Affected helpers:
 - المشروع لا يحتوي TypeScript/typecheck أو lint gate.
 - Supabase Advisor project-wide notices ما زالت موجودة كما هو موضح في التقرير النهائي.
 - هذه النقاط موثقة كملاحظات غير مانعة، وليست accounting blockers حسب الأدلة الحالية.
+
+
+# Final Quick Verification
+
+- **Date:** 2026-10-01
+- **Tasks 1–9 status:** Task 1 = FIXED; Tasks 2–9 = PASS
+- **Final Status:** **PASS WITH MINOR RISKS**
+
+### Quick checks performed
+
+- Re-read the completed verification status and confirmed all 9 tasks are closed.
+- Inspected current `main` at `c363b0ccdeba0b63a849e583375950b78e97df16`.
+- Compared the last technical verification commit `18153fdec21e966b118d34097a099ba76cf628b8` with current `main`:
+  - only documentation changed after Task 8;
+  - no application code, accounting SQL, migration, or test logic changed after the final technical validation.
+- Checked the verification-stage diff against baseline:
+  - `docs/accounting-final-verification-report.md`
+  - `docs/accounting-verification-status.md`
+  - `supabase/migrations/20260930100959_accounting_private_helper_acl.sql`
+  - `tests/accounting-private-helper-acl.test.mjs`
+  - no temporary scripts, dumps, debug artifacts, generated build outputs, or unrelated files were introduced in this verification-stage diff.
+- Targeted accounting code sanity scan:
+  - TODO in `src/accounting`: 0
+  - FIXME in `src/accounting`: 0
+  - `console.log` in `src/accounting`: 0
+  - merge/conflict markers in `src/accounting`: 0
+  - accounting-migration TODO/FIXME/conflict markers: 0
+  - accounting-migration TRUNCATE matches: 0
+  - apparent `DROP TABLE` search hits were inspected and were test assertions, comments, or intentional trigger replacement; no destructive accounting table drop was identified.
+- Confirmed the only verification-stage accounting migration is ACL-only and contains revokes for private helpers, with no data mutation or schema destruction.
+- Confirmed core live accounting guards/helpers remain present:
+  - posting-account guard
+  - deferred balance guard
+  - account hierarchy guard
+  - source posting helper
+  - source reversal helper
+  - source-event activation guard
+  - account mapping resolver
+  - each shared integration helper has one catalog definition.
+- Reconfirmed integration design from recorded Tasks 1–9 remains unchanged because no accounting implementation file changed after the last technical verification.
+
+### Tests executed
+
+No new full-suite run was started for this quick pass.
+
+Instead, the quick pass used:
+
+- Existing current-head GitHub Quality Gate #653 on `c363b0ccdeba0b63a849e583375950b78e97df16`: **PASS**
+  - `npm ci`: PASS
+  - migration validation: PASS
+  - repository tests: PASS
+  - clean tree after tests: PASS
+  - production build: PASS
+  - clean tree after build: PASS
+- Small live read-only accounting smoke:
+  - Trial Balance period balanced = true
+  - Trial Balance full GL balanced = true
+  - Balance Sheet balanced = true
+  - Balance Sheet difference = 0.00
+  - unbalanced posted/reversed journals = 0
+  - orphan accounting source links = 0
+  - duplicate active source links = 0
+  - system journals before Activation Date = 0
+  - direct accounting-table SELECT/INSERT/UPDATE/DELETE grants to `anon`/`authenticated` = 0
+- Targeted catalog check for core accounting guard/helper presence.
+- Targeted inspection of the final ACL migration.
+
+### Results
+
+- Chart of Accounts safety invariants remain present.
+- Journal balance/posting/reversal protections remain present.
+- Trial Balance still balances and the full GL balance flag is true.
+- Balance Sheet still satisfies Assets = Liabilities + Equity with zero difference in the current live smoke.
+- Source-driven accounting integration helpers and mappings infrastructure remain present exactly once.
+- No new destructive migration or historical accounting backfill was introduced after Tasks 1–9.
+- No obvious RLS/direct-table bypass was introduced.
+- No verification-stage accidental artifacts were found in the committed repository diff.
+- Current committed `main` has no accounting implementation change after the last successful technical validation.
+
+### Bugs found
+
+- None.
+- One quick-check catalog lookup initially used guessed function signatures for two private helpers and returned false; checking by actual catalog function name confirmed both helpers exist exactly once. This was a verification-query issue, not an application bug.
+
+### Fixes applied
+
+- None.
+- No application code, migration, schema, or runtime data was changed by this quick verification.
+- Only this status section was added.
+
+### Remaining risks
+
+- Full clean replay of all 182 migrations on a new disposable Supabase branch was not repeated.
+- Seven historical non-accounting migration timestamp/version drifts remain documented.
+- Playwright browser E2E PR #126 remains unmerged.
+- The project still has no TypeScript/typecheck or lint gate.
+- GitHub connector verifies the committed remote `main` and its diffs, but cannot inspect uncommitted files in a developer's local working directory; therefore local-only `git status` state is outside this check.
+
+### Final status
+
+**PASS WITH MINOR RISKS**
+
+No blocking accounting or regression issue was found. Remaining items are the documented non-blocking verification/tooling risks above.
