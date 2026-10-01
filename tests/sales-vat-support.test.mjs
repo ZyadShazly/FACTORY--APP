@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 
 const sql=fs.readFileSync(
-  "supabase/migrations/20261001184500_sales_vat_support.sql",
+  "supabase/migrations/20261001184536_sales_vat_support.sql",
   "utf8",
 );
 const ui=fs.readFileSync("src/AppMonolith.jsx","utf8");
