@@ -968,7 +968,7 @@ const ProductionTab=ProductionWorkspace;
 function SalesTab({ data, refresh, canManage }) {
   const { workspace: inventoryWorkspace, error: inventoryError, reload: reloadInventory } = useInventoryWorkspace("sales");
   const finishedBalances = useMemo(() => aggregateInventoryByProduct(inventoryWorkspace || {}), [inventoryWorkspace]);
-  const [form, setForm] = useState({ productId: "", customerId: "", qty: "", unitPrice: "", date: todayStr(), commandId: "" });
+  const [form, setForm] = useState({ productId: "", customerId: "", qty: "", unitPrice: "", taxRate: "0", date: todayStr(), commandId: "" });
   const [err, setErr] = useState(""); const [ok, setOk] = useState("");
   const [cancelAction, setCancelAction] = useState(null);
   const selectedProduct = data.products.find((p) => p.id === form.productId);
@@ -983,13 +983,15 @@ function SalesTab({ data, refresh, canManage }) {
     if (stock != null && stock < qty) return setErr(`المخزون التام المتاح ${stock} وحدة فقط`);
     const unitPrice = form.unitPrice === "" ? Number(selectedProduct.selling_price) : num(form.unitPrice);
     if (!Number.isFinite(unitPrice) || unitPrice <= 0) return setErr("سعر الوحدة يجب أن يكون أكبر من صفر");
+    const taxRate = form.taxRate === "" ? 0 : num(form.taxRate);
+    if (!Number.isFinite(taxRate) || taxRate < 0 || taxRate > 100) return setErr("نسبة الضريبة يجب أن تكون بين 0 و100");
     const commandId = form.commandId || globalThis.crypto.randomUUID();
     if (!form.commandId) setForm((current) => ({ ...current, commandId }));
     const result = await runCriticalMutation({
       scope: "sales:post",
-      mutate: () => supabase.rpc("post_sale", {
+      mutate: () => supabase.rpc("post_sale_with_tax", {
         target_product: form.productId, target_customer: form.customerId, sale_quantity: qty,
-        sale_unit_price: unitPrice, sold_on: form.date, sale_note: null, command_id: commandId,
+        sale_unit_price: unitPrice, sale_tax_rate: taxRate, sold_on: form.date, sale_note: null, command_id: commandId,
       }),
       verify: async () => {
         const verification = await supabase.from("sales").select("id,status").eq("command_id", commandId).single();
@@ -1001,7 +1003,7 @@ function SalesTab({ data, refresh, canManage }) {
       ? "تم إرسال البيع، لكن تعذر التحقق أو تحديث الشاشة. حدّث الصفحة؛ لا تُنشئ أمرًا جديدًا لنفس العملية."
       : result.error.message);
     setOk(result.refreshError ? "تم تسجيل البيع وخصم المخزون، لكن تعذر تحديث الشاشة. حدّث الصفحة بأمان." : "تم تسجيل البيع وخصم مخزون المنتج التام وتحديث حساب العميل");
-    setForm({ productId: "", customerId: "", qty: "", unitPrice: "", date: todayStr(), commandId: "" });
+    setForm({ productId: "", customerId: "", qty: "", unitPrice: "", taxRate: "0", date: todayStr(), commandId: "" });
   }
 
   async function confirmCancelSale() {
@@ -1019,7 +1021,7 @@ function SalesTab({ data, refresh, canManage }) {
 
   const postedSales = data.sales.filter((sale) => sale.status !== "cancelled");
   const cancelledSales = data.sales.filter((sale) => sale.status === "cancelled");
-  const invalidLegacySale = (sale) => num(sale.qty) <= 0 || num(sale.unit_price) < 0 || num(sale.total) < 0 || num(sale.total) !== num(sale.qty) * num(sale.unit_price);
+  const invalidLegacySale = (sale) => { const net = num(sale.subtotal ?? (num(sale.qty) * num(sale.unit_price))); const tax = num(sale.tax_amount ?? 0); return num(sale.qty) <= 0 || num(sale.unit_price) < 0 || tax < 0 || num(sale.total) < 0 || Math.abs(num(sale.total) - (net + tax)) > 0.005; };
 
   return (
     <div>
@@ -1032,6 +1034,7 @@ function SalesTab({ data, refresh, canManage }) {
           <Field label="العميل"><Select value={form.customerId} onChange={(e) => setForm({ ...form, customerId: e.target.value })}><option value="">اختر العميل</option>{data.customers.filter((c) => !c.archived_at).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</Select></Field>
           <Field label="الكمية"><Input type="number" value={form.qty} onChange={(e) => setForm({ ...form, qty: e.target.value })} /></Field>
           <Field label="سعر الوحدة"><Input type="number" value={form.unitPrice} onChange={(e) => setForm({ ...form, unitPrice: e.target.value })} placeholder={selectedProduct ? `افتراضي: ${fmt(selectedProduct.selling_price)}` : ""} /></Field>
+          <Field label="ضريبة القيمة المضافة %"><Input type="number" min="0" max="100" step="0.01" value={form.taxRate} onChange={(e) => setForm({ ...form, taxRate: e.target.value })} /></Field>
           <Field label="التاريخ"><Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></Field>
         </div>
         <div style={{ marginTop: 12 }}><Btn onClick={submit}><Plus size={15} /> تسجيل البيع</Btn></div>
@@ -1040,9 +1043,9 @@ function SalesTab({ data, refresh, canManage }) {
       </Card>
       <Card>
         {postedSales.length === 0 ? <Empty text="لا توجد مبيعات مسجلة بعد" /> : (
-          <Table headers={["التاريخ", "المنتج", "العميل", "الكمية", "سعر الوحدة", "الإجمالي", "الحالة", ""]}>
+          <Table headers={["التاريخ", "المنتج", "العميل", "الكمية", "سعر الوحدة", "الضريبة", "الإجمالي", "الحالة", ""]}>
             {[...postedSales].reverse().map((s) => { const p = data.products.find((x) => x.id === s.product_id); const c = data.customers.find((x) => x.id === s.customer_id); return (
-              <tr key={s.id}><Td>{s.sale_date}</Td><Td>{p?.name || "—"}</Td><Td>{c?.name || "—"}</Td><Td>{s.qty}</Td><Td>{formatMoney(s.unit_price)}</Td><Td style={{ fontWeight: 700, color: invalidLegacySale(s) ? C.red : C.green }}>{formatMoney(s.total)}</Td><Td>{invalidLegacySale(s) ? <span style={{color:C.red,fontWeight:700}}>سجل قديم يحتاج مراجعة</span> : "مرحّل"}</Td><Td>{canManage && <button aria-label="إلغاء البيع" title="إلغاء البيع وعكس أثره" onClick={() => setCancelAction({row:s,reason:"",busy:false,error:""})} style={{background:"none",border:"none",cursor:"pointer",color:C.red}}><X size={15}/></button>}</Td></tr>
+              <tr key={s.id}><Td>{s.sale_date}</Td><Td>{p?.name || "—"}</Td><Td>{c?.name || "—"}</Td><Td>{s.qty}</Td><Td>{formatMoney(s.unit_price)}</Td><Td>{formatMoney(s.tax_amount || 0)}{Number(s.tax_rate || 0) > 0 ? ` (${Number(s.tax_rate)}%)` : ""}</Td><Td style={{ fontWeight: 700, color: invalidLegacySale(s) ? C.red : C.green }}>{formatMoney(s.total)}</Td><Td>{invalidLegacySale(s) ? <span style={{color:C.red,fontWeight:700}}>سجل قديم يحتاج مراجعة</span> : "مرحّل"}</Td><Td>{canManage && <button aria-label="إلغاء البيع" title="إلغاء البيع وعكس أثره" onClick={() => setCancelAction({row:s,reason:"",busy:false,error:""})} style={{background:"none",border:"none",cursor:"pointer",color:C.red}}><X size={15}/></button>}</Td></tr>
             ); })}
           </Table>
         )}
