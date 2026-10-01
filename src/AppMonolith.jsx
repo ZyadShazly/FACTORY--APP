@@ -1194,12 +1194,13 @@ function SuppliersTab({ data, refresh, canManage }) {
   const [name, setName] = useState(""); const [phone, setPhone] = useState("");
   const [editingId, setEditingId] = useState(null);
   const [saveCommandId, setSaveCommandId] = useState("");
-  const [payment, setPayment] = useState({ supplierId: "", amount: "", date: todayStr(), commandId: "" });
+  const [payment, setPayment] = useState({ supplierId: "", amount: "", date: todayStr(), cashBankAccountId: "", commandId: "" });
   const [err, setErr] = useState(""); const [expanded, setExpanded] = useState(null);
   const [search, setSearch] = useState("");
   const [pendingPayment, setPendingPayment] = useState(null); const [paymentBusy, setPaymentBusy] = useState(false);
   const [archiveAction, setArchiveAction] = useState(null);
   const [supplierInvoices, setSupplierInvoices] = useState([]);
+  const [cashBankAccounts, setCashBankAccounts] = useState([]);
   const supplierData = useMemo(() => ({ ...data, supplierInvoices }), [data, supplierInvoices]);
 
   const loadSupplierInvoices = useCallback(async () => {
@@ -1207,7 +1208,12 @@ function SuppliersTab({ data, refresh, canManage }) {
     if (result.error) { setErr(result.error.message); return result; }
     setSupplierInvoices(result.data || []); return result;
   }, []);
-  useEffect(() => { void loadSupplierInvoices(); }, [loadSupplierInvoices]);
+  const loadCashBankAccounts = useCallback(async () => {
+    const result = await supabase.rpc("get_cash_bank_posting_accounts");
+    if (result.error) { setErr(result.error.message); return result; }
+    setCashBankAccounts(result.data || []); return result;
+  }, []);
+  useEffect(() => { void loadSupplierInvoices(); void loadCashBankAccounts(); }, [loadSupplierInvoices, loadCashBankAccounts]);
   async function refreshSupplierData() { const [base, invoices] = await Promise.all([refresh(), loadSupplierInvoices()]); return { error: base?.error || invoices?.error || null }; }
 
   function startEdit(s) { setEditingId(s.id); setName(s.name); setPhone(s.phone || ""); setSaveCommandId(""); }
@@ -1227,15 +1233,16 @@ function SuppliersTab({ data, refresh, canManage }) {
     setPaymentBusy(true); setErr("");
     const commandId = payload.commandId || globalThis.crypto.randomUUID();
     if (!payload.commandId) { setPayment((current) => ({ ...current, commandId })); setPendingPayment((current) => current ? ({ ...current, commandId }) : current); }
-    const result = await supabase.rpc("record_supplier_payment", { target_supplier: payload.supplierId, payment_amount: num(payload.amount), paid_on: payload.date, payment_note: null, command_id: commandId });
+    const result = await supabase.rpc("record_supplier_payment", { target_supplier: payload.supplierId, payment_amount: num(payload.amount), paid_on: payload.date, payment_note: null, command_id: commandId, cash_bank_account: payload.cashBankAccountId });
     if (result.error) { setPaymentBusy(false); return setErr(result.error.message); }
     const refreshed = await refreshSupplierData();
     setPaymentBusy(false); setPendingPayment(null);
     if (refreshed?.error) return setErr("تم حفظ الدفعة، لكن تعذر تحديث الشاشة. حدّث الصفحة بأمان؛ لا تعِد تسجيل الدفعة.");
-    setPayment({ supplierId: "", amount: "", date: todayStr(), commandId: "" });
+    setPayment({ supplierId: "", amount: "", date: todayStr(), cashBankAccountId: "", commandId: "" });
   }
   async function addPayment() {
     if (!payment.supplierId) return setErr("اختر المورد");
+    if (!payment.cashBankAccountId) return setErr("اختر حساب السداد (بنك أو خزينة)");
     if (num(payment.amount) <= 0) return setErr("أدخل مبلغ أكبر من صفر");
     const due = supplierBalances(payment.supplierId, supplierData).due;
     if (num(payment.amount) > due) return setPendingPayment({ ...payment, due, advance: num(payment.amount) - due });
@@ -1281,6 +1288,7 @@ function SuppliersTab({ data, refresh, canManage }) {
         <div style={{ fontWeight: 700, marginBottom: 12 }}>تسجيل دفعة لمورد</div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <Field label="المورد"><Select value={payment.supplierId} onChange={(e) => setPayment({ ...payment, supplierId: e.target.value, commandId:"" })}><option value="">اختر المورد</option>{activeSuppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</Select></Field>
+          <Field label="حساب السداد"><Select value={payment.cashBankAccountId} onChange={(e) => setPayment({ ...payment, cashBankAccountId: e.target.value, commandId:"" })}><option value="">اختر البنك أو الخزينة</option>{cashBankAccounts.map((account) => <option key={account.id} value={account.id}>{account.root_code === "1.1.01" ? "نقدية" : "بنك"} · {account.account_code} · {account.name_ar || account.name_en}</option>)}</Select></Field>
           <Field label="المبلغ"><Input type="number" value={payment.amount} onChange={(e) => setPayment({ ...payment, amount: e.target.value, commandId:"" })} /></Field>
           <Field label="التاريخ"><Input type="date" value={payment.date} onChange={(e) => setPayment({ ...payment, date: e.target.value, commandId:"" })} /></Field>
         </div>
@@ -1334,11 +1342,19 @@ function CustomersTab({ data, refresh, canManage }) {
   const [name, setName] = useState(""); const [phone, setPhone] = useState("");
   const [editingId, setEditingId] = useState(null);
   const [saveCommandId, setSaveCommandId] = useState("");
-  const [receipt, setReceipt] = useState({ customerId: "", amount: "", date: todayStr(), commandId: "" });
+  const [receipt, setReceipt] = useState({ customerId: "", amount: "", date: todayStr(), cashBankAccountId: "", commandId: "" });
   const [err, setErr] = useState(""); const [expanded, setExpanded] = useState(null);
   const [search, setSearch] = useState("");
   const [pendingReceipt, setPendingReceipt] = useState(null); const [receiptBusy, setReceiptBusy] = useState(false);
   const [archiveAction, setArchiveAction] = useState(null);
+  const [cashBankAccounts, setCashBankAccounts] = useState([]);
+
+  const loadCashBankAccounts = useCallback(async () => {
+    const result = await supabase.rpc("get_cash_bank_posting_accounts");
+    if (result.error) { setErr(result.error.message); return result; }
+    setCashBankAccounts(result.data || []); return result;
+  }, []);
+  useEffect(() => { void loadCashBankAccounts(); }, [loadCashBankAccounts]);
 
   function startEdit(c) { setEditingId(c.id); setName(c.name); setPhone(c.phone || ""); setSaveCommandId(""); }
   function cancelEdit() { setEditingId(null); setName(""); setPhone(""); setSaveCommandId(""); setErr(""); }
@@ -1357,15 +1373,16 @@ function CustomersTab({ data, refresh, canManage }) {
     setReceiptBusy(true); setErr("");
     const commandId = payload.commandId || globalThis.crypto.randomUUID();
     if (!payload.commandId) { setReceipt((current) => ({ ...current, commandId })); setPendingReceipt((current) => current ? ({ ...current, commandId }) : current); }
-    const result = await supabase.rpc("record_customer_receipt", { target_customer: payload.customerId, receipt_amount: num(payload.amount), received_on: payload.date, receipt_note: null, command_id: commandId });
+    const result = await supabase.rpc("record_customer_receipt", { target_customer: payload.customerId, receipt_amount: num(payload.amount), received_on: payload.date, receipt_note: null, command_id: commandId, cash_bank_account: payload.cashBankAccountId });
     if (result.error) { setReceiptBusy(false); return setErr(result.error.message); }
     const refreshed = await refresh();
     setReceiptBusy(false); setPendingReceipt(null);
     if (refreshed?.error) return setErr("تم حفظ التحصيل، لكن تعذر تحديث الشاشة. حدّث الصفحة بأمان؛ لا تعِد تسجيل التحصيل.");
-    setReceipt({ customerId: "", amount: "", date: todayStr(), commandId: "" });
+    setReceipt({ customerId: "", amount: "", date: todayStr(), cashBankAccountId: "", commandId: "" });
   }
   async function addReceipt() {
     if (!receipt.customerId) return setErr("اختر العميل");
+    if (!receipt.cashBankAccountId) return setErr("اختر حساب التحصيل (بنك أو خزينة)");
     if (num(receipt.amount) <= 0) return setErr("أدخل مبلغ أكبر من صفر");
     const due = customerBalances(receipt.customerId, data).due;
     if (num(receipt.amount) > due) return setPendingReceipt({ ...receipt, due, advance: num(receipt.amount) - due });
@@ -1411,6 +1428,7 @@ function CustomersTab({ data, refresh, canManage }) {
         <div style={{ fontWeight: 700, marginBottom: 12 }}>تسجيل تحصيل من عميل</div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <Field label="العميل"><Select value={receipt.customerId} onChange={(e) => setReceipt({ ...receipt, customerId: e.target.value, commandId:"" })}><option value="">اختر العميل</option>{activeCustomers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</Select></Field>
+          <Field label="حساب التحصيل"><Select value={receipt.cashBankAccountId} onChange={(e) => setReceipt({ ...receipt, cashBankAccountId: e.target.value, commandId:"" })}><option value="">اختر البنك أو الخزينة</option>{cashBankAccounts.map((account) => <option key={account.id} value={account.id}>{account.root_code === "1.1.01" ? "نقدية" : "بنك"} · {account.account_code} · {account.name_ar || account.name_en}</option>)}</Select></Field>
           <Field label="المبلغ"><Input type="number" value={receipt.amount} onChange={(e) => setReceipt({ ...receipt, amount: e.target.value, commandId:"" })} /></Field>
           <Field label="التاريخ"><Input type="date" value={receipt.date} onChange={(e) => setReceipt({ ...receipt, date: e.target.value, commandId:"" })} /></Field>
         </div>
