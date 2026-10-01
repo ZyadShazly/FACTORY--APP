@@ -1,0 +1,54 @@
+name: playwright-uat
+
+on:
+  pull_request: {}
+  workflow_dispatch:
+    inputs:
+      target_url:
+        description: "Deployment URL to test"
+        required: true
+        default: "https://factory-app-psi.vercel.app"
+
+permissions:
+  contents: read
+
+jobs:
+  uat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      UAT_BASE_URL: ${{ github.event_name == 'workflow_dispatch' && inputs.target_url || '' }}
+      UAT_SUPABASE_URL: ${{ github.event_name == 'workflow_dispatch' && secrets.UAT_SUPABASE_URL || '' }}
+      UAT_SUPABASE_ANON_KEY: ${{ github.event_name == 'workflow_dispatch' && secrets.UAT_SUPABASE_ANON_KEY || '' }}
+      UAT_PRODUCTION_PHONE: ${{ github.event_name == 'workflow_dispatch' && secrets.UAT_PRODUCTION_PHONE || '' }}
+      UAT_PRODUCTION_PASSWORD: ${{ github.event_name == 'workflow_dispatch' && secrets.UAT_PRODUCTION_PASSWORD || '' }}
+      UAT_ACCOUNTANT_PHONE: ${{ github.event_name == 'workflow_dispatch' && secrets.UAT_ACCOUNTANT_PHONE || '' }}
+      UAT_ACCOUNTANT_PASSWORD: ${{ github.event_name == 'workflow_dispatch' && secrets.UAT_ACCOUNTANT_PASSWORD || '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Install Playwright runner without changing lockfile
+        run: npm install --no-save --package-lock=false @playwright/test@1.55.0
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright UAT
+        run: npx playwright test --config=playwright.config.mjs
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-uat-report
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore
