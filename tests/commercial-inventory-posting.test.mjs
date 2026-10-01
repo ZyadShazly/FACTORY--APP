@@ -39,7 +39,7 @@ test("commercial lifecycle restores each issued inventory movement once", () => 
 });
 
 test("commercial UI posts through RPC and reads canonical inventory balances", () => {
-  assert.match(ui, /supabase\.rpc\("post_sale"/);
+  assert.match(ui, /supabase\.rpc\("post_sale(?:_with_tax)?"/);
   assert.match(ui, /supabase\.rpc\("post_rental"/);
   assert.doesNotMatch(ui, /insertRow\("sales"/);
   assert.doesNotMatch(ui, /insertRow\("rentals"/);
