@@ -1465,20 +1465,22 @@ function CustomerLedger({ customerId, data }) {
 /* -------------------------------- Expenses --------------------------------- */
 function ExpensesTab({ data, profileRole, refresh }) {
   const categories = ["كهرباء", "إيجار", "رواتب", "نقل", "صيانة", "إنترنت", "تسويق", "أخرى"];
-  const [form, setForm] = useState({ category: categories[0], amount: "", date: todayStr(), notes: "", projectId: "", commandId: "" });
+  const [form, setForm] = useState({ category: categories[0], amount: "", taxRate: "0", date: todayStr(), notes: "", projectId: "", commandId: "" });
   const [err, setErr] = useState(""); const [ok, setOk] = useState("");
   const [busyId, setBusyId] = useState(null);
   const [cancellingExpense, setCancellingExpense] = useState(null);
   const [cancelReason, setCancelReason] = useState("");
   async function submit() {
     setErr(""); setOk("");
-    if (num(form.amount) <= 0) return setErr("أدخل مبلغ أكبر من صفر");
+    if (num(form.amount) <= 0) return setErr("أدخل مبلغ قبل الضريبة أكبر من صفر");
+    const taxRate = num(form.taxRate || 0);
+    if (!Number.isFinite(taxRate) || taxRate < 0 || taxRate > 100) return setErr("نسبة الضريبة يجب أن تكون بين 0 و100");
     const commandId = form.commandId || globalThis.crypto.randomUUID();
     if (!form.commandId) setForm((current) => ({ ...current, commandId }));
     const result = await runCriticalMutation({
       scope: "expenses:post",
-      mutate: () => supabase.rpc("post_expense", {
-        expense_category: form.category, expense_amount: num(form.amount), spent_on: form.date,
+      mutate: () => supabase.rpc("post_expense_with_tax", {
+        expense_category: form.category, expense_net_amount: num(form.amount), expense_tax_rate: taxRate, spent_on: form.date,
         expense_notes: form.notes.trim() || null, target_project: form.projectId || null, command_id: commandId,
       }),
       verify: async () => {
@@ -1491,7 +1493,7 @@ function ExpensesTab({ data, profileRole, refresh }) {
       ? "تم إرسال المصروف، لكن تعذر التحقق أو تحديث الشاشة. حدّث الصفحة دون إنشاء مصروف جديد."
       : result.error.message);
     setOk(result.refreshError ? "تم تسجيل المصروف، لكن تعذر تحديث الشاشة. حدّث الصفحة بأمان." : "تم تسجيل المصروف بنجاح");
-    setForm({ category: categories[0], amount: "", date: todayStr(), notes: "", projectId: "", commandId: "" });
+    setForm({ category: categories[0], amount: "", taxRate: "0", date: todayStr(), notes: "", projectId: "", commandId: "" });
   }
   async function runFinancialAction(name, row, reason = null) {
     setErr(""); setOk(""); setBusyId(row.id);
@@ -1524,18 +1526,19 @@ function ExpensesTab({ data, profileRole, refresh }) {
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
         <Field label="البند"><Select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>{categories.map((c) => <option key={c} value={c}>{c}</option>)}</Select></Field>
         <Field label="المشروع (اختياري للمصروف العام)"><Select value={form.projectId} onChange={(e) => setForm({ ...form, projectId: e.target.value })}><option value="">مصروف عام بدون مشروع</option>{data.projects.filter((p) => !["closed","cancelled"].includes(p.lifecycle)).map((p) => <option key={p.id} value={p.id}>{p.project_code} · {p.project_name}</option>)}</Select></Field>
-        <Field label="المبلغ"><Input type="number" min="0" step="any" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} /></Field>
+        <Field label="المبلغ قبل الضريبة"><Input type="number" min="0" step="any" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} /></Field>
+        <Field label="ضريبة القيمة المضافة %"><Input type="number" min="0" max="100" step="0.01" value={form.taxRate} onChange={(e) => setForm({ ...form, taxRate: e.target.value })} /></Field>
         <Field label="التاريخ"><Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></Field>
         <Field label="ملاحظات"><Input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></Field>
       </div>
       <div style={{ marginTop: 12 }}><Btn onClick={submit}><Plus size={15}/> تسجيل المصروف</Btn></div>
       {err && <Banner type="error">{err}</Banner>}{ok && <Banner type={operationFeedbackType(ok)}>{ok}</Banner>}
     </Card>
-    <Card>{data.expenses.length === 0 ? <Empty text="لا توجد مصروفات مسجلة" /> : <Table headers={["التاريخ","البند","المشروع","الحالة","الملاحظات","المبلغ","الإجراءات"]}>{[...data.expenses].reverse().map((e) => {
+    <Card>{data.expenses.length === 0 ? <Empty text="لا توجد مصروفات مسجلة" /> : <Table headers={["التاريخ","البند","المشروع","الحالة","الملاحظات","الضريبة","الإجمالي","الإجراءات"]}>{[...data.expenses].reverse().map((e) => {
       const project = data.projects.find((p) => p.id === e.project_id);
       const status = e.cancelled_at ? "ملغي" : ({not_posted:"غير مرحّل",submitted:"قيد المراجعة",posted:"مرحّل",rejected:"مرفوض",reversed:"معكوس"}[e.cost_posting_status] || e.cost_posting_status);
       const canCancel = !e.cancelled_at && (profileRole === "owner" || (profileRole === "manager" && e.cost_posting_status !== "posted"));
-      return <tr key={e.id} style={{opacity:e.cancelled_at?0.65:1}}><Td>{e.expense_date}</Td><Td>{e.category}</Td><Td>{project ? `${project.project_code} · ${project.project_name}` : "عام"}</Td><Td>{status}</Td><Td>{e.cancellation_reason || e.notes || "—"}</Td><Td style={{fontWeight:700,color:C.red}}>{formatMoney(e.amount)}</Td><Td><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{e.project_id && e.cost_posting_status === "not_posted" && !e.cancelled_at && <Btn disabled={busyId===e.id} onClick={() => runFinancialAction("prepare_operational_source_actual_cost", e)}>إرسال للتكلفة</Btn>}{canCancel && <Btn variant="danger" disabled={busyId===e.id} onClick={() => cancel(e)}>إلغاء</Btn>}</div></Td></tr>;
+      return <tr key={e.id} style={{opacity:e.cancelled_at?0.65:1}}><Td>{e.expense_date}</Td><Td>{e.category}</Td><Td>{project ? `${project.project_code} · ${project.project_name}` : "عام"}</Td><Td>{status}</Td><Td>{e.cancellation_reason || e.notes || "—"}</Td><Td>{formatMoney(e.tax_amount || 0)}{Number(e.tax_rate || 0) > 0 ? ` (${Number(e.tax_rate)}%)` : ""}</Td><Td style={{fontWeight:700,color:C.red}}>{formatMoney(e.amount)}</Td><Td><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{e.project_id && e.cost_posting_status === "not_posted" && !e.cancelled_at && <Btn disabled={busyId===e.id} onClick={() => runFinancialAction("prepare_operational_source_actual_cost", e)}>إرسال للتكلفة</Btn>}{canCancel && <Btn variant="danger" disabled={busyId===e.id} onClick={() => cancel(e)}>إلغاء</Btn>}</div></Td></tr>;
     })}</Table>}</Card>
   </div>;
 }
