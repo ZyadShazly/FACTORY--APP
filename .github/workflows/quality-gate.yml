@@ -26,9 +26,6 @@ jobs:
         id: test
         continue-on-error: true
         run: npm test > "$RUNNER_TEMP/test.log" 2>&1
-      - name: Print test failure
-        if: steps.test.outcome == 'failure'
-        run: cat "$RUNNER_TEMP/test.log"
       - uses: actions/upload-artifact@v7
         if: steps.test.outcome == 'failure'
         with:
