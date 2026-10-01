@@ -921,4 +921,68 @@ Affected helpers:
 
 ## Task 9 — Final Verification Report
 
-- **Status:** NOT STARTED
+- **Status:** PASS
+
+### Checks performed
+
+- تم التأكد أن Task 1 حالتها **FIXED** وأن Tasks 2–8 حالتها **PASS** قبل إنشاء التقرير النهائي.
+- تم التحقق أن آخر commit وظيفي/تقني قبل التقرير هو `18153fdec21e966b118d34097a099ba76cf628b8`.
+- تم التحقق من GitHub Quality Gate #651 على commit `18153fdec21e966b118d34097a099ba76cf628b8`: **success**.
+- تمت مقارنة verification baseline `48534c7bd0615176cc09a3dfa9de2c03c30abab0` مع آخر commit قبل التقرير:
+  - ahead by 8 commits
+  - behind by 0
+  - verification-stage functional change الوحيد كان ACL hardening
+- تم إنشاء التقرير النهائي:
+  - `docs/accounting-final-verification-report.md`
+  - commit الإنشاء: `15af2c494395801f7d2d5c916a8d1befe390cfdd`
+- التقرير يشمل:
+  - scope
+  - task statuses
+  - tests/evidence
+  - bugs/fixes
+  - migration/live parity
+  - reports/runtime evidence
+  - permissions/security
+  - regression evidence
+  - technical validation
+  - git diff summary
+  - advisor notices
+  - blockers
+  - remaining risks
+  - final readiness statement
+
+### Bugs found
+
+- لا يوجد bug جديد في Task 9.
+
+### Fixes applied
+
+- لا يوجد تعديل تطبيقي أو schema مطلوب.
+- تم إنشاء التقرير النهائي وتحديث ملف حالة التحقق فقط.
+
+### Files changed
+
+- `docs/accounting-final-verification-report.md`
+- `docs/accounting-verification-status.md`
+
+### Tests run
+
+- لا توجد اختبارات تطبيقية جديدة مطلوبة لـTask 9 لأنها task توثيق وتجميع نهائي فقط.
+- تم الاعتماد على evidence المكتمل من Tasks 1–8.
+- تم التحقق مجددًا من نجاح Quality Gate #651 على آخر current-head تقني قبل التقرير.
+
+### Test results
+
+- Preconditions Tasks 1–8: **PASS/FIXED**
+- Final report creation: **PASS**
+- Blocker review: **PASS — no accounting blocker identified**
+- Final readiness classification: **READY WITH NON-BLOCKING NOTES**
+
+### Remaining risks
+
+- Full fresh replay لكل 182 migration على disposable Supabase branch لم يتم خلال هذه المرحلة.
+- 7 historical non-accounting migration timestamp/version drifts ما زالت موثقة.
+- Playwright browser E2E PR #126 غير مدمج على `main`.
+- المشروع لا يحتوي TypeScript/typecheck أو lint gate.
+- Supabase Advisor project-wide notices ما زالت موجودة كما هو موضح في التقرير النهائي.
+- هذه النقاط موثقة كملاحظات غير مانعة، وليست accounting blockers حسب الأدلة الحالية.
