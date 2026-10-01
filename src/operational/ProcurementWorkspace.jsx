@@ -113,7 +113,7 @@ export function ProcurementWorkspace({data,onNavigate}){
   const[request,setRequest]=useState({display_name:"",project_id:"",budget_item_id:"",material_id:"",description:"",quantity:"",unit:"قطعة",estimated_unit_cost:"",justification:""});
   const[budgetItems,setBudgetItems]=useState([]),[budgetLoading,setBudgetLoading]=useState(false);
   const currencyCode=getCurrencySettings().currency_code;
-  const[quote,setQuote]=useState({request_id:"",supplier_id:"",unit_price:"",currency:currencyCode,base_currency:currencyCode,exchange_rate:"1",rate_date:new Date().toISOString().slice(0,10)});
+  const[quote,setQuote]=useState({request_id:"",supplier_id:"",unit_price:"",tax_rate:"0",currency:currencyCode,base_currency:currencyCode,exchange_rate:"1",rate_date:new Date().toISOString().slice(0,10)});
   const[draftOrder,setDraftOrder]=useState({quote_id:"",display_name:""});
   const[receipt,setReceipt]=useState({order_id:"",warehouse_id:"",delivery_ref:""});
   const[receiptLines,setReceiptLines]=useState({});
@@ -187,12 +187,14 @@ export function ProcurementWorkspace({data,onNavigate}){
   async function saveQuote(){
     const items=ws.request_items.filter(item=>item.purchase_request_id===quote.request_id);
     if(!quote.request_id||!quote.supplier_id||!items.length)return setError("اختر طلبًا معتمدًا وموردًا.");
-    const currency=quote.currency.trim().toUpperCase(),baseCurrency=quote.base_currency.trim().toUpperCase(),rate=Number(quote.exchange_rate);
+    const currency=quote.currency.trim().toUpperCase(),baseCurrency=quote.base_currency.trim().toUpperCase(),rate=Number(quote.exchange_rate),unitPrice=Number(quote.unit_price||0),taxRate=Number(quote.tax_rate||0);
     if(!/^[A-Z]{3}$/.test(currency)||!/^[A-Z]{3}$/.test(baseCurrency))return setError("أدخل كود عملة صحيحًا من 3 أحرف.");
     if(!Number.isFinite(rate)||rate<=0)return setError("سعر الصرف يجب أن يكون رقمًا موجبًا.");
+    if(!Number.isFinite(unitPrice)||unitPrice<0)return setError("سعر الوحدة يجب أن يكون رقمًا غير سالب.");
+    if(!Number.isFinite(taxRate)||taxRate<0||taxRate>100)return setError("نسبة الضريبة يجب أن تكون بين 0 و100.");
     if(currency===baseCurrency&&rate!==1)return setError("سعر الصرف يجب أن يساوي 1 عندما تتطابق عملة المستند والعملة الأساسية.");
     if(currency!==baseCurrency&&!quote.rate_date)return setError("تاريخ سعر الصرف مطلوب للعملة الأجنبية.");
-    await call("save_supplier_quote",{payload:{purchase_request_id:quote.request_id,supplier_id:quote.supplier_id,supplier_reference:null,quote_date:new Date().toISOString().slice(0,10),currency,base_currency:baseCurrency,exchange_rate:rate,rate_date:quote.rate_date,payment_terms:null,delivery_days:null,items:items.map(item=>({purchase_request_item_id:item.id,quantity:Number(item.quantity),unit_price:Number(quote.unit_price||0),discount_amount:0,tax_amount:0}))}},"تم تسجيل عرض المورد.");
+    await call("save_supplier_quote",{payload:{purchase_request_id:quote.request_id,supplier_id:quote.supplier_id,supplier_reference:null,quote_date:new Date().toISOString().slice(0,10),currency,base_currency:baseCurrency,exchange_rate:rate,rate_date:quote.rate_date,payment_terms:null,delivery_days:null,items:items.map(item=>{const quantity=Number(item.quantity),taxAmount=Math.round((quantity*unitPrice*taxRate/100+Number.EPSILON)*100)/100;return{purchase_request_item_id:item.id,quantity,unit_price:unitPrice,discount_amount:0,tax_amount:taxAmount}})}},"تم تسجيل عرض المورد.");
   }
   async function createDraftOrder(){
     if(!draftOrder.quote_id||!draftOrder.display_name.trim())return setError("اختر عرض المورد واكتب اسمًا واضحًا لأمر الشراء.");
@@ -281,6 +283,7 @@ export function ProcurementWorkspace({data,onNavigate}){
           <Field label="الطلب المعتمد"><select style={inputStyle} value={quote.request_id} onChange={event=>setQuote({...quote,request_id:event.target.value})}><option value="">اختر</option>{approvedRequests.map(row=><option key={row.id} value={row.id}>{recordName(row,"request_number")} · {row.request_number}</option>)}</select></Field>
           <Field label="المورد"><select style={inputStyle} value={quote.supplier_id} onChange={event=>setQuote({...quote,supplier_id:event.target.value})}><option value="">اختر</option>{activeSuppliers.map(row=><option key={row.id} value={row.id}>{row.name}</option>)}</select></Field>
           <Field label="سعر الوحدة"><input type="number" min="0" style={inputStyle} value={quote.unit_price} onChange={event=>setQuote({...quote,unit_price:event.target.value})}/></Field>
+          <Field label="ضريبة القيمة المضافة %"><input type="number" min="0" max="100" step="0.01" style={inputStyle} value={quote.tax_rate} onChange={event=>setQuote({...quote,tax_rate:event.target.value})}/></Field>
           <Field label="عملة المستند"><input maxLength="3" style={inputStyle} value={quote.currency} onChange={event=>setQuote({...quote,currency:event.target.value.toUpperCase(),exchange_rate:event.target.value.toUpperCase()===quote.base_currency?"1":quote.exchange_rate})}/></Field>
           <Field label="العملة الأساسية"><input readOnly style={inputStyle} value={quote.base_currency}/></Field>
           <Field label="سعر الصرف"><input type="number" min="0.000001" step="any" style={inputStyle} value={quote.exchange_rate} onChange={event=>setQuote({...quote,exchange_rate:event.target.value})}/></Field>
