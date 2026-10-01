@@ -1,7 +1,9 @@
 import { createClient } from "@supabase/supabase-js";
 
-const url = import.meta.env.VITE_SUPABASE_URL;
-const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
+// fresh-main is intentionally isolated from the current main database.
+// These are client-side Supabase credentials (publishable, not service-role).
+const url = "https://qxucepnpluwygltfcnsz.supabase.co";
+const key = "sb_publishable_wSdvPwLcph0jpXp5soAXEg_ovc2DuDm";
 
 function normalizePhone(value) {
   const compact = String(value || "").trim().replace(/[^0-9+]/g, "");
