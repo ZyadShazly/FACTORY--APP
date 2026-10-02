@@ -3,7 +3,7 @@ import{supabase}from"../supabaseClient";
 import{Button,Field,Notice,Panel,friendlyError,inputStyle,money}from"./ui";
 
 const today=()=>{const d=new Date();const local=new Date(d.getTime()-d.getTimezoneOffset()*60000);return local.toISOString().slice(0,10)};
-const emptyWorkspace={custodies:[],settlements:[],returns:[],employees:[],projects:[],cash_bank_accounts:[]};
+const emptyWorkspace={custodies:[],settlements:[],returns:[],employees:[],projects:[],cash_bank_accounts:[],expense_accounts:[]};
 const statusLabel={open:"مفتوحة",partially_settled:"مسوّاة جزئيًا",settled:"مقفلة"};
 const grid={display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:10,alignItems:"end"};
 const tableStyle={width:"100%",borderCollapse:"collapse",fontSize:13};
@@ -55,7 +55,7 @@ export function EmployeeCashCustodyWorkspace(){
   }
 
   function openSettlement(row){
-    setSettlement({custodyId:row.id,custodyNumber:row.custody_number,employeeName:row.employee_name,remaining:Number(row.remaining_amount||0),amount:"",category:"مصروفات أخرى",date:today(),notes:"",commandId:""});
+    setSettlement({custodyId:row.id,custodyNumber:row.custody_number,employeeName:row.employee_name,remaining:Number(row.remaining_amount||0),amount:"",category:"",expenseAccountId:"",date:today(),notes:"",commandId:""});
     setReturnForm(null);setError("");setOk("");
   }
   async function submitSettlement(){
@@ -63,13 +63,15 @@ export function EmployeeCashCustodyWorkspace(){
     const amount=Number(settlement.amount);
     if(!Number.isFinite(amount)||amount<=0)return setError("أدخل مبلغ مصروف أكبر من صفر.");
     if(amount>settlement.remaining)return setError("مبلغ التسوية أكبر من رصيد العهدة المتبقي.");
-    if(!settlement.category.trim())return setError("اكتب بند المصروف.");
+    if(!settlement.expenseAccountId)return setError("اختر حساب المصروف.");
+    if(!settlement.category.trim())return setError("اكتب بيان المصروف.");
     const commandId=settlement.commandId||globalThis.crypto.randomUUID();
     if(!settlement.commandId)setSettlement(current=>({...current,commandId}));
     setBusy("settlement");
     const result=await supabase.rpc("record_employee_cash_custody_settlement",{
       target_custody:settlement.custodyId,expense_amount:amount,expense_category:settlement.category.trim(),
       settled_on:settlement.date,expense_notes:settlement.notes.trim()||null,command_id:commandId,
+      expense_account:settlement.expenseAccountId,
     });
     setBusy("");
     if(result.error)return setError(friendlyError(result.error));
@@ -133,7 +135,8 @@ export function EmployeeCashCustodyWorkspace(){
     {settlement&&<Panel title={"تسوية مصروف — "+settlement.custodyNumber+" — متبقي "+money(settlement.remaining)}>
       <div style={grid}>
         <Field label="المبلغ المصروف"><Input type="number" min="0.01" step="0.01" max={settlement.remaining} value={settlement.amount} onChange={e=>setSettlement({...settlement,amount:e.target.value,commandId:""})}/></Field>
-        <Field label="بند المصروف"><Input value={settlement.category} onChange={e=>setSettlement({...settlement,category:e.target.value,commandId:""})}/></Field>
+        <Field label="حساب المصروف"><Select value={settlement.expenseAccountId} onChange={e=>setSettlement({...settlement,expenseAccountId:e.target.value,commandId:""})}><option value="">اختر حساب المصروف</option>{workspace.expense_accounts.map(a=><option key={a.id} value={a.id}>{a.account_code} · {a.name_ar||a.name_en}</option>)}</Select></Field>
+        <Field label="بيان المصروف"><Input value={settlement.category} onChange={e=>setSettlement({...settlement,category:e.target.value,commandId:""})}/></Field>
         <Field label="التاريخ"><Input type="date" value={settlement.date} onChange={e=>setSettlement({...settlement,date:e.target.value,commandId:""})}/></Field>
         <Field label="ملاحظات"><Input value={settlement.notes} onChange={e=>setSettlement({...settlement,notes:e.target.value,commandId:""})}/></Field>
         <div style={{display:"flex",gap:6}}><Button disabled={busy==="settlement"} onClick={submitSettlement}>اعتماد التسوية</Button><Button tone="ghost" onClick={()=>setSettlement(null)}>إلغاء</Button></div>
