@@ -17,6 +17,7 @@ test("reports UI uses protected report RPCs and no direct accounting table reads
     "get_accounting_account_ledger",
     "get_accounting_trial_balance",
     "get_accounting_balance_sheet",
+    "get_accounting_profit_loss",
   ]) assert.match(ui,new RegExp(`supabase\\.rpc\\("${rpc}"`));
   assert.doesNotMatch(ui,/supabase\.from\("accounting_/);
 });
@@ -54,4 +55,16 @@ test("balance sheet displays accounting equation and derived current period prof
 test("accounting shell supplies project filters from existing project data",()=>{
   assert.match(app,/<AccountingWorkspace profile=\{profile\} permissions=\{permissions\} projects=\{data\.projects\}/);
   assert.match(ui,/كل المشاريع/);
+});
+
+test("profit and loss report exposes period project filters and GL-derived totals",()=>{
+  assert.match(ui,/قائمة الأرباح والخسائر/);
+  assert.match(ui,/الأرباح والخسائر/);
+  assert.match(ui,/مجمل الربح/);
+  assert.match(ui,/صافي الربح \/ الخسارة/);
+  assert.match(ui,/target_project:filters\.project_id\|\|null/);
+  assert.match(ui,/summary\.revenue/);
+  assert.match(ui,/summary\.cost_of_sales/);
+  assert.match(ui,/summary\.expenses/);
+  assert.match(ui,/summary\.profit_loss/);
 });

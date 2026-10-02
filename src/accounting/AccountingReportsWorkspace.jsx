@@ -118,6 +118,74 @@ function TrialBalanceReport({accounts,projects,onOpenLedger}){
   </section>;
 }
 
+function ProfitLossReport({projects,onOpenLedger}){
+  const [filters,setFilters]=useState({from:yearStart(),to:today(),project_id:""});
+  const [report,setReport]=useState(null);
+  const [state,setState]=useState({loading:true,error:""});
+
+  const load=useCallback(async()=>{
+    setState({loading:true,error:""});
+    const result=await supabase.rpc("get_accounting_profit_loss",{
+      date_from:filters.from||null,
+      date_to:filters.to||null,
+      target_project:filters.project_id||null,
+    });
+    if(result.error){setReport(null);setState({loading:false,error:result.error.message||"تعذر تحميل قائمة الأرباح والخسائر."});return}
+    setReport(result.data||null);setState({loading:false,error:""});
+  },[filters]);
+
+  useEffect(()=>{void load()},[load]);
+
+  const rows=report?.rows||[];
+  const summary=report?.summary||{};
+  const groups=useMemo(()=>({
+    revenue:rows.filter((r)=>r.account_type==="revenue"),
+    cost_of_sales:rows.filter((r)=>r.account_type==="cost_of_sales"),
+    expense:rows.filter((r)=>r.account_type==="expense"),
+  }),[rows]);
+
+  const renderRows=(type)=>groups[type].map((row)=><div className={"balance-sheet-row "+(row.is_posting?"":"group")} key={row.id}>
+    <button type="button" onClick={()=>onOpenLedger(row.id)} style={{"--report-depth":Math.max(0,num(row.depth)-1)}}><span><b>{row.account_code}</b> · {row.name_ar}</span><strong>{money(row.amount)}</strong></button>
+  </div>);
+
+  return <section className="accounting-panel">
+    <div className="accounting-report-heading"><div><h3>قائمة الأرباح والخسائر</h3><p>مشتقة مباشرة من القيود المرحّلة خلال الفترة المحددة، مع إمكانية التصفية حسب المشروع.</p></div><button type="button" className="accounting-button ghost" onClick={load} disabled={state.loading}><RefreshCw size={14}/>تحديث</button></div>
+    <Controls>
+      <Field label="من"><input type="date" value={filters.from} onChange={(e)=>setFilters((f)=>({...f,from:e.target.value}))}/></Field>
+      <Field label="إلى"><input type="date" value={filters.to} onChange={(e)=>setFilters((f)=>({...f,to:e.target.value}))}/></Field>
+      <Field label="المشروع"><select value={filters.project_id} onChange={(e)=>setFilters((f)=>({...f,project_id:e.target.value}))}><option value="">كل المشاريع</option>{projects.map((p)=><option key={p.id} value={p.id}>{p.project_code||""} {p.project_name||p.name||""}</option>)}</select></Field>
+    </Controls>
+
+    {state.error&&<div className="accounting-notice error">{state.error}</div>}
+    {state.loading?<Empty>جارِ تحميل قائمة الأرباح والخسائر...</Empty>:report&&<>
+      <div className="accounting-report-kpis">
+        <div><span>الإيرادات</span><b>{money(summary.revenue)}</b></div>
+        <div><span>تكلفة المبيعات</span><b>{money(summary.cost_of_sales)}</b></div>
+        <div><span>مجمل الربح</span><b>{money(summary.gross_profit)}</b></div>
+        <div><span>المصروفات</span><b>{money(summary.expenses)}</b></div>
+        <div><span>صافي الربح / الخسارة</span><b>{money(summary.profit_loss)}</b></div>
+      </div>
+
+      <div className="balance-sheet-grid">
+        <div className="balance-sheet-section"><h4>الإيرادات</h4>{groups.revenue.length?renderRows("revenue"):<Empty>لا توجد إيرادات في الفترة.</Empty>}<div className="balance-sheet-total"><span>إجمالي الإيرادات</span><b>{money(summary.revenue)}</b></div></div>
+        <div className="balance-sheet-section"><h4>تكلفة المبيعات</h4>{groups.cost_of_sales.length?renderRows("cost_of_sales"):<Empty>لا توجد تكلفة مبيعات في الفترة.</Empty>}<div className="balance-sheet-total"><span>إجمالي تكلفة المبيعات</span><b>{money(summary.cost_of_sales)}</b></div></div>
+        <div className="balance-sheet-section"><h4>المصروفات</h4>{groups.expense.length?renderRows("expense"):<Empty>لا توجد مصروفات في الفترة.</Empty>}<div className="balance-sheet-total"><span>إجمالي المصروفات</span><b>{money(summary.expenses)}</b></div></div>
+      </div>
+
+      <div className="balance-sheet-equation ok">
+        <span>الإيرادات <b>{money(summary.revenue)}</b></span>
+        <span>−</span>
+        <span>تكلفة المبيعات <b>{money(summary.cost_of_sales)}</b></span>
+        <span>−</span>
+        <span>المصروفات <b>{money(summary.expenses)}</b></span>
+        <span>=</span>
+        <span>صافي الربح / الخسارة <b>{money(summary.profit_loss)}</b></span>
+      </div>
+      <div className="accounting-report-note">مجمل الربح = الإيرادات − تكلفة المبيعات. صافي الربح / الخسارة = مجمل الربح − المصروفات. صفوف الحسابات التجميعية للعرض فقط ولا تُجمع مرة ثانية في الإجماليات.</div>
+    </>}
+  </section>;
+}
+
 function BalanceSheetReport({onOpenLedger}){
   const [date,setDate]=useState(today());
   const [report,setReport]=useState(null);
@@ -181,9 +249,11 @@ export function AccountingReportsWorkspace({accounts=[],projects=[]}){
       <button type="button" className={reportTab==="ledger"?"active":""} onClick={()=>setReportTab("ledger")}>كشف حساب</button>
       <button type="button" className={reportTab==="trial"?"active":""} onClick={()=>setReportTab("trial")}>ميزان المراجعة</button>
       <button type="button" className={reportTab==="balance"?"active":""} onClick={()=>setReportTab("balance")}>الميزانية</button>
+      <button type="button" className={reportTab==="profitLoss"?"active":""} onClick={()=>setReportTab("profitLoss")}>الأرباح والخسائر</button>
     </nav>
     {reportTab==="ledger"&&<LedgerReport accounts={accounts} projects={projects} initialAccountId={ledgerAccount} onAccountConsumed={()=>setLedgerAccount("")}/>}
     {reportTab==="trial"&&<TrialBalanceReport accounts={accounts} projects={projects} onOpenLedger={openLedger}/>}
     {reportTab==="balance"&&<BalanceSheetReport onOpenLedger={openLedger}/>}
+    {reportTab==="profitLoss"&&<ProfitLossReport projects={projects} onOpenLedger={openLedger}/>}
   </div>;
 }
