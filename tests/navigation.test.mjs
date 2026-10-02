@@ -5,10 +5,11 @@ import { buildNavigationGroups, loadNavigationState, NAV_GROUPS } from "../src/n
 test("هيكل التنقل يغطي كل صفحة مرة واحدة", () => {
   const pageIds = NAV_GROUPS.flatMap((group) => group.pages);
   assert.equal(new Set(pageIds).size, pageIds.length);
-  assert.equal(pageIds.length, 23);
+  assert.equal(pageIds.length, 24);
   assert.ok(pageIds.includes("workCalendar"));
   assert.ok(pageIds.includes("assets"));
   assert.ok(pageIds.includes("accounting"));
+  assert.ok(pageIds.includes("cashCustody"));
 });
 
 test("التنقل لا يعرض إلا الصفحات المسموحة", () => {
