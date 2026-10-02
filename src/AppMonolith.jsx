@@ -1483,14 +1483,25 @@ function CustomerLedger({ customerId, data }) {
 /* -------------------------------- Expenses --------------------------------- */
 function ExpensesTab({ data, profileRole, refresh }) {
   const categories = ["كهرباء", "إيجار", "رواتب", "نقل", "صيانة", "إنترنت", "تسويق", "أخرى"];
-  const [form, setForm] = useState({ category: categories[0], amount: "", taxRate: "0", date: todayStr(), notes: "", projectId: "", commandId: "" });
+  const [form, setForm] = useState({ category: categories[0], amount: "", taxRate: "0", date: todayStr(), notes: "", projectId: "", cashBankAccountId: "", commandId: "" });
   const [err, setErr] = useState(""); const [ok, setOk] = useState("");
   const [busyId, setBusyId] = useState(null);
   const [cancellingExpense, setCancellingExpense] = useState(null);
   const [cancelReason, setCancelReason] = useState("");
+  const [cashBankAccounts, setCashBankAccounts] = useState([]);
+  useEffect(() => {
+    let active = true;
+    void supabase.rpc("get_cash_bank_posting_accounts").then((result) => {
+      if (!active) return;
+      if (result.error) setErr(result.error.message);
+      else setCashBankAccounts(result.data || []);
+    });
+    return () => { active = false; };
+  }, []);
   async function submit() {
     setErr(""); setOk("");
     if (num(form.amount) <= 0) return setErr("أدخل مبلغ قبل الضريبة أكبر من صفر");
+    if (!form.cashBankAccountId) return setErr("اختر حساب السداد (بنك أو خزينة)");
     const taxRate = num(form.taxRate || 0);
     if (!Number.isFinite(taxRate) || taxRate < 0 || taxRate > 100) return setErr("نسبة الضريبة يجب أن تكون بين 0 و100");
     const commandId = form.commandId || globalThis.crypto.randomUUID();
@@ -1500,6 +1511,7 @@ function ExpensesTab({ data, profileRole, refresh }) {
       mutate: () => supabase.rpc("post_expense_with_tax", {
         expense_category: form.category, expense_net_amount: num(form.amount), expense_tax_rate: taxRate, spent_on: form.date,
         expense_notes: form.notes.trim() || null, target_project: form.projectId || null, command_id: commandId,
+        cash_bank_account: form.cashBankAccountId,
       }),
       verify: async () => {
         const verification = await supabase.from("expenses").select("id,cancelled_at").eq("command_id", commandId).single();
@@ -1511,7 +1523,7 @@ function ExpensesTab({ data, profileRole, refresh }) {
       ? "تم إرسال المصروف، لكن تعذر التحقق أو تحديث الشاشة. حدّث الصفحة دون إنشاء مصروف جديد."
       : result.error.message);
     setOk(result.refreshError ? "تم تسجيل المصروف، لكن تعذر تحديث الشاشة. حدّث الصفحة بأمان." : "تم تسجيل المصروف بنجاح");
-    setForm({ category: categories[0], amount: "", taxRate: "0", date: todayStr(), notes: "", projectId: "", commandId: "" });
+    setForm({ category: categories[0], amount: "", taxRate: "0", date: todayStr(), notes: "", projectId: "", cashBankAccountId: "", commandId: "" });
   }
   async function runFinancialAction(name, row, reason = null) {
     setErr(""); setOk(""); setBusyId(row.id);
@@ -1545,6 +1557,7 @@ function ExpensesTab({ data, profileRole, refresh }) {
         <Field label="البند"><Select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>{categories.map((c) => <option key={c} value={c}>{c}</option>)}</Select></Field>
         <Field label="المشروع (اختياري للمصروف العام)"><Select value={form.projectId} onChange={(e) => setForm({ ...form, projectId: e.target.value })}><option value="">مصروف عام بدون مشروع</option>{data.projects.filter((p) => !["closed","cancelled"].includes(p.lifecycle)).map((p) => <option key={p.id} value={p.id}>{p.project_code} · {p.project_name}</option>)}</Select></Field>
         <Field label="المبلغ قبل الضريبة"><Input type="number" min="0" step="any" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} /></Field>
+        <Field label="حساب السداد"><Select value={form.cashBankAccountId} onChange={(e) => setForm({ ...form, cashBankAccountId: e.target.value, commandId: "" })}><option value="">اختر البنك أو الخزينة</option>{cashBankAccounts.map((account) => <option key={account.id} value={account.id}>{account.root_code === "1.1.01" ? "نقدية" : "بنك"} · {account.account_code} · {account.name_ar || account.name_en}</option>)}</Select></Field>
         <Field label="ضريبة القيمة المضافة %"><Input type="number" min="0" max="100" step="0.01" value={form.taxRate} onChange={(e) => setForm({ ...form, taxRate: e.target.value })} /></Field>
         <Field label="التاريخ"><Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></Field>
         <Field label="ملاحظات"><Input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></Field>
