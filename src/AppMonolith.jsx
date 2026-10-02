@@ -36,6 +36,7 @@ import { MaterialsCatalogWorkspace } from "./operational/MaterialsCatalogWorkspa
 import { ProductionWorkspace } from "./operational/ProductionWorkspace";
 import { ProcurementWorkspace } from "./operational/ProcurementWorkspace";
 import { CommercialAdvancesPanel } from "./operational/CommercialAdvancesPanel";
+import { EmployeeCashCustodyWorkspace } from "./operational/EmployeeCashCustodyWorkspace";
 import { CustomerAdjustmentsPanel } from "./operational/CustomerAdjustmentsPanel";
 import { useInventoryWorkspace } from "./operational/useInventoryWorkspace";
 import { ArchiveSection } from "./ui/foundation";
@@ -70,14 +71,14 @@ const todayStr = () => new Date().toISOString().slice(0, 10);
 
 const ROLES = SYSTEM_ROLES;
 const NAV_BY_ROLE = {
-  manager: ["dashboard", "projects", "projectFiles", "inventory", "purchases", "expenses", "materials", "products", "production", "sales", "rentals", "suppliers", "customers", "accounting", "employees", "payroll", "dailyLabor", "reports", "auditLog", "team"],
-  accountant: ["projects", "projectFiles", "inventory", "purchases", "expenses", "materials", "products", "production", "sales", "rentals", "suppliers", "customers", "accounting", "employees", "payroll", "dailyLabor"],
+  manager: ["dashboard", "projects", "projectFiles", "inventory", "purchases", "expenses", "cashCustody", "materials", "products", "production", "sales", "rentals", "suppliers", "customers", "accounting", "employees", "payroll", "dailyLabor", "reports", "auditLog", "team"],
+  accountant: ["projects", "projectFiles", "inventory", "purchases", "expenses", "cashCustody", "materials", "products", "production", "sales", "rentals", "suppliers", "customers", "accounting", "employees", "payroll", "dailyLabor"],
   production: ["projects", "projectFiles", "inventory", "production"],
 };
-const ALL_PAGE_IDS = ["dashboard", "projects", "projectFiles", "inventory", "purchases", "expenses", "materials", "products", "production", "assets", "sales", "rentals", "suppliers", "customers", "accounting", "employees", "workCalendar", "payroll", "dailyLabor", "reports", "auditLog", "team", "settings"];
+const ALL_PAGE_IDS = ["dashboard", "projects", "projectFiles", "inventory", "purchases", "expenses", "cashCustody", "materials", "products", "production", "assets", "sales", "rentals", "suppliers", "customers", "accounting", "employees", "workCalendar", "payroll", "dailyLabor", "reports", "auditLog", "team", "settings"];
 const PAGE_LABELS = {
   projects: "المشاريع", projectFiles: "ملفات المشاريع", employees: "الموظفون", workCalendar: "تقويم العمل والعطلات", payroll: "المرتبات", dailyLabor: "العمالة اليومية", auditLog: "سجل التدقيق",
-  dashboard: "لوحة التحكم", inventory: "المخزون", purchases: "المشتريات", expenses: "المصروفات", materials: "المواد الخام", products: "المنتجات والتكلفة",
+  dashboard: "لوحة التحكم", inventory: "المخزون", purchases: "المشتريات", expenses: "المصروفات", cashCustody: "العهد النقدية", materials: "المواد الخام", products: "المنتجات والتكلفة",
   production: "أوامر الإنتاج", assets: "الأصول والعِدّة", sales: "المبيعات", rentals: "الإيجارات",
   suppliers: "الموردين", customers: "العملاء", accounting: "المحاسبة", reports: "التقارير", team: "الفريق والصلاحيات", settings: "الإعدادات", assetAlerts: "تنبيهات الأصول", assetMaintenanceOrders: "أوامر صيانة الأصول",
 };
@@ -124,6 +125,7 @@ const PAGE_DESCRIPTIONS = {
   inventory: "رؤية فورية لأرصدة الخامات والمنتجات وحالات النقص.",
   purchases: "تسجيل ومراجعة مشتريات التشغيل وتكاليف التوريد.",
   expenses: "إدارة المصروفات وتصنيفها ومتابعة أثرها المالي.",
+  cashCustody: "صرف وتسوية ورد العهد النقدية للموظفين مع الربط المحاسبي.",
   materials: "تعريف الخامات ومتابعة التكلفة والرصيد المتاح.",
   products: "إدارة المنتجات ومكونات التصنيع والتكلفة التقديرية.",
   production: "تخطيط أوامر الإنتاج ومتابعة التنفيذ والكميات.",
@@ -631,6 +633,7 @@ export default function App() {
     { id: "inventory", label: "المخزون", icon: Boxes },
     { id: "purchases", label: "المشتريات", icon: ClipboardList },
     { id: "expenses", label: "المصروفات", icon: ReceiptText },
+    { id: "cashCustody", label: "العهد النقدية", icon: Wallet },
     { id: "materials", label: "المواد الخام", icon: Package },
     { id: "products", label: "المنتجات والتكلفة", icon: Layers },
     { id: "production", label: "أوامر الإنتاج", icon: Factory },
@@ -668,6 +671,7 @@ export default function App() {
         {activeTab === "inventory" && <InventoryTab canViewFinancials={permissions.view_financials} onNavigate={navigate} allowedPages={permissions.pages || []} />}
         {activeTab === "purchases" && <ProcurementWorkspace data={data} onNavigate={navigate} />}
         {activeTab === "expenses" && <ExpensesTab data={data} profileRole={role} refresh={() => refetchTable("expenses")} />}
+        {activeTab === "cashCustody" && role !== "production" && <EmployeeCashCustodyWorkspace />}
         {activeTab === "materials" && <MaterialsTab data={data} canManage={isAdministrativeRole(role)} refresh={() => refetchTable("materials")} onNavigate={navigate} />}
         {activeTab === "products" && <ProductsTab data={data} canCreate={permissions.can_create_products} canEdit={permissions.can_edit_products} canArchive={permissions.can_delete && permissions.can_edit_products} hideProfitInfo={!permissions.view_financials} refresh={() => refetchTable("products")} />}
         {activeTab === "production" && <ProductionTab data={data} profileRole={role} canViewFinancials={permissions.view_financials} />}
