@@ -4,6 +4,7 @@ import fs from "node:fs";
 
 const migration=fs.readFileSync("supabase/migrations/20261002215604_employee_cash_custody.sql","utf8");
 const dateIntegrity=fs.readFileSync("supabase/migrations/20261002221138_cash_custody_date_integrity.sql","utf8");
+const selectableExpense=fs.readFileSync("supabase/migrations/20261002224144_cash_custody_selectable_expense_account.sql","utf8");
 const ui=fs.readFileSync("src/operational/EmployeeCashCustodyWorkspace.jsx","utf8");
 const app=fs.readFileSync("src/AppMonolith.jsx","utf8");
 const nav=fs.readFileSync("src/navigation.js","utf8");
@@ -64,4 +65,23 @@ test("cash custody dates use local browser date and cannot predate issue",()=>{
   assert.match(dateIntegrity,/Return date cannot be before cash custody issue date/);
   assert.match(dateIntegrity,/coalesce\(settled_on,current_date\)<custody\.issued_on/);
   assert.match(dateIntegrity,/coalesce\(returned_on,current_date\)<custody\.issued_on/);
+});
+
+
+test("cash custody settlement requires an explicit active posting expense account",()=>{
+  assert.match(selectableExpense,/expense_account_id uuid references public\.accounting_accounts/);
+  assert.match(selectableExpense,/alter column expense_account_id set not null/);
+  assert.match(selectableExpense,/Selected expense account must be an active posting expense account/);
+  assert.match(selectableExpense,/expense_account is null/);
+  assert.match(selectableExpense,/account_type<>'expense'/);
+  assert.match(selectableExpense,/'account_id',new\.expense_account_id/);
+  assert.doesNotMatch(selectableExpense,/expense_account:=private\.accounting_resolve_mapping\('expense_default'/);
+});
+
+test("cash custody workspace exposes and submits the selected expense account",()=>{
+  assert.match(ui,/expense_accounts:\[\]/);
+  assert.match(ui,/اختر حساب المصروف/);
+  assert.match(ui,/expenseAccountId/);
+  assert.match(ui,/expense_account:settlement\.expenseAccountId/);
+  assert.match(selectableExpense,/get_expense_posting_accounts/);
 });
