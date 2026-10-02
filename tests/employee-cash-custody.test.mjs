@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 
 const migration=fs.readFileSync("supabase/migrations/20261002215604_employee_cash_custody.sql","utf8");
+const dateIntegrity=fs.readFileSync("supabase/migrations/20261002221138_cash_custody_date_integrity.sql","utf8");
 const ui=fs.readFileSync("src/operational/EmployeeCashCustodyWorkspace.jsx","utf8");
 const app=fs.readFileSync("src/AppMonolith.jsx","utf8");
 const nav=fs.readFileSync("src/navigation.js","utf8");
@@ -54,4 +55,13 @@ test("cash custody is mounted under finance navigation",()=>{
   assert.match(app,/EmployeeCashCustodyWorkspace/);
   assert.match(app,/activeTab === "cashCustody"/);
   assert.match(nav,/pages: \["purchases", "expenses", "cashCustody"/);
+});
+
+
+test("cash custody dates use local browser date and cannot predate issue",()=>{
+  assert.match(ui,/getTimezoneOffset\(\)/);
+  assert.match(dateIntegrity,/Settlement date cannot be before cash custody issue date/);
+  assert.match(dateIntegrity,/Return date cannot be before cash custody issue date/);
+  assert.match(dateIntegrity,/coalesce\(settled_on,current_date\)<custody\.issued_on/);
+  assert.match(dateIntegrity,/coalesce\(returned_on,current_date\)<custody\.issued_on/);
 });
