@@ -1,11 +1,11 @@
 export const NAV_BY_ROLE = {
-  manager: ["dashboard", "projects", "projectFiles", "inventory", "purchases", "expenses", "materials", "products", "production", "sales", "rentals", "suppliers", "customers", "employees", "payroll", "dailyLabor", "reports", "auditLog", "team"],
-  accountant: ["projects", "projectFiles", "inventory", "purchases", "expenses", "materials", "products", "production", "sales", "rentals", "suppliers", "customers", "employees", "payroll", "dailyLabor"],
+  manager: ["dashboard", "projects", "projectFiles", "inventory", "purchases", "expenses", "cashCustody", "materials", "products", "production", "sales", "rentals", "suppliers", "customers", "employees", "payroll", "dailyLabor", "reports", "auditLog", "team"],
+  accountant: ["projects", "projectFiles", "inventory", "purchases", "expenses", "cashCustody", "materials", "products", "production", "sales", "rentals", "suppliers", "customers", "employees", "payroll", "dailyLabor"],
   production: ["projects", "projectFiles", "inventory", "production"],
 };
 
 export const ALL_PAGE_IDS = [
-  "dashboard", "projects", "projectFiles", "inventory", "purchases", "expenses", "materials", "products", "production", "assets", "sales", "rentals", "suppliers", "customers", "employees", "workCalendar", "payroll", "dailyLabor", "reports", "auditLog", "team", "settings",
+  "dashboard", "projects", "projectFiles", "inventory", "purchases", "expenses", "cashCustody", "materials", "products", "production", "assets", "sales", "rentals", "suppliers", "customers", "employees", "workCalendar", "payroll", "dailyLabor", "reports", "auditLog", "team", "settings",
 ];
 
 export const PAGE_LABELS = {
@@ -20,6 +20,7 @@ export const PAGE_LABELS = {
   inventory: "المخزون",
   purchases: "المشتريات",
   expenses: "المصروفات",
+  cashCustody: "العهد النقدية",
   materials: "المواد الخام",
   products: "المنتجات والتكلفة",
   production: "أوامر الإنتاج",
@@ -41,6 +42,7 @@ export const PAGE_DESCRIPTIONS = {
   inventory: "رؤية فورية لأرصدة الخامات والمنتجات وحالات النقص.",
   purchases: "تسجيل ومراجعة مشتريات التشغيل وتكاليف التوريد.",
   expenses: "إدارة المصروفات وتصنيفها ومتابعة أثرها المالي.",
+  cashCustody: "صرف وتسوية ورد العهد النقدية للموظفين مع الربط المحاسبي.",
   materials: "تعريف الخامات ومتابعة التكلفة والرصيد المتاح.",
   products: "إدارة المنتجات ومكونات التصنيع والتكلفة التقديرية.",
   production: "تخطيط أوامر الإنتاج ومتابعة التنفيذ والكميات.",

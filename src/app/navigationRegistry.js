@@ -14,6 +14,7 @@ import {
   Package,
   ReceiptText,
   ScrollText,
+  Wallet,
   Settings,
   ShieldCheck,
   ShoppingCart,
@@ -30,6 +31,7 @@ export const APP_TABS = Object.freeze([
   { id: "inventory", label: "المخزون", icon: Boxes, description: "رؤية فورية لأرصدة الخامات والمنتجات وحالات النقص." },
   { id: "purchases", label: "المشتريات", icon: ClipboardList, description: "تسجيل ومراجعة مشتريات التشغيل وتكاليف التوريد." },
   { id: "expenses", label: "المصروفات", icon: ReceiptText, description: "إدارة المصروفات وتصنيفها ومتابعة أثرها المالي." },
+  { id: "cashCustody", label: "العهد النقدية", icon: Wallet, description: "صرف وتسوية ورد العهد النقدية للموظفين مع الربط المحاسبي." },
   { id: "materials", label: "المواد الخام", icon: Package, description: "تعريف الخامات ومتابعة التكلفة والرصيد المتاح." },
   { id: "products", label: "المنتجات والتكلفة", icon: Layers, description: "إدارة المنتجات ومكونات التصنيع والتكلفة التقديرية." },
   { id: "production", label: "أوامر الإنتاج", icon: Factory, description: "تخطيط أوامر الإنتاج ومتابعة التنفيذ والكميات." },
@@ -62,8 +64,8 @@ export const APP_PAGE_LABELS = Object.freeze({
 });
 
 export const DEFAULT_TABS_BY_ROLE = Object.freeze({
-  manager: Object.freeze(["dashboard", "projects", "projectFiles", "inventory", "purchases", "expenses", "materials", "products", "production", "sales", "rentals", "suppliers", "customers", "employees", "payroll", "dailyLabor", "reports", "auditLog", "team"]),
-  accountant: Object.freeze(["projects", "projectFiles", "inventory", "purchases", "expenses", "materials", "products", "production", "sales", "rentals", "suppliers", "customers", "accounting", "employees", "payroll", "dailyLabor"]),
+  manager: Object.freeze(["dashboard", "projects", "projectFiles", "inventory", "purchases", "expenses", "cashCustody", "materials", "products", "production", "sales", "rentals", "suppliers", "customers", "employees", "payroll", "dailyLabor", "reports", "auditLog", "team"]),
+  accountant: Object.freeze(["projects", "projectFiles", "inventory", "purchases", "expenses", "cashCustody", "materials", "products", "production", "sales", "rentals", "suppliers", "customers", "accounting", "employees", "payroll", "dailyLabor"]),
   production: Object.freeze(["projects", "projectFiles", "inventory", "production"]),
 });
 

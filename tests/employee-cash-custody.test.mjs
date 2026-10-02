@@ -1,0 +1,57 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+
+const migration=fs.readFileSync("supabase/migrations/20261002215604_employee_cash_custody.sql","utf8");
+const ui=fs.readFileSync("src/operational/EmployeeCashCustodyWorkspace.jsx","utf8");
+const app=fs.readFileSync("src/AppMonolith.jsx","utf8");
+const nav=fs.readFileSync("src/navigation.js","utf8");
+
+test("cash custody has immutable source ledgers and idempotent commands",()=>{
+  for(const table of ["employee_cash_custodies","employee_cash_custody_settlements","employee_cash_custody_returns"]){
+    assert.match(migration,new RegExp("create table if not exists public\\."+table));
+  }
+  assert.match(migration,/command_id uuid not null unique/g);
+  assert.match(migration,/on delete restrict/g);
+  assert.match(migration,/Settlement exceeds remaining cash custody balance/);
+  assert.match(migration,/Return exceeds remaining cash custody balance/);
+});
+
+test("advance posts employee receivable against selected bank or cash",()=>{
+  assert.match(migration,/'employee_advances_receivable'/);
+  assert.match(migration,/accounting_assert_cash_bank_posting_account\(new\.cash_bank_account_id\)/);
+  assert.match(migration,/'custody_advance_posted'/);
+  assert.match(migration,/'employee_advance'/);
+});
+
+test("settlement expenses reduce custody and project-linked settlement becomes Actual Cost",()=>{
+  assert.match(migration,/'custody_settlement_posted'/);
+  assert.match(migration,/'expense_default'/);
+  assert.match(migration,/'employee_cash_custody_settlement_line'/);
+  assert.match(migration,/'cost_category','employee_cash_custody'/);
+  assert.match(migration,/submit_project_actual_cost/);
+  assert.match(migration,/approve_project_actual_cost/);
+});
+
+test("cash return debits selected bank or cash and credits employee custody",()=>{
+  assert.match(migration,/'custody_return_posted'/);
+  assert.match(migration,/record_employee_cash_custody_return/);
+  assert.match(migration,/private\.accounting_assert_cash_bank_posting_account\(cash_bank_account\)/);
+});
+
+test("workspace exposes issue settlement return with bank cash selection",()=>{
+  assert.match(ui,/record_employee_cash_custody"/);
+  assert.match(ui,/record_employee_cash_custody_settlement"/);
+  assert.match(ui,/record_employee_cash_custody_return"/);
+  assert.match(ui,/get_employee_cash_custody_workspace/);
+  assert.match(ui,/حساب الصرف/);
+  assert.match(ui,/حساب الاستلام/);
+  assert.match(ui,/تسوية مصروف/);
+  assert.match(ui,/رد نقدية/);
+});
+
+test("cash custody is mounted under finance navigation",()=>{
+  assert.match(app,/EmployeeCashCustodyWorkspace/);
+  assert.match(app,/activeTab === "cashCustody"/);
+  assert.match(nav,/pages: \["purchases", "expenses", "cashCustody"/);
+});
