@@ -364,6 +364,7 @@ export default function App() {
   const initialLocation = readWorkspaceLocation(window.location.search);
   const [tab, setTab] = useState(V22_DEMO ? (ASSET_QR_MODE ? "assets" : initialLocation.page || "projects") : (ASSET_QR_MODE ? "assets" : initialLocation.page));
   const [routeProjectId, setRouteProjectId] = useState(initialLocation.projectId);
+  const [routeSourceRecordId, setRouteSourceRecordId] = useState(initialLocation.sourceRecordId);
   const [dataWarnings, setDataWarnings] = useState([]);
   const [realtimeStatus, setRealtimeStatus] = useState(V22_DEMO ? (DEMO_CONNECTION_STATE === "offline" ? "RECONNECTING" : "DEMO") : "CONNECTING");
   const [openNavGroups, setOpenNavGroups] = useState(loadNavigationState);
@@ -400,6 +401,7 @@ export default function App() {
       const location = readWorkspaceLocation(window.location.search);
       setTab(location.page);
       setRouteProjectId(location.projectId);
+      setRouteSourceRecordId(location.sourceRecordId);
     };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
@@ -606,12 +608,13 @@ export default function App() {
   }, [permissions]);
 
   const navigate = useCallback((page, options = {}) => {
-    const next = { page, projectId: options.projectId || null };
+    const next = { page, projectId: options.projectId || null, sourceRecordId: options.sourceRecordId || null };
     const nextUrl = workspaceUrl(next);
     if (options.replace) window.history.replaceState(next, "", nextUrl);
     else window.history.pushState(next, "", nextUrl);
     setTab(page);
     setRouteProjectId(next.projectId);
+    setRouteSourceRecordId(next.sourceRecordId);
   }, []);
 
   if (ASSET_CONFIRMATION_MODE) return <AssetExternalConfirmation/>;
@@ -676,11 +679,11 @@ export default function App() {
         {activeTab === "products" && <ProductsTab data={data} canCreate={permissions.can_create_products} canEdit={permissions.can_edit_products} canArchive={permissions.can_delete && permissions.can_edit_products} hideProfitInfo={!permissions.view_financials} refresh={() => refetchTable("products")} />}
         {activeTab === "production" && <ProductionTab data={data} profileRole={role} canViewFinancials={permissions.view_financials} />}
         {activeTab === "assets" && permissions.assets_view && <AssetsPage data={data} profile={profile} permissions={permissions} refresh={refetchTable} />}
-        {activeTab === "sales" && <SalesTab data={data} refresh={() => refetchTable("sales")} canManage={isAdministrativeRole(role)} />}
+        {activeTab === "sales" && <SalesTab data={data} refresh={() => refetchTable("sales")} canManage={isAdministrativeRole(role)} focusedSaleId={routeSourceRecordId} />}
         {activeTab === "rentals" && <RentalsTab data={data} refresh={() => refetchTable("rentals")} canManage={isAdministrativeRole(role)} />}
         {activeTab === "suppliers" && <SuppliersTab data={data} refresh={() => refetchTables("suppliers", "supplierPayments")} canManage={isAdministrativeRole(role)} />}
         {activeTab === "customers" && <CustomersTab data={data} refresh={() => refetchTables("customers", "customerReceipts", "customerAdjustments")} canManage={isAdministrativeRole(role)} />}
-        {activeTab === "accounting" && permissions.accounting_view && <AccountingWorkspace profile={profile} permissions={permissions} projects={data.projects} />}
+        {activeTab === "accounting" && permissions.accounting_view && <AccountingWorkspace profile={profile} permissions={permissions} projects={data.projects} onNavigate={navigate} />}
         {activeTab === "employees" && role !== "production" && <EmployeesTab data={data} profile={profile} refresh={refetchTable} />}
         {activeTab === "workCalendar" && permissions.payroll_calendar_view && <WorkCalendarTab data={data} profile={profile} permissions={permissions} refresh={refetchTable} />}
         {activeTab === "payroll" && permissions.payroll_view && data.payroll.some((row) => row.status === "draft" && row.calendar_stale) && <div className="module-state error compact"><AlertCircle size={20}/><div><strong>مسودة الراتب تحتاج إعادة حساب</strong><p>تغير تقويم العمل بعد إنشاء المسودة. تمنع قاعدة البيانات اعتمادها حتى إعادة الحساب أو استخدام صلاحية التجاوز الموثقة.</p></div></div>}
@@ -969,13 +972,23 @@ function ProductsTab({ data, canCreate, canEdit, canArchive, hideProfitInfo, ref
 const ProductionTab=ProductionWorkspace;
 
 /* ----------------------------------- Sales ---------------------------------- */
-function SalesTab({ data, refresh, canManage }) {
+function SalesTab({ data, refresh, canManage, focusedSaleId = "" }) {
   const { workspace: inventoryWorkspace, error: inventoryError, reload: reloadInventory } = useInventoryWorkspace("sales");
   const finishedBalances = useMemo(() => aggregateInventoryByProduct(inventoryWorkspace || {}), [inventoryWorkspace]);
   const [form, setForm] = useState({ productId: "", customerId: "", qty: "", unitPrice: "", taxRate: "0", date: todayStr(), commandId: "" });
   const [err, setErr] = useState(""); const [ok, setOk] = useState("");
   const [cancelAction, setCancelAction] = useState(null);
   const selectedProduct = data.products.find((p) => p.id === form.productId);
+
+  useEffect(() => {
+    if (!focusedSaleId) return;
+    const frame = window.requestAnimationFrame(() => {
+      const target = document.getElementById(`sale-source-${focusedSaleId}`);
+      target?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [focusedSaleId, data.sales]);
+
 
   async function submit() {
     setErr(""); setOk("");
@@ -1046,16 +1059,17 @@ function SalesTab({ data, refresh, canManage }) {
         {ok && <Banner type={operationFeedbackType(ok)}>{ok}</Banner>}
       </Card>
       <Card>
+        {focusedSaleId && <Banner type={data.sales.some((sale)=>sale.id===focusedSaleId)?"success":"error"}>{data.sales.some((sale)=>sale.id===focusedSaleId)?"تم تحديد حركة المصدر المحاسبي المطلوبة.":"تعذر العثور على حركة المصدر المطلوبة في المبيعات."}</Banner>}
         {postedSales.length === 0 ? <Empty text="لا توجد مبيعات مسجلة بعد" /> : (
           <Table headers={["التاريخ", "المنتج", "العميل", "الكمية", "سعر الوحدة", "الضريبة", "الإجمالي", "الحالة", ""]}>
             {[...postedSales].reverse().map((s) => { const p = data.products.find((x) => x.id === s.product_id); const c = data.customers.find((x) => x.id === s.customer_id); return (
-              <tr key={s.id}><Td>{s.sale_date}</Td><Td>{p?.name || "—"}</Td><Td>{c?.name || "—"}</Td><Td>{s.qty}</Td><Td>{formatMoney(s.unit_price)}</Td><Td>{formatMoney(s.tax_amount || 0)}{Number(s.tax_rate || 0) > 0 ? ` (${Number(s.tax_rate)}%)` : ""}</Td><Td style={{ fontWeight: 700, color: invalidLegacySale(s) ? C.red : C.green }}>{formatMoney(s.total)}</Td><Td>{invalidLegacySale(s) ? <span style={{color:C.red,fontWeight:700}}>سجل قديم يحتاج مراجعة</span> : "مرحّل"}</Td><Td>{canManage && <button aria-label="إلغاء البيع" title="إلغاء البيع وعكس أثره" onClick={() => setCancelAction({row:s,reason:"",busy:false,error:""})} style={{background:"none",border:"none",cursor:"pointer",color:C.red}}><X size={15}/></button>}</Td></tr>
+              <tr key={s.id} id={`sale-source-${s.id}`} style={s.id===focusedSaleId?{outline:"2px solid var(--color-accent)",outlineOffset:"-2px",background:"var(--color-surface-muted)"}:undefined}><Td>{s.sale_date}</Td><Td>{p?.name || "—"}</Td><Td>{c?.name || "—"}</Td><Td>{s.qty}</Td><Td>{formatMoney(s.unit_price)}</Td><Td>{formatMoney(s.tax_amount || 0)}{Number(s.tax_rate || 0) > 0 ? ` (${Number(s.tax_rate)}%)` : ""}</Td><Td style={{ fontWeight: 700, color: invalidLegacySale(s) ? C.red : C.green }}>{formatMoney(s.total)}</Td><Td>{invalidLegacySale(s) ? <span style={{color:C.red,fontWeight:700}}>سجل قديم يحتاج مراجعة</span> : "مرحّل"}</Td><Td>{canManage && <button aria-label="إلغاء البيع" title="إلغاء البيع وعكس أثره" onClick={() => setCancelAction({row:s,reason:"",busy:false,error:""})} style={{background:"none",border:"none",cursor:"pointer",color:C.red}}><X size={15}/></button>}</Td></tr>
             ); })}
           </Table>
         )}
       </Card>
       <ArchiveSection title="المبيعات الملغاة" count={cancelledSales.length} helpText="السجلات الملغاة محفوظة للمراجعة، ولا تدخل في المخزون أو الإيراد أو رصيد العميل.">
-        {cancelledSales.length === 0 ? <Empty text="لا توجد مبيعات ملغاة" /> : <Table headers={["التاريخ", "المنتج", "العميل", "الإجمالي", "سبب الإلغاء", "وقت الإلغاء"]}>{[...cancelledSales].reverse().map((s) => <tr key={s.id}><Td>{s.sale_date}</Td><Td>{data.products.find((p) => p.id === s.product_id)?.name || "—"}</Td><Td>{data.customers.find((c) => c.id === s.customer_id)?.name || "—"}</Td><Td>{formatMoney(s.total)}</Td><Td>{s.cancellation_reason || "—"}</Td><Td>{s.cancelled_at ? new Date(s.cancelled_at).toLocaleString("ar-EG") : "—"}</Td></tr>)}</Table>}
+        {cancelledSales.length === 0 ? <Empty text="لا توجد مبيعات ملغاة" /> : <Table headers={["التاريخ", "المنتج", "العميل", "الإجمالي", "سبب الإلغاء", "وقت الإلغاء"]}>{[...cancelledSales].reverse().map((s) => <tr key={s.id} id={`sale-source-${s.id}`} style={s.id===focusedSaleId?{outline:"2px solid var(--color-accent)",outlineOffset:"-2px",background:"var(--color-surface-muted)"}:undefined}><Td>{s.sale_date}</Td><Td>{data.products.find((p) => p.id === s.product_id)?.name || "—"}</Td><Td>{data.customers.find((c) => c.id === s.customer_id)?.name || "—"}</Td><Td>{formatMoney(s.total)}</Td><Td>{s.cancellation_reason || "—"}</Td><Td>{s.cancelled_at ? new Date(s.cancelled_at).toLocaleString("ar-EG") : "—"}</Td></tr>)}</Table>}
       </ArchiveSection>
       <ConfirmDialog open={Boolean(cancelAction)} title="إلغاء عملية البيع" description="سيبقى السجل محفوظًا، وسيُعكس أثره على المخزون ورصيد العميل مرة واحدة فقط." confirmLabel="إلغاء وعكس" danger reasonRequired reason={cancelAction?.reason||""} busy={cancelAction?.busy} error={cancelAction?.error} onReasonChange={(reason)=>setCancelAction((current)=>({...current,reason,error:""}))} onConfirm={confirmCancelSale} onCancel={()=>setCancelAction(null)}/>
     </div>
