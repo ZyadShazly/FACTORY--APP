@@ -2,7 +2,7 @@ import React,{useEffect,useMemo,useState}from"react";
 import{supabase}from"../supabaseClient";
 import{Button,Field,Notice,Panel,friendlyError,inputStyle,money}from"./ui";
 
-const today=()=>new Date().toISOString().slice(0,10);
+const today=()=>{const d=new Date();const local=new Date(d.getTime()-d.getTimezoneOffset()*60000);return local.toISOString().slice(0,10)};
 const emptyWorkspace={custodies:[],settlements:[],returns:[],employees:[],projects:[],cash_bank_accounts:[]};
 const statusLabel={open:"مفتوحة",partially_settled:"مسوّاة جزئيًا",settled:"مقفلة"};
 const grid={display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:10,alignItems:"end"};
