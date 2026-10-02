@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 
 const migration=fs.readFileSync("supabase/migrations/20261002215604_employee_cash_custody.sql","utf8");
-const dateIntegrity=fs.readFileSync("supabase/migrations/20261003011000_cash_custody_date_integrity.sql","utf8");
+const dateIntegrity=fs.readFileSync("supabase/migrations/20261002221138_cash_custody_date_integrity.sql","utf8");
 const ui=fs.readFileSync("src/operational/EmployeeCashCustodyWorkspace.jsx","utf8");
 const app=fs.readFileSync("src/AppMonolith.jsx","utf8");
 const nav=fs.readFileSync("src/navigation.js","utf8");
