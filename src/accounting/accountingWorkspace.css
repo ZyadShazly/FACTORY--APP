@@ -88,7 +88,7 @@
 .journal-card summary{cursor:pointer;font-weight:800;font-size:12px}
 .journal-lines-view{display:grid;gap:5px;margin-top:8px}
 .journal-lines-view>div{display:flex;justify-content:space-between;gap:10px;padding:6px 8px;border-radius:7px;background:var(--color-surface-muted);font-size:12px}
-.journal-source{margin-top:7px}
+.journal-source{margin-top:7px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}.journal-source .accounting-button{padding:5px 9px;font-size:11px}
 .journal-card .accounting-row-actions{margin-top:10px}
 .journal-modal{width:min(980px,100%)}
 .journal-lines-editor{display:grid;gap:8px;margin-top:16px}

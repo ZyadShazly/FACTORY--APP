@@ -165,7 +165,7 @@ function AccountEditor({ editor, accounts, onChange, onClose, onSave, busy }) {
   </div>;
 }
 
-export function AccountingWorkspace({ profile, permissions, projects = [] }) {
+export function AccountingWorkspace({ profile, permissions, projects = [], onNavigate }) {
   const [accounts, setAccounts] = useState([]);
   const [expanded, setExpanded] = useState(new Set());
   const [query, setQuery] = useState("");
@@ -319,7 +319,7 @@ export function AccountingWorkspace({ profile, permissions, projects = [] }) {
       <button type="button" className={section === "mappings" ? "active" : ""} onClick={() => setSection("mappings")}>ربط الحسابات</button>
     </nav>
 
-    {section === "journals" ? <JournalWorkspace accounts={accounts} profile={profile} permissions={permissions}/> :
+    {section === "journals" ? <JournalWorkspace accounts={accounts} profile={profile} permissions={permissions} onNavigate={onNavigate}/> :
      section === "reports" ? <AccountingReportsWorkspace accounts={accounts} projects={projects}/> :
      section === "mappings" ? <AccountingMappingsWorkspace accounts={accounts} profile={profile}/> : <>
 

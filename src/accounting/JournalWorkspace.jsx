@@ -80,7 +80,7 @@ function JournalEditor({editor,accounts,busy,onChange,onClose,onSave}){
   </div>;
 }
 
-export function JournalWorkspace({accounts,profile,permissions}){
+export function JournalWorkspace({accounts,profile,permissions,onNavigate}){
   const [filters,setFilters]=useState({from:"",to:""});
   const [workspace,setWorkspace]=useState({settings:{},periods:[],journals:[]});
   const [editor,setEditor]=useState(null);
@@ -95,6 +95,14 @@ export function JournalWorkspace({accounts,profile,permissions}){
   const canPost=Boolean(permissions?.accounting_journal_post);
   const canReverse=Boolean(permissions?.accounting_journal_reverse);
   const canMasterEdit=isOwner&&Boolean(permissions?.accounting_journal_edit_posted);
+
+  const openSource=(row)=>{
+    if(row.source_module==="sales"&&row.source_record_id&&onNavigate){
+      onNavigate("sales",{sourceRecordId:row.source_record_id});
+    }
+  };
+  const canOpenSource=(row)=>row.source_module==="sales"&&Boolean(row.source_record_id)&&Boolean(onNavigate);
+
 
   const load=useCallback(async()=>{
     setState((s)=>({...s,loading:true,error:""}));
@@ -243,7 +251,10 @@ export function JournalWorkspace({accounts,profile,permissions}){
               <span>{accounts.find((a)=>a.id===line.account_id)?.account_code||"—"} · {accounts.find((a)=>a.id===line.account_id)?.name_ar||"حساب"}</span>
               <span>{amount(line.debit)>0?"مدين "+money(line.debit):"دائن "+money(line.credit)}</span>
             </div>)}</div>
-            {(row.source_module||row.source_record_id)&&<div className="journal-source">المصدر: {row.source_module||"—"} · {row.source_record_id||"—"}</div>}
+            {(row.source_module||row.source_record_id)&&<div className="journal-source">
+              <span>المصدر: {row.source_module||"—"} · {row.source_record_id||"—"}</span>
+              {canOpenSource(row)&&<button type="button" className="accounting-button ghost" onClick={()=>openSource(row)}>فتح الحركة الأصلية</button>}
+            </div>}
           </details>
           <div className="accounting-row-actions">
             {row.status==="draft"&&canCreate&&<button type="button" onClick={()=>setEditor(editorFromJournal(row,"draft-edit"))}>تعديل المسودة</button>}
