@@ -45,3 +45,20 @@ test("journal editor keeps debit and credit mutually exclusive per line",()=>{
   assert.match(ui,/إجمالي المدين/);
   assert.match(ui,/إجمالي الدائن/);
 });
+
+test("journal account selection is search-first by compact code or account name",()=>{
+  assert.match(ui,/function JournalAccountPicker/);
+  assert.match(ui,/placeholder=\{selected\?"ابحث لتغيير الحساب\.\.\.":"ابحث بالكود أو اسم الحساب\.\.\."\}/);
+  assert.match(ui,/accountMatchesLookup\(account,normalized\)/);
+  assert.match(ui,/compactAccountCode\(account\.account_code\)/);
+  assert.match(ui,/\.slice\(0,8\)/);
+  assert.doesNotMatch(
+    ui.match(/function JournalEditor[\s\S]*?\n}\n\nexport function JournalWorkspace/)?.[0] || "",
+    /<select aria-label=\{"حساب السطر "/,
+  );
+});
+
+test("journal details display account codes without dots while preserving account ids",()=>{
+  assert.match(ui,/compactAccountCode\(accounts\.find\(\(a\)=>a\.id===line\.account_id\)\?\.account_code\)/);
+  assert.match(ui,/account_id:line\.account_id/);
+});
