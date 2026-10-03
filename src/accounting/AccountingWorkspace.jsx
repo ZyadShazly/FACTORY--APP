@@ -13,6 +13,7 @@ import { supabase } from "../supabaseClient";
 import { JournalWorkspace } from "./JournalWorkspace";
 import { AccountingReportsWorkspace } from "./AccountingReportsWorkspace";
 import { AccountingMappingsWorkspace } from "./AccountingMappingsWorkspace";
+import { accountMatchesLookup, compactAccountCode } from "./accountCodes";
 import "./accountingWorkspace.css";
 
 const TYPE_LABELS = {
@@ -38,15 +39,6 @@ const EMPTY_EDITOR = {
   description: "",
 };
 
-function accountSearchText(account) {
-  return [
-    account.account_code,
-    account.name_ar,
-    account.name_en,
-    TYPE_LABELS[account.account_type],
-  ].filter(Boolean).join(" ").toLowerCase();
-}
-
 function buildVisibleRows(accounts, expanded, query, accountType) {
   const byId = new Map(accounts.map((row) => [row.id, row]));
   const children = new Map();
@@ -67,7 +59,7 @@ function buildVisibleRows(accounts, expanded, query, accountType) {
 
   if (filtering) {
     for (const row of accounts) {
-      const matchesText = !normalized || accountSearchText(row).includes(normalized);
+      const matchesText = !normalized || accountMatchesLookup(row, normalized);
       const matchesType = !accountType || row.account_type === accountType;
       if (!matchesText || !matchesType) continue;
       let current = row;
@@ -117,7 +109,7 @@ function AccountEditor({ editor, accounts, onChange, onParentChange, onClose, on
     }
     return accounts
       .filter((row) => row.is_active && !blocked.has(row.id))
-      .filter((row) => accountSearchText(row).includes(normalizedParentQuery))
+      .filter((row) => accountMatchesLookup(row, normalizedParentQuery))
       .sort((a, b) => String(a.account_code).localeCompare(String(b.account_code), "en", { numeric: true }))
       .slice(0, 8);
   }, [accounts, editor.id, normalizedParentQuery]);
@@ -140,12 +132,11 @@ function AccountEditor({ editor, accounts, onChange, onParentChange, onClose, on
       <div className="accounting-form-grid">
         <label>كود الحساب
           <input
-            value={editor.account_code}
-            readOnly={editor.mode !== "edit"}
-            onChange={(e) => editor.mode === "edit" && onChange({ account_code: e.target.value })}
-            placeholder={editor.mode === "edit" ? "مثال: 1.1.08" : "جارٍ توليد الكود تلقائيًا..."}
+            value={compactAccountCode(editor.account_code)}
+            readOnly
+            placeholder="جارٍ توليد الكود تلقائيًا..."
           />
-          {editor.mode !== "edit" && <small className="accounting-field-hint">تلقائي وتسلسلي داخل الحساب الأب. بعد 99 يكمل 100 ثم 101 بدون حد من رقمين.</small>}
+          <small className="accounting-field-hint">الكود يُعرض بدون نقاط، ويظل توليده تلقائيًا وتسلسليًا. بعد 99 يكمل 100 ثم 101.</small>
         </label>
         <label>الاسم بالعربي
           <input value={editor.name_ar} onChange={(e) => onChange({ name_ar: e.target.value })} />
@@ -156,7 +147,7 @@ function AccountEditor({ editor, accounts, onChange, onParentChange, onClose, on
 
         <label className="accounting-span-2">الحساب الأب
           {parent && <div className="accounting-parent-selected">
-            <span><b>{parent.account_code}</b> · {parent.name_ar}</span>
+            <span><b>{compactAccountCode(parent.account_code)}</b> · {parent.name_ar}</span>
             <button type="button" onClick={() => selectParent(null)}>جعله حساب رئيسي</button>
           </div>}
           <div className="accounting-parent-search">
@@ -176,7 +167,7 @@ function AccountEditor({ editor, accounts, onChange, onParentChange, onClose, on
               aria-selected={row.id === editor.parent_id}
               onClick={() => selectParent(row)}
             >
-              <b>{row.account_code}</b>
+              <b>{compactAccountCode(row.account_code)}</b>
               <span>{row.name_ar}</span>
               <small>{row.name_en || TYPE_LABELS[row.account_type] || row.account_type}</small>
             </button>)}
@@ -340,7 +331,7 @@ export function AccountingWorkspace({ profile, permissions, projects = [], onNav
     await load();
     setState((current) => ({ ...current, busy: false, success: editor.mode === "edit"
       ? "تم تحديث الحساب."
-      : `تمت إضافة الحساب بالكود ${savedAccount?.account_code || "التلقائي"}.` }));
+      : `تمت إضافة الحساب بالكود ${compactAccountCode(savedAccount?.account_code) || "التلقائي"}.` }));
   };
 
   const toggleActive = async (row) => {
@@ -439,7 +430,7 @@ export function AccountingWorkspace({ profile, permissions, projects = [], onNav
                 <button type="button" className={`accounting-expand ${hasChildren ? "" : "placeholder"}`} onClick={() => hasChildren && toggleExpanded(row.id)} aria-label={hasChildren ? "فتح أو طي الحساب" : undefined}>
                   {hasChildren ? (expanded.has(row.id) ? <ChevronDown size={16}/> : <ChevronLeft size={16}/>) : <span/>}
                 </button>
-                <div><strong>{row.account_code} · {row.name_ar}</strong><small>{row.name_en || "—"}</small></div>
+                <div><strong>{compactAccountCode(row.account_code)} · {row.name_ar}</strong><small>{row.name_en || "—"}</small></div>
               </div>
               <div><span className="accounting-badge">{TYPE_LABELS[row.account_type] || row.account_type}</span></div>
               <div className="accounting-status-stack">
@@ -472,7 +463,7 @@ export function AccountingWorkspace({ profile, permissions, projects = [], onNav
 
     {conversion && <div className="accounting-modal-layer" role="dialog" aria-modal="true" aria-label="تحويل الحساب إلى تجميعي">
       <div className="accounting-modal compact">
-        <div className="accounting-modal-head"><div><span>Owner / Master</span><h3>تحويل {conversion.row.account_code} إلى حساب تجميعي</h3></div><button type="button" className="accounting-close" onClick={() => setConversion(null)}>×</button></div>
+        <div className="accounting-modal-head"><div><span>Owner / Master</span><h3>تحويل {compactAccountCode(conversion.row.account_code)} إلى حساب تجميعي</h3></div><button type="button" className="accounting-close" onClick={() => setConversion(null)}>×</button></div>
         <p>الحركات التاريخية ستظل على الحساب، لكن لن يقبل قيودًا جديدة بعد التحويل ويمكنك إضافة حسابات تحته.</p>
         <label>سبب التحويل
           <textarea rows={4} value={conversion.reason} onChange={(e) => setConversion((current) => ({ ...current, reason: e.target.value }))} />

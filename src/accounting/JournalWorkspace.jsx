@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "../supabaseClient";
+import { accountMatchesLookup, compactAccountCode } from "./accountCodes";
 
 const STATUS_LABELS={draft:"مسودة",posted:"مرحّل",reversed:"معكوس"};
 const ORIGIN_LABELS={manual:"يدوي",opening:"افتتاحي",system:"تلقائي",reversal:"عكسي"};
@@ -21,6 +22,54 @@ function editorFromJournal(row,mode){
     edit_reason:"",
     legacy_account_ids:[...new Set((row.lines||[]).map((line)=>line.account_id).filter(Boolean))],
   };
+}
+
+function JournalAccountPicker({accounts,value,legacyAccountIds=[],onSelect,index}){
+  const[query,setQuery]=useState("");
+  const selected=accounts.find((account)=>account.id===value);
+  const normalized=query.trim();
+  const results=useMemo(()=>{
+    if(!normalized)return[];
+    return accounts
+      .filter((account)=>Boolean(account.is_active&&account.is_posting)||legacyAccountIds.includes(account.id))
+      .filter((account)=>accountMatchesLookup(account,normalized))
+      .sort((a,b)=>String(a.account_code).localeCompare(String(b.account_code),"en",{numeric:true}))
+      .slice(0,8);
+  },[accounts,legacyAccountIds,normalized]);
+
+  const choose=(account)=>{
+    onSelect(account.id);
+    setQuery("");
+  };
+
+  return <div className="journal-account-picker">
+    {selected&&<div className="journal-account-selected">
+      <span><b>{compactAccountCode(selected.account_code)}</b> · {selected.name_ar}</span>
+      <button type="button" onClick={()=>onSelect("")} aria-label={"إلغاء حساب السطر "+(index+1)}>×</button>
+    </div>}
+    <input
+      aria-label={"بحث حساب السطر "+(index+1)}
+      value={query}
+      onChange={(e)=>setQuery(e.target.value)}
+      placeholder={selected?"ابحث لتغيير الحساب...":"ابحث بالكود أو اسم الحساب..."}
+      autoComplete="off"
+    />
+    {normalized&&<div className="journal-account-results" role="listbox" aria-label={"نتائج حساب السطر "+(index+1)}>
+      {results.map((account)=><button
+        type="button"
+        role="option"
+        key={account.id}
+        aria-selected={account.id===value}
+        onClick={()=>choose(account)}
+      >
+        <b>{compactAccountCode(account.account_code)}</b>
+        <span>{account.name_ar}</span>
+        <small>{account.name_en||"—"}</small>
+      </button>)}
+      {!results.length&&<div className="journal-account-empty">لا توجد حسابات مطابقة.</div>}
+      {results.length===8&&<div className="journal-account-empty">ضيّق البحث بكتابة جزء أكبر من الكود أو الاسم.</div>}
+    </div>}
+  </div>;
 }
 
 function JournalEditor({editor,accounts,busy,onChange,onClose,onSave}){
@@ -48,13 +97,13 @@ function JournalEditor({editor,accounts,busy,onChange,onClose,onSave}){
       <div className="journal-lines-editor">
         <div className="journal-lines-head"><strong>أطراف القيد</strong><button type="button" className="accounting-button ghost" onClick={addLine}>+ سطر</button></div>
         {editor.lines.map((line,index)=><div className="journal-line-row" key={index}>
-          <select aria-label={"حساب السطر "+(index+1)} value={line.account_id} onChange={(e)=>patchLine(index,{account_id:e.target.value})}>
-            <option value="">اختر الحساب</option>
-            {accounts.map((account)=>{
-              const allowed=Boolean(account.is_active&&account.is_posting)||editor.legacy_account_ids.includes(account.id);
-              return <option key={account.id} value={account.id} disabled={!allowed}>{account.account_code} · {account.name_ar}{allowed?"":" — غير متاح للقيود الجديدة"}</option>;
-            })}
-          </select>
+          <JournalAccountPicker
+            accounts={accounts}
+            value={line.account_id}
+            legacyAccountIds={editor.legacy_account_ids}
+            onSelect={(accountId)=>patchLine(index,{account_id:accountId})}
+            index={index}
+          />
           <input aria-label={"مدين السطر "+(index+1)} type="number" min="0" step="0.01" placeholder="مدين" value={line.debit} onChange={(e)=>patchLine(index,{debit:e.target.value,credit:e.target.value?"":line.credit})}/>
           <input aria-label={"دائن السطر "+(index+1)} type="number" min="0" step="0.01" placeholder="دائن" value={line.credit} onChange={(e)=>patchLine(index,{credit:e.target.value,debit:e.target.value?"":line.debit})}/>
           <input aria-label={"بيان السطر "+(index+1)} placeholder="بيان السطر" value={line.description} onChange={(e)=>patchLine(index,{description:e.target.value})}/>
@@ -248,7 +297,7 @@ export function JournalWorkspace({accounts,profile,permissions,onNavigate}){
           <div className="journal-card-totals"><span>مدين <b>{money(row.total_debit)}</b></span><span>دائن <b>{money(row.total_credit)}</b></span>{row.master_overridden&&<span className="accounting-badge group">تعديل Master · Rev {row.revision_number}</span>}</div>
           <details><summary>عرض الأطراف والمصدر</summary>
             <div className="journal-lines-view">{(row.lines||[]).map((line)=><div key={line.id||line.line_number}>
-              <span>{accounts.find((a)=>a.id===line.account_id)?.account_code||"—"} · {accounts.find((a)=>a.id===line.account_id)?.name_ar||"حساب"}</span>
+              <span>{compactAccountCode(accounts.find((a)=>a.id===line.account_id)?.account_code)||"—"} · {accounts.find((a)=>a.id===line.account_id)?.name_ar||"حساب"}</span>
               <span>{amount(line.debit)>0?"مدين "+money(line.debit):"دائن "+money(line.credit)}</span>
             </div>)}</div>
             {(row.source_module||row.source_record_id)&&<div className="journal-source">

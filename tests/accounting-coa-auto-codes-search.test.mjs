@@ -42,14 +42,14 @@ test("authenticated managers can preview the next generated code through a prote
 
 test("new account UI previews automatic code but does not submit it as authoritative input",()=>{
   assert.match(ui,/get_next_accounting_account_code/);
-  assert.match(ui,/readOnly=\{editor\.mode !== "edit"\}/);
+  assert.match(ui,/value=\{compactAccountCode\(editor\.account_code\)\}[\s\S]*readOnly/);
   assert.match(ui,/بعد 99 يكمل 100 ثم 101/);
   assert.match(ui,/\.\.\.\(editor\.mode === "edit" \? \{ account_code: editor\.account_code\.trim\(\) \} : \{\}\)/);
 });
 
 test("parent account selection uses live search instead of a long scrolling select",()=>{
   assert.match(ui,/placeholder="ابحث بكود أو اسم الحساب الأب\.\.\."/);
-  assert.match(ui,/accountSearchText\(row\)\.includes\(normalizedParentQuery\)/);
+  assert.match(ui,/accountMatchesLookup\(row, normalizedParentQuery\)/);
   assert.match(ui,/\.slice\(0, 8\)/);
   assert.match(ui,/accounting-parent-results/);
   assert.doesNotMatch(
@@ -68,4 +68,10 @@ test("automatic code preview skips a code already used elsewhere in the hierarch
   assert.match(collisionGuard,/where lower\(btrim\(a\.account_code\)\)=lower\(candidate\)/);
   assert.match(collisionGuard,/next_value:=next_value\+1/);
   assert.match(collisionGuard,/loop[\s\S]*exit when not exists/);
+});
+
+test("COA displays compact codes without changing canonical stored codes",()=>{
+  assert.match(ui,/compactAccountCode\(row\.account_code\)/);
+  assert.match(ui,/compactAccountCode\(parent\.account_code\)/);
+  assert.match(ui,/compactAccountCode\(savedAccount\?\.account_code\)/);
 });

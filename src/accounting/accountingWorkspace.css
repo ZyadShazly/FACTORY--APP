@@ -106,6 +106,15 @@
 .journal-lines-head{display:flex;justify-content:space-between;align-items:center}
 .journal-line-row{display:grid;grid-template-columns:minmax(220px,1.4fr) minmax(100px,.55fr) minmax(100px,.55fr) minmax(180px,1fr) 36px;gap:7px}
 .journal-line-row select,.journal-line-row input{width:100%;border:1px solid var(--color-border);background:var(--color-app-bg);color:var(--color-text);border-radius:8px;padding:8px 9px;font:inherit}
+.journal-account-picker{position:relative;display:grid;gap:5px}
+.journal-account-selected{display:flex;align-items:center;justify-content:space-between;gap:7px;border:1px solid var(--color-border);background:var(--color-surface-muted);border-radius:8px;padding:6px 8px;font-size:11.5px}
+.journal-account-selected span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.journal-account-selected button{border:0;background:transparent;color:var(--color-danger);font:inherit;font-size:16px;cursor:pointer;padding:0 2px}
+.journal-account-results{position:absolute;top:100%;inset-inline:0;z-index:30;display:grid;gap:4px;margin-top:4px;border:1px solid var(--color-border);border-radius:9px;padding:6px;background:var(--color-surface);box-shadow:var(--shadow-lg)}
+.journal-account-results button{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:center;border:0;background:transparent;color:var(--color-text);text-align:right;padding:8px 9px;border-radius:7px;font:inherit;cursor:pointer}
+.journal-account-results button:hover,.journal-account-results button[aria-selected="true"]{background:var(--color-surface-muted)}
+.journal-account-results button small{color:var(--color-text-muted);font-size:10.5px}
+.journal-account-empty{padding:8px;color:var(--color-text-muted);font-size:10.5px;text-align:center}
 .journal-remove-line{border:1px solid var(--color-border);background:var(--color-surface);color:var(--color-danger);border-radius:8px;font-size:18px;cursor:pointer}
 .journal-remove-line:disabled{opacity:.4;cursor:default}
 .journal-balance-strip{display:flex;gap:16px;align-items:center;flex-wrap:wrap;padding:10px 12px;border-radius:9px;background:var(--color-surface-muted);margin-top:12px;font-size:12px}
@@ -114,7 +123,8 @@
 .journal-edit-reason{margin-top:12px}
 @media(max-width:760px){
   .journal-line-row{grid-template-columns:1fr 1fr}
-  .journal-line-row select,.journal-line-row input:nth-of-type(3){grid-column:1/-1}
+  .journal-account-picker{grid-column:1/-1}
+  .journal-line-row input:nth-of-type(3){grid-column:1/-1}
   .journal-remove-line{min-height:38px}
   .journal-toolbar,.journal-filters{align-items:stretch}
   .journal-filters{width:100%}
