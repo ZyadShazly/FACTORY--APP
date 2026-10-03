@@ -95,8 +95,38 @@ function Notice({ type = "info", children }) {
   return <div className={`accounting-notice ${type}`} role={type === "error" ? "alert" : "status"}>{children}</div>;
 }
 
-function AccountEditor({ editor, accounts, onChange, onClose, onSave, busy }) {
+function AccountEditor({ editor, accounts, onChange, onParentChange, onClose, onSave, busy }) {
+  const [parentQuery, setParentQuery] = useState("");
   const parent = accounts.find((row) => row.id === editor.parent_id);
+  const normalizedParentQuery = parentQuery.trim().toLowerCase();
+
+  const parentCandidates = useMemo(() => {
+    if (!normalizedParentQuery) return [];
+    const blocked = new Set(editor.id ? [editor.id] : []);
+    if (editor.id) {
+      let changed = true;
+      while (changed) {
+        changed = false;
+        for (const row of accounts) {
+          if (row.parent_id && blocked.has(row.parent_id) && !blocked.has(row.id)) {
+            blocked.add(row.id);
+            changed = true;
+          }
+        }
+      }
+    }
+    return accounts
+      .filter((row) => row.is_active && !blocked.has(row.id))
+      .filter((row) => accountSearchText(row).includes(normalizedParentQuery))
+      .sort((a, b) => String(a.account_code).localeCompare(String(b.account_code), "en", { numeric: true }))
+      .slice(0, 8);
+  }, [accounts, editor.id, normalizedParentQuery]);
+
+  const selectParent = (row) => {
+    onParentChange(row || null);
+    setParentQuery("");
+  };
+
   return <div className="accounting-modal-layer" role="dialog" aria-modal="true" aria-label={editor.mode === "edit" ? "تعديل الحساب" : "إضافة حساب"}>
     <div className="accounting-modal">
       <div className="accounting-modal-head">
@@ -109,7 +139,13 @@ function AccountEditor({ editor, accounts, onChange, onClose, onSave, busy }) {
 
       <div className="accounting-form-grid">
         <label>كود الحساب
-          <input value={editor.account_code} onChange={(e) => onChange({ account_code: e.target.value })} placeholder="مثال: 1.1.08" />
+          <input
+            value={editor.account_code}
+            readOnly={editor.mode !== "edit"}
+            onChange={(e) => editor.mode === "edit" && onChange({ account_code: e.target.value })}
+            placeholder={editor.mode === "edit" ? "مثال: 1.1.08" : "جارٍ توليد الكود تلقائيًا..."}
+          />
+          {editor.mode !== "edit" && <small className="accounting-field-hint">تلقائي وتسلسلي داخل الحساب الأب. بعد 99 يكمل 100 ثم 101 بدون حد من رقمين.</small>}
         </label>
         <label>الاسم بالعربي
           <input value={editor.name_ar} onChange={(e) => onChange({ name_ar: e.target.value })} />
@@ -117,20 +153,39 @@ function AccountEditor({ editor, accounts, onChange, onClose, onSave, busy }) {
         <label>الاسم بالإنجليزي
           <input value={editor.name_en} onChange={(e) => onChange({ name_en: e.target.value })} />
         </label>
-        <label>الحساب الأب
-          <select value={editor.parent_id} onChange={(e) => {
-            const nextParent = accounts.find((row) => row.id === e.target.value);
-            onChange({
-              parent_id: e.target.value,
-              ...(nextParent ? { account_type: nextParent.account_type } : {}),
-            });
-          }}>
-            <option value="">بدون — حساب رئيسي</option>
-            {accounts.filter((row) => row.id !== editor.id && row.is_active).map((row) =>
-              <option key={row.id} value={row.id}>{row.account_code} · {row.name_ar}</option>
-            )}
-          </select>
+
+        <label className="accounting-span-2">الحساب الأب
+          {parent && <div className="accounting-parent-selected">
+            <span><b>{parent.account_code}</b> · {parent.name_ar}</span>
+            <button type="button" onClick={() => selectParent(null)}>جعله حساب رئيسي</button>
+          </div>}
+          <div className="accounting-parent-search">
+            <Search size={15}/>
+            <input
+              value={parentQuery}
+              onChange={(e) => setParentQuery(e.target.value)}
+              placeholder="ابحث بكود أو اسم الحساب الأب..."
+              autoComplete="off"
+            />
+          </div>
+          {normalizedParentQuery && <div className="accounting-parent-results" role="listbox" aria-label="نتائج البحث عن الحساب الأب">
+            {parentCandidates.map((row) => <button
+              type="button"
+              key={row.id}
+              role="option"
+              aria-selected={row.id === editor.parent_id}
+              onClick={() => selectParent(row)}
+            >
+              <b>{row.account_code}</b>
+              <span>{row.name_ar}</span>
+              <small>{row.name_en || TYPE_LABELS[row.account_type] || row.account_type}</small>
+            </button>)}
+            {!parentCandidates.length && <div className="accounting-parent-empty">لا توجد حسابات مطابقة. جرّب جزءًا من الكود أو الاسم.</div>}
+            {parentCandidates.length === 8 && <div className="accounting-parent-empty">لو الحساب غير ظاهر، ضيّق البحث بكتابة جزء أكبر من الكود أو الاسم.</div>}
+          </div>}
+          {!normalizedParentQuery && !parent && <small className="accounting-field-hint">اتركه بدون اختيار لإنشاء حساب رئيسي، أو اكتب للبحث بدل التمرير في قائمة طويلة.</small>}
         </label>
+
         <label>نوع الحساب
           <select value={editor.account_type} disabled={Boolean(parent)} onChange={(e) => onChange({ account_type: e.target.value })}>
             {Object.entries(TYPE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
@@ -201,13 +256,40 @@ export function AccountingWorkspace({ profile, permissions, projects = [], onNav
 
   const patchEditor = (patch) => setEditor((current) => ({ ...current, ...patch }));
 
+  const suggestAccountCode = useCallback(async (parentId = "") => {
+    const result = await supabase.rpc("get_next_accounting_account_code", {
+      target_parent: parentId || null,
+    });
+    if (result.error) {
+      setState((current) => ({ ...current, error: result.error.message || "تعذر توليد كود الحساب تلقائيًا." }));
+      return;
+    }
+    setEditor((current) => current && current.mode === "create" && current.parent_id === parentId
+      ? { ...current, account_code: String(result.data || "") }
+      : current);
+  }, []);
+
   const openCreate = (parent = null) => {
+    const parentId = parent?.id || "";
     setEditor({
       ...EMPTY_EDITOR,
-      parent_id: parent?.id || "",
+      parent_id: parentId,
       account_type: parent?.account_type || "asset",
+      account_code: "",
     });
     setState((current) => ({ ...current, error: "", success: "" }));
+    void suggestAccountCode(parentId);
+  };
+
+  const changeEditorParent = (nextParent = null) => {
+    const parentId = nextParent?.id || "";
+    setEditor((current) => current ? {
+      ...current,
+      parent_id: parentId,
+      ...(nextParent ? { account_type: nextParent.account_type } : {}),
+      ...(current.mode === "create" ? { account_code: "" } : {}),
+    } : current);
+    if (editor?.mode === "create") void suggestAccountCode(parentId);
   };
 
   const openEdit = (row) => {
@@ -228,13 +310,13 @@ export function AccountingWorkspace({ profile, permissions, projects = [], onNav
   };
 
   const save = async () => {
-    if (!editor?.account_code.trim() || !editor?.name_ar.trim()) {
-      setState((current) => ({ ...current, error: "كود الحساب والاسم بالعربي مطلوبان." }));
+    if (!editor?.name_ar.trim() || (editor.mode === "edit" && !editor.account_code.trim())) {
+      setState((current) => ({ ...current, error: editor.mode === "edit" ? "كود الحساب والاسم بالعربي مطلوبان." : "اسم الحساب بالعربي مطلوب." }));
       return;
     }
     setState((current) => ({ ...current, busy: true, error: "", success: "" }));
     const payload = {
-      account_code: editor.account_code.trim(),
+      ...(editor.mode === "edit" ? { account_code: editor.account_code.trim() } : {}),
       name_ar: editor.name_ar.trim(),
       name_en: editor.name_en.trim() || null,
       parent_id: editor.parent_id || null,
@@ -253,9 +335,12 @@ export function AccountingWorkspace({ profile, permissions, projects = [], onNav
       return;
     }
 
+    const savedAccount = result.data;
     setEditor(null);
     await load();
-    setState((current) => ({ ...current, busy: false, success: editor.mode === "edit" ? "تم تحديث الحساب." : "تمت إضافة الحساب." }));
+    setState((current) => ({ ...current, busy: false, success: editor.mode === "edit"
+      ? "تم تحديث الحساب."
+      : `تمت إضافة الحساب بالكود ${savedAccount?.account_code || "التلقائي"}.` }));
   };
 
   const toggleActive = async (row) => {
@@ -379,6 +464,7 @@ export function AccountingWorkspace({ profile, permissions, projects = [], onNav
       editor={editor}
       accounts={accounts}
       onChange={patchEditor}
+      onParentChange={changeEditorParent}
       onClose={() => setEditor(null)}
       onSave={save}
       busy={state.busy}
