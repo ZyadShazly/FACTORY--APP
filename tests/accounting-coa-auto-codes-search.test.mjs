@@ -46,7 +46,7 @@ test("new account UI previews automatic code but does not submit it as authorita
 test("parent account selection uses live search instead of a long scrolling select",()=>{
   assert.match(ui,/placeholder="ابحث بكود أو اسم الحساب الأب\.\.\."/);
   assert.match(ui,/accountSearchText\(row\)\.includes\(normalizedParentQuery\)/);
-  assert.match(ui,/\.slice\(0, 15\)/);
+  assert.match(ui,/\.slice\(0, 8\)/);
   assert.match(ui,/accounting-parent-results/);
   assert.doesNotMatch(
     ui.match(/function AccountEditor[\s\S]*?\n}\n\nexport function AccountingWorkspace/)?.[0] || "",
