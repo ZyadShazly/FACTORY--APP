@@ -119,7 +119,7 @@ function AccountEditor({ editor, accounts, onChange, onParentChange, onClose, on
       .filter((row) => row.is_active && !blocked.has(row.id))
       .filter((row) => accountSearchText(row).includes(normalizedParentQuery))
       .sort((a, b) => String(a.account_code).localeCompare(String(b.account_code), "en", { numeric: true }))
-      .slice(0, 15);
+      .slice(0, 8);
   }, [accounts, editor.id, normalizedParentQuery]);
 
   const selectParent = (row) => {
@@ -181,6 +181,7 @@ function AccountEditor({ editor, accounts, onChange, onParentChange, onClose, on
               <small>{row.name_en || TYPE_LABELS[row.account_type] || row.account_type}</small>
             </button>)}
             {!parentCandidates.length && <div className="accounting-parent-empty">لا توجد حسابات مطابقة. جرّب جزءًا من الكود أو الاسم.</div>}
+            {parentCandidates.length === 8 && <div className="accounting-parent-empty">لو الحساب غير ظاهر، ضيّق البحث بكتابة جزء أكبر من الكود أو الاسم.</div>}
           </div>}
           {!normalizedParentQuery && !parent && <small className="accounting-field-hint">اتركه بدون اختيار لإنشاء حساب رئيسي، أو اكتب للبحث بدل التمرير في قائمة طويلة.</small>}
         </label>
