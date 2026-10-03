@@ -6,6 +6,10 @@ const migration=fs.readFileSync(
   "supabase/migrations/20261003181516_accounting_coa_auto_codes.sql",
   "utf8",
 );
+const collisionGuard=fs.readFileSync(
+  "supabase/migrations/20261003182500_accounting_coa_auto_code_collision_guard.sql",
+  "utf8",
+);
 const ui=fs.readFileSync("src/accounting/AccountingWorkspace.jsx","utf8");
 
 test("COA can allocate the next code automatically inside each parent",()=>{
@@ -57,4 +61,11 @@ test("parent account selection uses live search instead of a long scrolling sele
 test("main chart search remains available for large trees",()=>{
   assert.match(ui,/placeholder="بحث بالكود أو اسم الحساب\.\.\."/);
   assert.match(ui,/buildVisibleRows\(accounts, expanded, query, accountType\)/);
+});
+
+test("automatic code preview skips a code already used elsewhere in the hierarchy",()=>{
+  assert.match(collisionGuard,/candidate:=parent_code\|\|'\.'\|\|lpad\(next_value::text,segment_width,'0'\)/);
+  assert.match(collisionGuard,/where lower\(btrim\(a\.account_code\)\)=lower\(candidate\)/);
+  assert.match(collisionGuard,/next_value:=next_value\+1/);
+  assert.match(collisionGuard,/loop[\s\S]*exit when not exists/);
 });
