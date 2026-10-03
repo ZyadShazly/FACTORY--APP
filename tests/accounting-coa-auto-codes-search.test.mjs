@@ -7,7 +7,7 @@ const migration=fs.readFileSync(
   "utf8",
 );
 const collisionGuard=fs.readFileSync(
-  "supabase/migrations/20261003182500_accounting_coa_auto_code_collision_guard.sql",
+  "supabase/migrations/20261003181750_accounting_coa_auto_code_collision_guard.sql",
   "utf8",
 );
 const ui=fs.readFileSync("src/accounting/AccountingWorkspace.jsx","utf8");
