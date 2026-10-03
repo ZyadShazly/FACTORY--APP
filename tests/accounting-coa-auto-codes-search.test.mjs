@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 
 const migration=fs.readFileSync(
-  "supabase/migrations/20261003173000_accounting_coa_auto_codes.sql",
+  "supabase/migrations/20261003181516_accounting_coa_auto_codes.sql",
   "utf8",
 );
 const ui=fs.readFileSync("src/accounting/AccountingWorkspace.jsx","utf8");
