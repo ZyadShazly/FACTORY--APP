@@ -35,3 +35,14 @@ test("legacy RPC names stay stable and the new account parameter remains optiona
   assert.match(migration,/create function public\.record_supplier_payment\([\s\S]*cash_bank_account uuid default null/i);
   assert.match(migration,/create function public\.record_customer_receipt\([\s\S]*cash_bank_account uuid default null/i);
 });
+
+test("supplier and customer ledgers show the selected cash or bank account",()=>{
+  assert.match(app,/function cashBankLedgerLabel\(accountId, accounts = \[\]\)/);
+  assert.match(app,/حساب السداد/);
+  assert.match(app,/حساب التحصيل/);
+  assert.match(app,/cashBank: cashBankLedgerLabel\(p\.cash_bank_account_id, cashBankAccounts\)/);
+  assert.match(app,/cashBank: cashBankLedgerLabel\(r\.cash_bank_account_id, cashBankAccounts\)/);
+  assert.match(app,/افتراضي \/ حركة قديمة/);
+  assert.match(app,/SupplierLedger supplierId=\{s\.id\} data=\{supplierData\} cashBankAccounts=\{cashBankAccounts\}/);
+  assert.match(app,/CustomerLedger customerId=\{c\.id\} data=\{data\} cashBankAccounts=\{cashBankAccounts\}/);
+});
