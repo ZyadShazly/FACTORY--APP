@@ -202,3 +202,20 @@
   .mapping-row{grid-template-columns:1fr}
   .mapping-module-head{align-items:flex-start}
 }
+
+.journal-toolbar-actions{display:flex;gap:7px;align-items:center;flex-wrap:wrap}
+.journal-file-button{cursor:pointer}
+.journal-file-button input{display:none}
+.accounting-import-summary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:12px}
+.accounting-import-summary>div{border:1px solid var(--color-border);background:var(--color-surface-muted);border-radius:9px;padding:10px;display:grid;gap:3px}
+.accounting-import-summary span{color:var(--color-text-muted);font-size:11.5px}
+.accounting-import-summary b{font-size:18px}
+.accounting-import-help{margin-top:12px;border:1px solid var(--color-border);border-radius:9px;padding:9px 11px;background:var(--color-surface-muted)}
+.accounting-import-help summary{cursor:pointer;font-weight:800}
+.accounting-import-help p{margin:8px 0 0;color:var(--color-text-muted);font-size:11.5px;line-height:1.7}
+.accounting-report-actions{display:flex;gap:7px;align-items:center;flex-wrap:wrap}
+@media(max-width:760px){
+  .journal-toolbar-actions{width:100%}
+  .journal-toolbar-actions .accounting-button,.journal-toolbar-actions .journal-file-button{flex:1;justify-content:center}
+  .accounting-import-summary{grid-template-columns:1fr}
+}
