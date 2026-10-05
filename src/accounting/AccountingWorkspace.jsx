@@ -13,6 +13,7 @@ import { supabase } from "../supabaseClient";
 import { JournalWorkspace } from "./JournalWorkspace";
 import { AccountingReportsWorkspace } from "./AccountingReportsWorkspace";
 import { AccountingMappingsWorkspace } from "./AccountingMappingsWorkspace";
+import { exportChartOfAccounts } from "./accountingExports";
 import { accountMatchesLookup, compactAccountCode } from "./accountCodes";
 import "./accountingWorkspace.css";
 
@@ -383,6 +384,7 @@ export function AccountingWorkspace({ profile, permissions, projects = [], onNav
         <p>شجرة حسابات مرنة ودفتر قيود محمي. الربط التلقائي مع العمليات التشغيلية سيأتي في مرحلة مستقلة.</p>
       </div>
       {section === "accounts" && <div className="accounting-head-actions">
+        <button type="button" className="accounting-button ghost" onClick={()=>exportChartOfAccounts(accounts)} disabled={state.loading||!accounts.length}>تصدير Excel</button>
         <button type="button" className="accounting-button ghost" onClick={load} disabled={state.loading}><RefreshCw size={15}/>تحديث</button>
         {canManage && <button type="button" className="accounting-button primary" onClick={() => openCreate()}><CirclePlus size={16}/>إضافة حساب</button>}
       </div>}
