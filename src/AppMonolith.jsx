@@ -36,6 +36,7 @@ import { MaterialsCatalogWorkspace } from "./operational/MaterialsCatalogWorkspa
 import { ProductionWorkspace } from "./operational/ProductionWorkspace";
 import { ProcurementWorkspace } from "./operational/ProcurementWorkspace";
 import { CommercialAdvancesPanel } from "./operational/CommercialAdvancesPanel";
+import { EmployeeCashCustodyWorkspace } from "./operational/EmployeeCashCustodyWorkspace";
 import { CustomerAdjustmentsPanel } from "./operational/CustomerAdjustmentsPanel";
 import { useInventoryWorkspace } from "./operational/useInventoryWorkspace";
 import { ArchiveSection } from "./ui/foundation";
@@ -70,14 +71,14 @@ const todayStr = () => new Date().toISOString().slice(0, 10);
 
 const ROLES = SYSTEM_ROLES;
 const NAV_BY_ROLE = {
-  manager: ["dashboard", "projects", "projectFiles", "inventory", "purchases", "expenses", "materials", "products", "production", "sales", "rentals", "suppliers", "customers", "accounting", "employees", "payroll", "dailyLabor", "reports", "auditLog", "team"],
-  accountant: ["projects", "projectFiles", "inventory", "purchases", "expenses", "materials", "products", "production", "sales", "rentals", "suppliers", "customers", "accounting", "employees", "payroll", "dailyLabor"],
+  manager: ["dashboard", "projects", "projectFiles", "inventory", "purchases", "expenses", "cashCustody", "materials", "products", "production", "sales", "rentals", "suppliers", "customers", "accounting", "employees", "payroll", "dailyLabor", "reports", "auditLog", "team"],
+  accountant: ["projects", "projectFiles", "inventory", "purchases", "expenses", "cashCustody", "materials", "products", "production", "sales", "rentals", "suppliers", "customers", "accounting", "employees", "payroll", "dailyLabor"],
   production: ["projects", "projectFiles", "inventory", "production"],
 };
-const ALL_PAGE_IDS = ["dashboard", "projects", "projectFiles", "inventory", "purchases", "expenses", "materials", "products", "production", "assets", "sales", "rentals", "suppliers", "customers", "accounting", "employees", "workCalendar", "payroll", "dailyLabor", "reports", "auditLog", "team", "settings"];
+const ALL_PAGE_IDS = ["dashboard", "projects", "projectFiles", "inventory", "purchases", "expenses", "cashCustody", "materials", "products", "production", "assets", "sales", "rentals", "suppliers", "customers", "accounting", "employees", "workCalendar", "payroll", "dailyLabor", "reports", "auditLog", "team", "settings"];
 const PAGE_LABELS = {
   projects: "المشاريع", projectFiles: "ملفات المشاريع", employees: "الموظفون", workCalendar: "تقويم العمل والعطلات", payroll: "المرتبات", dailyLabor: "العمالة اليومية", auditLog: "سجل التدقيق",
-  dashboard: "لوحة التحكم", inventory: "المخزون", purchases: "المشتريات", expenses: "المصروفات", materials: "المواد الخام", products: "المنتجات والتكلفة",
+  dashboard: "لوحة التحكم", inventory: "المخزون", purchases: "المشتريات", expenses: "المصروفات", cashCustody: "العهد النقدية", materials: "المواد الخام", products: "المنتجات والتكلفة",
   production: "أوامر الإنتاج", assets: "الأصول والعِدّة", sales: "المبيعات", rentals: "الإيجارات",
   suppliers: "الموردين", customers: "العملاء", accounting: "المحاسبة", reports: "التقارير", team: "الفريق والصلاحيات", settings: "الإعدادات", assetAlerts: "تنبيهات الأصول", assetMaintenanceOrders: "أوامر صيانة الأصول",
 };
@@ -124,6 +125,7 @@ const PAGE_DESCRIPTIONS = {
   inventory: "رؤية فورية لأرصدة الخامات والمنتجات وحالات النقص.",
   purchases: "تسجيل ومراجعة مشتريات التشغيل وتكاليف التوريد.",
   expenses: "إدارة المصروفات وتصنيفها ومتابعة أثرها المالي.",
+  cashCustody: "صرف وتسوية ورد العهد النقدية للموظفين مع الربط المحاسبي.",
   materials: "تعريف الخامات ومتابعة التكلفة والرصيد المتاح.",
   products: "إدارة المنتجات ومكونات التصنيع والتكلفة التقديرية.",
   production: "تخطيط أوامر الإنتاج ومتابعة التنفيذ والكميات.",
@@ -362,6 +364,7 @@ export default function App() {
   const initialLocation = readWorkspaceLocation(window.location.search);
   const [tab, setTab] = useState(V22_DEMO ? (ASSET_QR_MODE ? "assets" : initialLocation.page || "projects") : (ASSET_QR_MODE ? "assets" : initialLocation.page));
   const [routeProjectId, setRouteProjectId] = useState(initialLocation.projectId);
+  const [routeSourceRecordId, setRouteSourceRecordId] = useState(initialLocation.sourceRecordId);
   const [dataWarnings, setDataWarnings] = useState([]);
   const [realtimeStatus, setRealtimeStatus] = useState(V22_DEMO ? (DEMO_CONNECTION_STATE === "offline" ? "RECONNECTING" : "DEMO") : "CONNECTING");
   const [openNavGroups, setOpenNavGroups] = useState(loadNavigationState);
@@ -398,6 +401,7 @@ export default function App() {
       const location = readWorkspaceLocation(window.location.search);
       setTab(location.page);
       setRouteProjectId(location.projectId);
+      setRouteSourceRecordId(location.sourceRecordId);
     };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
@@ -604,12 +608,13 @@ export default function App() {
   }, [permissions]);
 
   const navigate = useCallback((page, options = {}) => {
-    const next = { page, projectId: options.projectId || null };
+    const next = { page, projectId: options.projectId || null, sourceRecordId: options.sourceRecordId || null };
     const nextUrl = workspaceUrl(next);
     if (options.replace) window.history.replaceState(next, "", nextUrl);
     else window.history.pushState(next, "", nextUrl);
     setTab(page);
     setRouteProjectId(next.projectId);
+    setRouteSourceRecordId(next.sourceRecordId);
   }, []);
 
   if (ASSET_CONFIRMATION_MODE) return <AssetExternalConfirmation/>;
@@ -631,6 +636,7 @@ export default function App() {
     { id: "inventory", label: "المخزون", icon: Boxes },
     { id: "purchases", label: "المشتريات", icon: ClipboardList },
     { id: "expenses", label: "المصروفات", icon: ReceiptText },
+    { id: "cashCustody", label: "العهد النقدية", icon: Wallet },
     { id: "materials", label: "المواد الخام", icon: Package },
     { id: "products", label: "المنتجات والتكلفة", icon: Layers },
     { id: "production", label: "أوامر الإنتاج", icon: Factory },
@@ -668,15 +674,16 @@ export default function App() {
         {activeTab === "inventory" && <InventoryTab canViewFinancials={permissions.view_financials} onNavigate={navigate} allowedPages={permissions.pages || []} />}
         {activeTab === "purchases" && <ProcurementWorkspace data={data} onNavigate={navigate} />}
         {activeTab === "expenses" && <ExpensesTab data={data} profileRole={role} refresh={() => refetchTable("expenses")} />}
+        {activeTab === "cashCustody" && role !== "production" && <EmployeeCashCustodyWorkspace />}
         {activeTab === "materials" && <MaterialsTab data={data} canManage={isAdministrativeRole(role)} refresh={() => refetchTable("materials")} onNavigate={navigate} />}
         {activeTab === "products" && <ProductsTab data={data} canCreate={permissions.can_create_products} canEdit={permissions.can_edit_products} canArchive={permissions.can_delete && permissions.can_edit_products} hideProfitInfo={!permissions.view_financials} refresh={() => refetchTable("products")} />}
         {activeTab === "production" && <ProductionTab data={data} profileRole={role} canViewFinancials={permissions.view_financials} />}
         {activeTab === "assets" && permissions.assets_view && <AssetsPage data={data} profile={profile} permissions={permissions} refresh={refetchTable} />}
-        {activeTab === "sales" && <SalesTab data={data} refresh={() => refetchTable("sales")} canManage={isAdministrativeRole(role)} />}
+        {activeTab === "sales" && <SalesTab data={data} refresh={() => refetchTable("sales")} canManage={isAdministrativeRole(role)} focusedSaleId={routeSourceRecordId} />}
         {activeTab === "rentals" && <RentalsTab data={data} refresh={() => refetchTable("rentals")} canManage={isAdministrativeRole(role)} />}
         {activeTab === "suppliers" && <SuppliersTab data={data} refresh={() => refetchTables("suppliers", "supplierPayments")} canManage={isAdministrativeRole(role)} />}
         {activeTab === "customers" && <CustomersTab data={data} refresh={() => refetchTables("customers", "customerReceipts", "customerAdjustments")} canManage={isAdministrativeRole(role)} />}
-        {activeTab === "accounting" && permissions.accounting_view && <AccountingWorkspace profile={profile} permissions={permissions} projects={data.projects} />}
+        {activeTab === "accounting" && permissions.accounting_view && <AccountingWorkspace profile={profile} permissions={permissions} projects={data.projects} onNavigate={navigate} />}
         {activeTab === "employees" && role !== "production" && <EmployeesTab data={data} profile={profile} refresh={refetchTable} />}
         {activeTab === "workCalendar" && permissions.payroll_calendar_view && <WorkCalendarTab data={data} profile={profile} permissions={permissions} refresh={refetchTable} />}
         {activeTab === "payroll" && permissions.payroll_view && data.payroll.some((row) => row.status === "draft" && row.calendar_stale) && <div className="module-state error compact"><AlertCircle size={20}/><div><strong>مسودة الراتب تحتاج إعادة حساب</strong><p>تغير تقويم العمل بعد إنشاء المسودة. تمنع قاعدة البيانات اعتمادها حتى إعادة الحساب أو استخدام صلاحية التجاوز الموثقة.</p></div></div>}
@@ -965,13 +972,23 @@ function ProductsTab({ data, canCreate, canEdit, canArchive, hideProfitInfo, ref
 const ProductionTab=ProductionWorkspace;
 
 /* ----------------------------------- Sales ---------------------------------- */
-function SalesTab({ data, refresh, canManage }) {
+function SalesTab({ data, refresh, canManage, focusedSaleId = "" }) {
   const { workspace: inventoryWorkspace, error: inventoryError, reload: reloadInventory } = useInventoryWorkspace("sales");
   const finishedBalances = useMemo(() => aggregateInventoryByProduct(inventoryWorkspace || {}), [inventoryWorkspace]);
-  const [form, setForm] = useState({ productId: "", customerId: "", qty: "", unitPrice: "", date: todayStr(), commandId: "" });
+  const [form, setForm] = useState({ productId: "", customerId: "", qty: "", unitPrice: "", taxRate: "0", date: todayStr(), commandId: "" });
   const [err, setErr] = useState(""); const [ok, setOk] = useState("");
   const [cancelAction, setCancelAction] = useState(null);
   const selectedProduct = data.products.find((p) => p.id === form.productId);
+
+  useEffect(() => {
+    if (!focusedSaleId) return;
+    const frame = window.requestAnimationFrame(() => {
+      const target = document.getElementById(`sale-source-${focusedSaleId}`);
+      target?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [focusedSaleId, data.sales]);
+
 
   async function submit() {
     setErr(""); setOk("");
@@ -983,13 +1000,15 @@ function SalesTab({ data, refresh, canManage }) {
     if (stock != null && stock < qty) return setErr(`المخزون التام المتاح ${stock} وحدة فقط`);
     const unitPrice = form.unitPrice === "" ? Number(selectedProduct.selling_price) : num(form.unitPrice);
     if (!Number.isFinite(unitPrice) || unitPrice <= 0) return setErr("سعر الوحدة يجب أن يكون أكبر من صفر");
+    const taxRate = form.taxRate === "" ? 0 : num(form.taxRate);
+    if (!Number.isFinite(taxRate) || taxRate < 0 || taxRate > 100) return setErr("نسبة الضريبة يجب أن تكون بين 0 و100");
     const commandId = form.commandId || globalThis.crypto.randomUUID();
     if (!form.commandId) setForm((current) => ({ ...current, commandId }));
     const result = await runCriticalMutation({
       scope: "sales:post",
-      mutate: () => supabase.rpc("post_sale", {
+      mutate: () => supabase.rpc("post_sale_with_tax", {
         target_product: form.productId, target_customer: form.customerId, sale_quantity: qty,
-        sale_unit_price: unitPrice, sold_on: form.date, sale_note: null, command_id: commandId,
+        sale_unit_price: unitPrice, sale_tax_rate: taxRate, sold_on: form.date, sale_note: null, command_id: commandId,
       }),
       verify: async () => {
         const verification = await supabase.from("sales").select("id,status").eq("command_id", commandId).single();
@@ -1001,7 +1020,7 @@ function SalesTab({ data, refresh, canManage }) {
       ? "تم إرسال البيع، لكن تعذر التحقق أو تحديث الشاشة. حدّث الصفحة؛ لا تُنشئ أمرًا جديدًا لنفس العملية."
       : result.error.message);
     setOk(result.refreshError ? "تم تسجيل البيع وخصم المخزون، لكن تعذر تحديث الشاشة. حدّث الصفحة بأمان." : "تم تسجيل البيع وخصم مخزون المنتج التام وتحديث حساب العميل");
-    setForm({ productId: "", customerId: "", qty: "", unitPrice: "", date: todayStr(), commandId: "" });
+    setForm({ productId: "", customerId: "", qty: "", unitPrice: "", taxRate: "0", date: todayStr(), commandId: "" });
   }
 
   async function confirmCancelSale() {
@@ -1019,7 +1038,7 @@ function SalesTab({ data, refresh, canManage }) {
 
   const postedSales = data.sales.filter((sale) => sale.status !== "cancelled");
   const cancelledSales = data.sales.filter((sale) => sale.status === "cancelled");
-  const invalidLegacySale = (sale) => num(sale.qty) <= 0 || num(sale.unit_price) < 0 || num(sale.total) < 0 || num(sale.total) !== num(sale.qty) * num(sale.unit_price);
+  const invalidLegacySale = (sale) => { const net = num(sale.subtotal ?? (num(sale.qty) * num(sale.unit_price))); const tax = num(sale.tax_amount ?? 0); return num(sale.qty) <= 0 || num(sale.unit_price) < 0 || tax < 0 || num(sale.total) < 0 || Math.abs(num(sale.total) - (net + tax)) > 0.005; };
 
   return (
     <div>
@@ -1032,6 +1051,7 @@ function SalesTab({ data, refresh, canManage }) {
           <Field label="العميل"><Select value={form.customerId} onChange={(e) => setForm({ ...form, customerId: e.target.value })}><option value="">اختر العميل</option>{data.customers.filter((c) => !c.archived_at).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</Select></Field>
           <Field label="الكمية"><Input type="number" value={form.qty} onChange={(e) => setForm({ ...form, qty: e.target.value })} /></Field>
           <Field label="سعر الوحدة"><Input type="number" value={form.unitPrice} onChange={(e) => setForm({ ...form, unitPrice: e.target.value })} placeholder={selectedProduct ? `افتراضي: ${fmt(selectedProduct.selling_price)}` : ""} /></Field>
+          <Field label="ضريبة القيمة المضافة %"><Input type="number" min="0" max="100" step="0.01" value={form.taxRate} onChange={(e) => setForm({ ...form, taxRate: e.target.value })} /></Field>
           <Field label="التاريخ"><Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></Field>
         </div>
         <div style={{ marginTop: 12 }}><Btn onClick={submit}><Plus size={15} /> تسجيل البيع</Btn></div>
@@ -1039,16 +1059,17 @@ function SalesTab({ data, refresh, canManage }) {
         {ok && <Banner type={operationFeedbackType(ok)}>{ok}</Banner>}
       </Card>
       <Card>
+        {focusedSaleId && <Banner type={data.sales.some((sale)=>sale.id===focusedSaleId)?"success":"error"}>{data.sales.some((sale)=>sale.id===focusedSaleId)?"تم تحديد حركة المصدر المحاسبي المطلوبة.":"تعذر العثور على حركة المصدر المطلوبة في المبيعات."}</Banner>}
         {postedSales.length === 0 ? <Empty text="لا توجد مبيعات مسجلة بعد" /> : (
-          <Table headers={["التاريخ", "المنتج", "العميل", "الكمية", "سعر الوحدة", "الإجمالي", "الحالة", ""]}>
+          <Table headers={["التاريخ", "المنتج", "العميل", "الكمية", "سعر الوحدة", "الضريبة", "الإجمالي", "الحالة", ""]}>
             {[...postedSales].reverse().map((s) => { const p = data.products.find((x) => x.id === s.product_id); const c = data.customers.find((x) => x.id === s.customer_id); return (
-              <tr key={s.id}><Td>{s.sale_date}</Td><Td>{p?.name || "—"}</Td><Td>{c?.name || "—"}</Td><Td>{s.qty}</Td><Td>{formatMoney(s.unit_price)}</Td><Td style={{ fontWeight: 700, color: invalidLegacySale(s) ? C.red : C.green }}>{formatMoney(s.total)}</Td><Td>{invalidLegacySale(s) ? <span style={{color:C.red,fontWeight:700}}>سجل قديم يحتاج مراجعة</span> : "مرحّل"}</Td><Td>{canManage && <button aria-label="إلغاء البيع" title="إلغاء البيع وعكس أثره" onClick={() => setCancelAction({row:s,reason:"",busy:false,error:""})} style={{background:"none",border:"none",cursor:"pointer",color:C.red}}><X size={15}/></button>}</Td></tr>
+              <tr key={s.id} id={`sale-source-${s.id}`} style={s.id===focusedSaleId?{outline:"2px solid var(--color-gold)",outlineOffset:"-2px",background:"var(--color-surface-muted)"}:undefined}><Td>{s.sale_date}</Td><Td>{p?.name || "—"}</Td><Td>{c?.name || "—"}</Td><Td>{s.qty}</Td><Td>{formatMoney(s.unit_price)}</Td><Td>{formatMoney(s.tax_amount || 0)}{Number(s.tax_rate || 0) > 0 ? ` (${Number(s.tax_rate)}%)` : ""}</Td><Td style={{ fontWeight: 700, color: invalidLegacySale(s) ? C.red : C.green }}>{formatMoney(s.total)}</Td><Td>{invalidLegacySale(s) ? <span style={{color:C.red,fontWeight:700}}>سجل قديم يحتاج مراجعة</span> : "مرحّل"}</Td><Td>{canManage && <button aria-label="إلغاء البيع" title="إلغاء البيع وعكس أثره" onClick={() => setCancelAction({row:s,reason:"",busy:false,error:""})} style={{background:"none",border:"none",cursor:"pointer",color:C.red}}><X size={15}/></button>}</Td></tr>
             ); })}
           </Table>
         )}
       </Card>
       <ArchiveSection title="المبيعات الملغاة" count={cancelledSales.length} helpText="السجلات الملغاة محفوظة للمراجعة، ولا تدخل في المخزون أو الإيراد أو رصيد العميل.">
-        {cancelledSales.length === 0 ? <Empty text="لا توجد مبيعات ملغاة" /> : <Table headers={["التاريخ", "المنتج", "العميل", "الإجمالي", "سبب الإلغاء", "وقت الإلغاء"]}>{[...cancelledSales].reverse().map((s) => <tr key={s.id}><Td>{s.sale_date}</Td><Td>{data.products.find((p) => p.id === s.product_id)?.name || "—"}</Td><Td>{data.customers.find((c) => c.id === s.customer_id)?.name || "—"}</Td><Td>{formatMoney(s.total)}</Td><Td>{s.cancellation_reason || "—"}</Td><Td>{s.cancelled_at ? new Date(s.cancelled_at).toLocaleString("ar-EG") : "—"}</Td></tr>)}</Table>}
+        {cancelledSales.length === 0 ? <Empty text="لا توجد مبيعات ملغاة" /> : <Table headers={["التاريخ", "المنتج", "العميل", "الإجمالي", "سبب الإلغاء", "وقت الإلغاء"]}>{[...cancelledSales].reverse().map((s) => <tr key={s.id} id={`sale-source-${s.id}`} style={s.id===focusedSaleId?{outline:"2px solid var(--color-accent)",outlineOffset:"-2px",background:"var(--color-surface-muted)"}:undefined}><Td>{s.sale_date}</Td><Td>{data.products.find((p) => p.id === s.product_id)?.name || "—"}</Td><Td>{data.customers.find((c) => c.id === s.customer_id)?.name || "—"}</Td><Td>{formatMoney(s.total)}</Td><Td>{s.cancellation_reason || "—"}</Td><Td>{s.cancelled_at ? new Date(s.cancelled_at).toLocaleString("ar-EG") : "—"}</Td></tr>)}</Table>}
       </ArchiveSection>
       <ConfirmDialog open={Boolean(cancelAction)} title="إلغاء عملية البيع" description="سيبقى السجل محفوظًا، وسيُعكس أثره على المخزون ورصيد العميل مرة واحدة فقط." confirmLabel="إلغاء وعكس" danger reasonRequired reason={cancelAction?.reason||""} busy={cancelAction?.busy} error={cancelAction?.error} onReasonChange={(reason)=>setCancelAction((current)=>({...current,reason,error:""}))} onConfirm={confirmCancelSale} onCancel={()=>setCancelAction(null)}/>
     </div>
@@ -1191,12 +1212,13 @@ function SuppliersTab({ data, refresh, canManage }) {
   const [name, setName] = useState(""); const [phone, setPhone] = useState("");
   const [editingId, setEditingId] = useState(null);
   const [saveCommandId, setSaveCommandId] = useState("");
-  const [payment, setPayment] = useState({ supplierId: "", amount: "", date: todayStr(), commandId: "" });
+  const [payment, setPayment] = useState({ supplierId: "", amount: "", date: todayStr(), cashBankAccountId: "", commandId: "" });
   const [err, setErr] = useState(""); const [expanded, setExpanded] = useState(null);
   const [search, setSearch] = useState("");
   const [pendingPayment, setPendingPayment] = useState(null); const [paymentBusy, setPaymentBusy] = useState(false);
   const [archiveAction, setArchiveAction] = useState(null);
   const [supplierInvoices, setSupplierInvoices] = useState([]);
+  const [cashBankAccounts, setCashBankAccounts] = useState([]);
   const supplierData = useMemo(() => ({ ...data, supplierInvoices }), [data, supplierInvoices]);
 
   const loadSupplierInvoices = useCallback(async () => {
@@ -1204,7 +1226,12 @@ function SuppliersTab({ data, refresh, canManage }) {
     if (result.error) { setErr(result.error.message); return result; }
     setSupplierInvoices(result.data || []); return result;
   }, []);
-  useEffect(() => { void loadSupplierInvoices(); }, [loadSupplierInvoices]);
+  const loadCashBankAccounts = useCallback(async () => {
+    const result = await supabase.rpc("get_cash_bank_posting_accounts");
+    if (result.error) { setErr(result.error.message); return result; }
+    setCashBankAccounts(result.data || []); return result;
+  }, []);
+  useEffect(() => { void loadSupplierInvoices(); void loadCashBankAccounts(); }, [loadSupplierInvoices, loadCashBankAccounts]);
   async function refreshSupplierData() { const [base, invoices] = await Promise.all([refresh(), loadSupplierInvoices()]); return { error: base?.error || invoices?.error || null }; }
 
   function startEdit(s) { setEditingId(s.id); setName(s.name); setPhone(s.phone || ""); setSaveCommandId(""); }
@@ -1224,15 +1251,16 @@ function SuppliersTab({ data, refresh, canManage }) {
     setPaymentBusy(true); setErr("");
     const commandId = payload.commandId || globalThis.crypto.randomUUID();
     if (!payload.commandId) { setPayment((current) => ({ ...current, commandId })); setPendingPayment((current) => current ? ({ ...current, commandId }) : current); }
-    const result = await supabase.rpc("record_supplier_payment", { target_supplier: payload.supplierId, payment_amount: num(payload.amount), paid_on: payload.date, payment_note: null, command_id: commandId });
+    const result = await supabase.rpc("record_supplier_payment", { target_supplier: payload.supplierId, payment_amount: num(payload.amount), paid_on: payload.date, payment_note: null, command_id: commandId, cash_bank_account: payload.cashBankAccountId });
     if (result.error) { setPaymentBusy(false); return setErr(result.error.message); }
     const refreshed = await refreshSupplierData();
     setPaymentBusy(false); setPendingPayment(null);
     if (refreshed?.error) return setErr("تم حفظ الدفعة، لكن تعذر تحديث الشاشة. حدّث الصفحة بأمان؛ لا تعِد تسجيل الدفعة.");
-    setPayment({ supplierId: "", amount: "", date: todayStr(), commandId: "" });
+    setPayment({ supplierId: "", amount: "", date: todayStr(), cashBankAccountId: "", commandId: "" });
   }
   async function addPayment() {
     if (!payment.supplierId) return setErr("اختر المورد");
+    if (!payment.cashBankAccountId) return setErr("اختر حساب السداد (بنك أو خزينة)");
     if (num(payment.amount) <= 0) return setErr("أدخل مبلغ أكبر من صفر");
     const due = supplierBalances(payment.supplierId, supplierData).due;
     if (num(payment.amount) > due) return setPendingPayment({ ...payment, due, advance: num(payment.amount) - due });
@@ -1278,6 +1306,7 @@ function SuppliersTab({ data, refresh, canManage }) {
         <div style={{ fontWeight: 700, marginBottom: 12 }}>تسجيل دفعة لمورد</div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <Field label="المورد"><Select value={payment.supplierId} onChange={(e) => setPayment({ ...payment, supplierId: e.target.value, commandId:"" })}><option value="">اختر المورد</option>{activeSuppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</Select></Field>
+          <Field label="حساب السداد"><Select value={payment.cashBankAccountId} onChange={(e) => setPayment({ ...payment, cashBankAccountId: e.target.value, commandId:"" })}><option value="">اختر البنك أو الخزينة</option>{cashBankAccounts.map((account) => <option key={account.id} value={account.id}>{account.root_code === "1.1.01" ? "نقدية" : "بنك"} · {account.account_code} · {account.name_ar || account.name_en}</option>)}</Select></Field>
           <Field label="المبلغ"><Input type="number" value={payment.amount} onChange={(e) => setPayment({ ...payment, amount: e.target.value, commandId:"" })} /></Field>
           <Field label="التاريخ"><Input type="date" value={payment.date} onChange={(e) => setPayment({ ...payment, date: e.target.value, commandId:"" })} /></Field>
         </div>
@@ -1299,7 +1328,7 @@ function SuppliersTab({ data, refresh, canManage }) {
                     <button onClick={() => setExpanded(expanded === s.id ? null : s.id)} style={{ background: "none", border: "none", color: C.brass, cursor: "pointer", fontSize: 12.5 }}>{expanded === s.id ? "إخفاء الحركات" : "عرض الحركات"}</button>
                   </Td>
                 </tr>
-                {expanded === s.id && <tr><Td colSpan={7} style={{ background: C.panelAlt }}><SupplierLedger supplierId={s.id} data={supplierData} /><CommercialAdvancesPanel partyType="supplier" partyId={s.id} canReverse={canManage} onChanged={refreshSupplierData}/></Td></tr>}
+                {expanded === s.id && <tr><Td colSpan={7} style={{ background: C.panelAlt }}><SupplierLedger supplierId={s.id} data={supplierData} cashBankAccounts={cashBankAccounts} /><CommercialAdvancesPanel partyType="supplier" partyId={s.id} canReverse={canManage} onChanged={refreshSupplierData}/></Td></tr>}
               </React.Fragment>
             ); })}
           </Table>
@@ -1317,13 +1346,21 @@ function SuppliersTab({ data, refresh, canManage }) {
     </div>
   );
 }
-function SupplierLedger({ supplierId, data }) {
+function cashBankLedgerLabel(accountId, accounts = []) {
+  if (!accountId) return "افتراضي / حركة قديمة";
+  const account = accounts.find((row) => row.id === accountId);
+  if (!account) return "حساب غير متاح";
+  const kind = account.root_code === "1.1.01" ? "نقدية" : account.root_code === "1.1.02" ? "بنك" : "حساب";
+  return `${kind} · ${account.account_code} · ${account.name_ar || account.name_en || "—"}`;
+}
+
+function SupplierLedger({ supplierId, data, cashBankAccounts = [] }) {
   const purchases = data.materialPurchases.filter((p) => p.supplier_id === supplierId).map((p) => ({ date: p.purchase_date, type: "شراء", amount: p.qty * p.unit_cost, note: data.materials.find((m) => m.id === p.material_id)?.name }));
   const invoices = (data.supplierInvoices || []).filter((invoice) => invoice.supplier_id === supplierId && ["approved", "paid"].includes(invoice.status)).map((invoice) => ({ date: invoice.invoice_date, type: "فاتورة مورد", amount: invoice.total_amount, note: invoice.invoice_number }));
-  const payments = data.supplierPayments.filter((p) => p.supplier_id === supplierId).map((p) => ({ date: p.payment_date, type: transactionClassLabel(p), amount: p.status === "reversed" ? 0 : -p.amount, note: p.reversal_reason ? `${p.note || ""}${p.note ? " · " : ""}سبب العكس: ${p.reversal_reason}` : p.note }));
+  const payments = data.supplierPayments.filter((p) => p.supplier_id === supplierId).map((p) => ({ date: p.payment_date, type: transactionClassLabel(p), amount: p.status === "reversed" ? 0 : -p.amount, note: p.reversal_reason ? `${p.note || ""}${p.note ? " · " : ""}سبب العكس: ${p.reversal_reason}` : p.note, cashBank: cashBankLedgerLabel(p.cash_bank_account_id, cashBankAccounts) }));
   const rows = [...purchases, ...invoices, ...payments].sort((a, b) => (a.date || "").localeCompare(b.date || ""));
   if (rows.length === 0) return <div style={{ color: C.muted, fontSize: 13 }}>لا توجد حركات مسجلة</div>;
-  return <Table headers={["التاريخ", "النوع", "البيان", "المبلغ"]}>{rows.map((r, i) => <tr key={i}><Td>{r.date}</Td><Td style={{ color: r.type === "شراء" ? C.red : C.green }}>{r.type}</Td><Td>{r.note || "—"}</Td><Td>{formatMoney(Math.abs(r.amount))}</Td></tr>)}</Table>;
+  return <Table headers={["التاريخ", "النوع", "البيان", "حساب السداد", "المبلغ"]}>{rows.map((r, i) => <tr key={i}><Td>{r.date}</Td><Td style={{ color: r.type === "شراء" ? C.red : C.green }}>{r.type}</Td><Td>{r.note || "—"}</Td><Td>{r.cashBank || "—"}</Td><Td>{formatMoney(Math.abs(r.amount))}</Td></tr>)}</Table>;
 }
 
 /* -------------------------------- Customers --------------------------------- */
@@ -1331,11 +1368,19 @@ function CustomersTab({ data, refresh, canManage }) {
   const [name, setName] = useState(""); const [phone, setPhone] = useState("");
   const [editingId, setEditingId] = useState(null);
   const [saveCommandId, setSaveCommandId] = useState("");
-  const [receipt, setReceipt] = useState({ customerId: "", amount: "", date: todayStr(), commandId: "" });
+  const [receipt, setReceipt] = useState({ customerId: "", amount: "", date: todayStr(), cashBankAccountId: "", commandId: "" });
   const [err, setErr] = useState(""); const [expanded, setExpanded] = useState(null);
   const [search, setSearch] = useState("");
   const [pendingReceipt, setPendingReceipt] = useState(null); const [receiptBusy, setReceiptBusy] = useState(false);
   const [archiveAction, setArchiveAction] = useState(null);
+  const [cashBankAccounts, setCashBankAccounts] = useState([]);
+
+  const loadCashBankAccounts = useCallback(async () => {
+    const result = await supabase.rpc("get_cash_bank_posting_accounts");
+    if (result.error) { setErr(result.error.message); return result; }
+    setCashBankAccounts(result.data || []); return result;
+  }, []);
+  useEffect(() => { void loadCashBankAccounts(); }, [loadCashBankAccounts]);
 
   function startEdit(c) { setEditingId(c.id); setName(c.name); setPhone(c.phone || ""); setSaveCommandId(""); }
   function cancelEdit() { setEditingId(null); setName(""); setPhone(""); setSaveCommandId(""); setErr(""); }
@@ -1354,15 +1399,16 @@ function CustomersTab({ data, refresh, canManage }) {
     setReceiptBusy(true); setErr("");
     const commandId = payload.commandId || globalThis.crypto.randomUUID();
     if (!payload.commandId) { setReceipt((current) => ({ ...current, commandId })); setPendingReceipt((current) => current ? ({ ...current, commandId }) : current); }
-    const result = await supabase.rpc("record_customer_receipt", { target_customer: payload.customerId, receipt_amount: num(payload.amount), received_on: payload.date, receipt_note: null, command_id: commandId });
+    const result = await supabase.rpc("record_customer_receipt", { target_customer: payload.customerId, receipt_amount: num(payload.amount), received_on: payload.date, receipt_note: null, command_id: commandId, cash_bank_account: payload.cashBankAccountId });
     if (result.error) { setReceiptBusy(false); return setErr(result.error.message); }
     const refreshed = await refresh();
     setReceiptBusy(false); setPendingReceipt(null);
     if (refreshed?.error) return setErr("تم حفظ التحصيل، لكن تعذر تحديث الشاشة. حدّث الصفحة بأمان؛ لا تعِد تسجيل التحصيل.");
-    setReceipt({ customerId: "", amount: "", date: todayStr(), commandId: "" });
+    setReceipt({ customerId: "", amount: "", date: todayStr(), cashBankAccountId: "", commandId: "" });
   }
   async function addReceipt() {
     if (!receipt.customerId) return setErr("اختر العميل");
+    if (!receipt.cashBankAccountId) return setErr("اختر حساب التحصيل (بنك أو خزينة)");
     if (num(receipt.amount) <= 0) return setErr("أدخل مبلغ أكبر من صفر");
     const due = customerBalances(receipt.customerId, data).due;
     if (num(receipt.amount) > due) return setPendingReceipt({ ...receipt, due, advance: num(receipt.amount) - due });
@@ -1408,6 +1454,7 @@ function CustomersTab({ data, refresh, canManage }) {
         <div style={{ fontWeight: 700, marginBottom: 12 }}>تسجيل تحصيل من عميل</div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <Field label="العميل"><Select value={receipt.customerId} onChange={(e) => setReceipt({ ...receipt, customerId: e.target.value, commandId:"" })}><option value="">اختر العميل</option>{activeCustomers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</Select></Field>
+          <Field label="حساب التحصيل"><Select value={receipt.cashBankAccountId} onChange={(e) => setReceipt({ ...receipt, cashBankAccountId: e.target.value, commandId:"" })}><option value="">اختر البنك أو الخزينة</option>{cashBankAccounts.map((account) => <option key={account.id} value={account.id}>{account.root_code === "1.1.01" ? "نقدية" : "بنك"} · {account.account_code} · {account.name_ar || account.name_en}</option>)}</Select></Field>
           <Field label="المبلغ"><Input type="number" value={receipt.amount} onChange={(e) => setReceipt({ ...receipt, amount: e.target.value, commandId:"" })} /></Field>
           <Field label="التاريخ"><Input type="date" value={receipt.date} onChange={(e) => setReceipt({ ...receipt, date: e.target.value, commandId:"" })} /></Field>
         </div>
@@ -1429,7 +1476,7 @@ function CustomersTab({ data, refresh, canManage }) {
                     <button onClick={() => setExpanded(expanded === c.id ? null : c.id)} style={{ background: "none", border: "none", color: C.brass, cursor: "pointer", fontSize: 12.5 }}>{expanded === c.id ? "إخفاء الحركات" : "عرض الحركات"}</button>
                   </Td>
                 </tr>
-                {expanded === c.id && <tr><Td colSpan={7} style={{ background: C.panelAlt }}><CustomerLedger customerId={c.id} data={data} /><CustomerAdjustmentsPanel customerId={c.id} due={balances.due} rows={data.customerAdjustments||[]} canReverse={canManage} onChanged={refresh}/><CommercialAdvancesPanel partyType="customer" partyId={c.id} canReverse={canManage} onChanged={refresh}/></Td></tr>}
+                {expanded === c.id && <tr><Td colSpan={7} style={{ background: C.panelAlt }}><CustomerLedger customerId={c.id} data={data} cashBankAccounts={cashBankAccounts} /><CustomerAdjustmentsPanel customerId={c.id} due={balances.due} rows={data.customerAdjustments||[]} canReverse={canManage} onChanged={refresh}/><CommercialAdvancesPanel partyType="customer" partyId={c.id} canReverse={canManage} onChanged={refresh}/></Td></tr>}
               </React.Fragment>
             ); })}
           </Table>
@@ -1447,36 +1494,50 @@ function CustomersTab({ data, refresh, canManage }) {
     </div>
   );
 }
-function CustomerLedger({ customerId, data }) {
+function CustomerLedger({ customerId, data, cashBankAccounts = [] }) {
   const sales = data.sales.filter((s) => s.customer_id === customerId).map((s) => ({ date: s.sale_date, type: s.status === "cancelled" ? "بيع ملغي" : "بيع", amount: s.status === "cancelled" ? 0 : s.total, note: `${data.products.find((p) => p.id === s.product_id)?.name || "—"}${s.status === "cancelled" ? ` — ${s.cancellation_reason || "ملغي"}` : ""}` }));
   const rentals = data.rentals.filter((r) => r.customer_id === customerId).map((r) => ({ date: r.start_date, type: r.status === "cancelled" ? "إيجار ملغي" : "إيجار", amount: r.status === "cancelled" ? 0 : r.rental_fee, note: `${data.products.find((p) => p.id === r.product_id)?.name || "—"}${r.status === "cancelled" ? ` — ${r.cancellation_reason || "ملغي"}` : ""}` }));
   const projects = (data.projects || []).filter((p) => p.customer_id === customerId && p.lifecycle === "closed" && num(p.revenue) > 0).map((p) => ({ date: String(p.project_closed_at || p.lifecycle_changed_at || p.delivery_date || p.updated_at || "").slice(0,10), type: "إقفال مشروع", amount: num(p.revenue), note: `${p.project_code || "مشروع"} · ${p.project_name || "—"}` }));
-  const receipts = data.customerReceipts.filter((r) => r.customer_id === customerId).map((r) => ({ date: r.receipt_date, type: transactionClassLabel(r), amount: r.status === "reversed" ? 0 : -r.amount, note: r.reversal_reason ? `${r.note || ""}${r.note ? " · " : ""}سبب العكس: ${r.reversal_reason}` : r.note }));
+  const receipts = data.customerReceipts.filter((r) => r.customer_id === customerId).map((r) => ({ date: r.receipt_date, type: transactionClassLabel(r), amount: r.status === "reversed" ? 0 : -r.amount, note: r.reversal_reason ? `${r.note || ""}${r.note ? " · " : ""}سبب العكس: ${r.reversal_reason}` : r.note, cashBank: cashBankLedgerLabel(r.cash_bank_account_id, cashBankAccounts) }));
   const adjustments = (data.customerAdjustments || []).filter((r) => r.customer_id === customerId).map((r) => ({ date: r.adjustment_date, type: r.status === "reversed" ? "تسوية عميل معكوسة" : "تسوية عميل", amount: r.status === "reversed" ? 0 : -r.amount, note: `${r.reason || "—"}${r.reversal_reason ? ` · سبب العكس: ${r.reversal_reason}` : ""}` }));
   const rows = [...sales, ...rentals, ...projects, ...receipts, ...adjustments].sort((a, b) => (a.date || "").localeCompare(b.date || ""));
   if (rows.length === 0) return <div style={{ color: C.muted, fontSize: 13 }}>لا توجد حركات مسجلة</div>;
-  return <Table headers={["التاريخ", "النوع", "البيان", "المبلغ"]}>{rows.map((r, i) => <tr key={i}><Td>{r.date}</Td><Td style={{ color: r.type === "تحصيل" ? C.green : C.brass }}>{r.type}</Td><Td>{r.note || "—"}</Td><Td>{formatMoney(Math.abs(r.amount))}</Td></tr>)}</Table>;
+  return <Table headers={["التاريخ", "النوع", "البيان", "حساب التحصيل", "المبلغ"]}>{rows.map((r, i) => <tr key={i}><Td>{r.date}</Td><Td style={{ color: r.type === "تحصيل" ? C.green : C.brass }}>{r.type}</Td><Td>{r.note || "—"}</Td><Td>{r.cashBank || "—"}</Td><Td>{formatMoney(Math.abs(r.amount))}</Td></tr>)}</Table>;
 }
 
 
 /* -------------------------------- Expenses --------------------------------- */
 function ExpensesTab({ data, profileRole, refresh }) {
   const categories = ["كهرباء", "إيجار", "رواتب", "نقل", "صيانة", "إنترنت", "تسويق", "أخرى"];
-  const [form, setForm] = useState({ category: categories[0], amount: "", date: todayStr(), notes: "", projectId: "", commandId: "" });
+  const [form, setForm] = useState({ category: categories[0], amount: "", taxRate: "0", date: todayStr(), notes: "", projectId: "", cashBankAccountId: "", commandId: "" });
   const [err, setErr] = useState(""); const [ok, setOk] = useState("");
   const [busyId, setBusyId] = useState(null);
   const [cancellingExpense, setCancellingExpense] = useState(null);
   const [cancelReason, setCancelReason] = useState("");
+  const [cashBankAccounts, setCashBankAccounts] = useState([]);
+  useEffect(() => {
+    let active = true;
+    void supabase.rpc("get_cash_bank_posting_accounts").then((result) => {
+      if (!active) return;
+      if (result.error) setErr(result.error.message);
+      else setCashBankAccounts(result.data || []);
+    });
+    return () => { active = false; };
+  }, []);
   async function submit() {
     setErr(""); setOk("");
-    if (num(form.amount) <= 0) return setErr("أدخل مبلغ أكبر من صفر");
+    if (num(form.amount) <= 0) return setErr("أدخل مبلغ قبل الضريبة أكبر من صفر");
+    if (!form.cashBankAccountId) return setErr("اختر حساب السداد (بنك أو خزينة)");
+    const taxRate = num(form.taxRate || 0);
+    if (!Number.isFinite(taxRate) || taxRate < 0 || taxRate > 100) return setErr("نسبة الضريبة يجب أن تكون بين 0 و100");
     const commandId = form.commandId || globalThis.crypto.randomUUID();
     if (!form.commandId) setForm((current) => ({ ...current, commandId }));
     const result = await runCriticalMutation({
       scope: "expenses:post",
-      mutate: () => supabase.rpc("post_expense", {
-        expense_category: form.category, expense_amount: num(form.amount), spent_on: form.date,
+      mutate: () => supabase.rpc("post_expense_with_tax", {
+        expense_category: form.category, expense_net_amount: num(form.amount), expense_tax_rate: taxRate, spent_on: form.date,
         expense_notes: form.notes.trim() || null, target_project: form.projectId || null, command_id: commandId,
+        cash_bank_account: form.cashBankAccountId,
       }),
       verify: async () => {
         const verification = await supabase.from("expenses").select("id,cancelled_at").eq("command_id", commandId).single();
@@ -1488,7 +1549,7 @@ function ExpensesTab({ data, profileRole, refresh }) {
       ? "تم إرسال المصروف، لكن تعذر التحقق أو تحديث الشاشة. حدّث الصفحة دون إنشاء مصروف جديد."
       : result.error.message);
     setOk(result.refreshError ? "تم تسجيل المصروف، لكن تعذر تحديث الشاشة. حدّث الصفحة بأمان." : "تم تسجيل المصروف بنجاح");
-    setForm({ category: categories[0], amount: "", date: todayStr(), notes: "", projectId: "", commandId: "" });
+    setForm({ category: categories[0], amount: "", taxRate: "0", date: todayStr(), notes: "", projectId: "", cashBankAccountId: "", commandId: "" });
   }
   async function runFinancialAction(name, row, reason = null) {
     setErr(""); setOk(""); setBusyId(row.id);
@@ -1521,18 +1582,20 @@ function ExpensesTab({ data, profileRole, refresh }) {
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
         <Field label="البند"><Select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>{categories.map((c) => <option key={c} value={c}>{c}</option>)}</Select></Field>
         <Field label="المشروع (اختياري للمصروف العام)"><Select value={form.projectId} onChange={(e) => setForm({ ...form, projectId: e.target.value })}><option value="">مصروف عام بدون مشروع</option>{data.projects.filter((p) => !["closed","cancelled"].includes(p.lifecycle)).map((p) => <option key={p.id} value={p.id}>{p.project_code} · {p.project_name}</option>)}</Select></Field>
-        <Field label="المبلغ"><Input type="number" min="0" step="any" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} /></Field>
+        <Field label="المبلغ قبل الضريبة"><Input type="number" min="0" step="any" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} /></Field>
+        <Field label="حساب السداد"><Select value={form.cashBankAccountId} onChange={(e) => setForm({ ...form, cashBankAccountId: e.target.value, commandId: "" })}><option value="">اختر البنك أو الخزينة</option>{cashBankAccounts.map((account) => <option key={account.id} value={account.id}>{account.root_code === "1.1.01" ? "نقدية" : "بنك"} · {account.account_code} · {account.name_ar || account.name_en}</option>)}</Select></Field>
+        <Field label="ضريبة القيمة المضافة %"><Input type="number" min="0" max="100" step="0.01" value={form.taxRate} onChange={(e) => setForm({ ...form, taxRate: e.target.value })} /></Field>
         <Field label="التاريخ"><Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></Field>
         <Field label="ملاحظات"><Input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></Field>
       </div>
       <div style={{ marginTop: 12 }}><Btn onClick={submit}><Plus size={15}/> تسجيل المصروف</Btn></div>
       {err && <Banner type="error">{err}</Banner>}{ok && <Banner type={operationFeedbackType(ok)}>{ok}</Banner>}
     </Card>
-    <Card>{data.expenses.length === 0 ? <Empty text="لا توجد مصروفات مسجلة" /> : <Table headers={["التاريخ","البند","المشروع","الحالة","الملاحظات","المبلغ","الإجراءات"]}>{[...data.expenses].reverse().map((e) => {
+    <Card>{data.expenses.length === 0 ? <Empty text="لا توجد مصروفات مسجلة" /> : <Table headers={["التاريخ","البند","المشروع","الحالة","الملاحظات","الضريبة","الإجمالي","الإجراءات"]}>{[...data.expenses].reverse().map((e) => {
       const project = data.projects.find((p) => p.id === e.project_id);
       const status = e.cancelled_at ? "ملغي" : ({not_posted:"غير مرحّل",submitted:"قيد المراجعة",posted:"مرحّل",rejected:"مرفوض",reversed:"معكوس"}[e.cost_posting_status] || e.cost_posting_status);
       const canCancel = !e.cancelled_at && (profileRole === "owner" || (profileRole === "manager" && e.cost_posting_status !== "posted"));
-      return <tr key={e.id} style={{opacity:e.cancelled_at?0.65:1}}><Td>{e.expense_date}</Td><Td>{e.category}</Td><Td>{project ? `${project.project_code} · ${project.project_name}` : "عام"}</Td><Td>{status}</Td><Td>{e.cancellation_reason || e.notes || "—"}</Td><Td style={{fontWeight:700,color:C.red}}>{formatMoney(e.amount)}</Td><Td><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{e.project_id && e.cost_posting_status === "not_posted" && !e.cancelled_at && <Btn disabled={busyId===e.id} onClick={() => runFinancialAction("prepare_operational_source_actual_cost", e)}>إرسال للتكلفة</Btn>}{canCancel && <Btn variant="danger" disabled={busyId===e.id} onClick={() => cancel(e)}>إلغاء</Btn>}</div></Td></tr>;
+      return <tr key={e.id} style={{opacity:e.cancelled_at?0.65:1}}><Td>{e.expense_date}</Td><Td>{e.category}</Td><Td>{project ? `${project.project_code} · ${project.project_name}` : "عام"}</Td><Td>{status}</Td><Td>{e.cancellation_reason || e.notes || "—"}</Td><Td>{formatMoney(e.tax_amount || 0)}{Number(e.tax_rate || 0) > 0 ? ` (${Number(e.tax_rate)}%)` : ""}</Td><Td style={{fontWeight:700,color:C.red}}>{formatMoney(e.amount)}</Td><Td><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{e.project_id && e.cost_posting_status === "not_posted" && !e.cancelled_at && <Btn disabled={busyId===e.id} onClick={() => runFinancialAction("prepare_operational_source_actual_cost", e)}>إرسال للتكلفة</Btn>}{canCancel && <Btn variant="danger" disabled={busyId===e.id} onClick={() => cancel(e)}>إلغاء</Btn>}</div></Td></tr>;
     })}</Table>}</Card>
   </div>;
 }

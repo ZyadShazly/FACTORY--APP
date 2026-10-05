@@ -4,9 +4,12 @@ import fs from "node:fs";
 import { readWorkspaceLocation, workspaceUrl, safeProjectId } from "../src/app/urlNavigation.js";
 
 test("UAT-009 encodes page and project context in a refresh-safe URL", () => {
-  assert.deepEqual(readWorkspaceLocation("?page=projects&project=p1"), { page: "projects", projectId: "p1" });
+  assert.deepEqual(readWorkspaceLocation("?page=projects&project=p1"), { page: "projects", projectId: "p1", sourceRecordId: null });
   assert.equal(workspaceUrl({ page: "projects", projectId: "p1" }, "https://example.test/app?demo=v22"), "/app?demo=v22&page=projects&project=p1");
   assert.equal(workspaceUrl({ page: "inventory" }, "https://example.test/app?page=projects&project=p1"), "/app?page=inventory");
+  assert.deepEqual(readWorkspaceLocation("?page=sales&record=sale-1"), { page: "sales", projectId: null, sourceRecordId: "sale-1" });
+  assert.equal(workspaceUrl({ page: "sales", sourceRecordId: "sale-1" }, "https://example.test/app?page=accounting"), "/app?page=sales&record=sale-1");
+  assert.equal(workspaceUrl({ page: "accounting" }, "https://example.test/app?page=sales&record=sale-1"), "/app?page=accounting");
   assert.equal(safeProjectId("p1", [{ id: "p1" }]), "p1");
   assert.equal(safeProjectId("missing", [{ id: "p1" }]), null);
 });
