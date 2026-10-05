@@ -4,7 +4,7 @@ import fs from "node:fs";
 import { parseJournalImportCsv } from "../src/accounting/accountingExports.js";
 
 const migration=fs.readFileSync(
-  "supabase/migrations/20261005205500_accounting_journal_import.sql",
+  "supabase/migrations/20261005180102_accounting_journal_import.sql",
   "utf8",
 );
 const journalUi=fs.readFileSync("src/accounting/JournalWorkspace.jsx","utf8");
