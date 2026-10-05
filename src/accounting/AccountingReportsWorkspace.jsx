@@ -1,6 +1,7 @@
 import React,{useCallback,useEffect,useMemo,useState}from"react";
 import{RefreshCw}from"lucide-react";
 import{supabase}from"../supabaseClient";
+import{exportBalanceSheetReport,exportLedgerReport,exportProfitLossReport,exportTrialBalanceReport}from"./accountingExports";
 
 const TYPE_LABELS={asset:"أصول",liability:"التزامات",equity:"حقوق ملكية",revenue:"إيرادات",cost_of_sales:"تكلفة مبيعات",expense:"مصروفات"};
 
@@ -43,7 +44,7 @@ function LedgerReport({accounts,projects,initialAccountId,onAccountConsumed}){
 
   const tx=report?.transactions||[];
   return <section className="accounting-panel">
-    <div className="accounting-report-heading"><div><h3>كشف حساب</h3><p>الحركات الفعلية على الحساب مع الرصيد الافتتاحي والجاري والمصدر.</p></div><button type="button" className="accounting-button ghost" onClick={load} disabled={state.loading}><RefreshCw size={14}/>تحديث</button></div>
+    <div className="accounting-report-heading"><div><h3>كشف حساب</h3><p>الحركات الفعلية على الحساب مع الرصيد الافتتاحي والجاري والمصدر.</p></div><div className="accounting-report-actions"><button type="button" className="accounting-button ghost" onClick={()=>exportLedgerReport(report,accounts.find((a)=>a.id===filters.account_id),filters)} disabled={!report}>تصدير Excel</button><button type="button" className="accounting-button ghost" onClick={load} disabled={state.loading}><RefreshCw size={14}/>تحديث</button></div></div>
     <Controls>
       <Field label="الحساب"><select value={filters.account_id} onChange={(e)=>setFilters((f)=>({...f,account_id:e.target.value}))}><option value="">اختر حسابًا</option>{accounts.map((a)=><option key={a.id} value={a.id}>{a.account_code} · {a.name_ar}{a.is_posting?"":" · تجميعي"}</option>)}</select></Field>
       <Field label="من"><input type="date" value={filters.from} onChange={(e)=>setFilters((f)=>({...f,from:e.target.value}))}/></Field>
@@ -92,7 +93,7 @@ function TrialBalanceReport({accounts,projects,onOpenLedger}){
   const rows=report?.rows||[];
   const t=report?.totals||{};
   return <section className="accounting-panel">
-    <div className="accounting-report-heading"><div><h3>ميزان المراجعة</h3><p>الأرصدة الافتتاحية وحركة الفترة والأرصدة الختامية مع تجميع الحسابات الفرعية.</p></div><button type="button" className="accounting-button ghost" onClick={load} disabled={state.loading}><RefreshCw size={14}/>تحديث</button></div>
+    <div className="accounting-report-heading"><div><h3>ميزان المراجعة</h3><p>الأرصدة الافتتاحية وحركة الفترة والأرصدة الختامية مع تجميع الحسابات الفرعية.</p></div><div className="accounting-report-actions"><button type="button" className="accounting-button ghost" onClick={()=>exportTrialBalanceReport(report,filters)} disabled={!report}>تصدير Excel</button><button type="button" className="accounting-button ghost" onClick={load} disabled={state.loading}><RefreshCw size={14}/>تحديث</button></div></div>
     <Controls>
       <Field label="من"><input type="date" value={filters.from} onChange={(e)=>setFilters((f)=>({...f,from:e.target.value}))}/></Field>
       <Field label="إلى"><input type="date" value={filters.to} onChange={(e)=>setFilters((f)=>({...f,to:e.target.value}))}/></Field>
@@ -149,7 +150,7 @@ function ProfitLossReport({projects,onOpenLedger}){
   </div>);
 
   return <section className="accounting-panel">
-    <div className="accounting-report-heading"><div><h3>قائمة الأرباح والخسائر</h3><p>مشتقة مباشرة من القيود المرحّلة خلال الفترة المحددة، مع إمكانية التصفية حسب المشروع.</p></div><button type="button" className="accounting-button ghost" onClick={load} disabled={state.loading}><RefreshCw size={14}/>تحديث</button></div>
+    <div className="accounting-report-heading"><div><h3>قائمة الأرباح والخسائر</h3><p>مشتقة مباشرة من القيود المرحّلة خلال الفترة المحددة، مع إمكانية التصفية حسب المشروع.</p></div><div className="accounting-report-actions"><button type="button" className="accounting-button ghost" onClick={()=>exportProfitLossReport(report,filters)} disabled={!report}>تصدير Excel</button><button type="button" className="accounting-button ghost" onClick={load} disabled={state.loading}><RefreshCw size={14}/>تحديث</button></div></div>
     <Controls>
       <Field label="من"><input type="date" value={filters.from} onChange={(e)=>setFilters((f)=>({...f,from:e.target.value}))}/></Field>
       <Field label="إلى"><input type="date" value={filters.to} onChange={(e)=>setFilters((f)=>({...f,to:e.target.value}))}/></Field>
@@ -215,7 +216,7 @@ function BalanceSheetReport({onOpenLedger}){
   </div>);
 
   return <section className="accounting-panel">
-    <div className="accounting-report-heading"><div><h3>الميزانية / قائمة المركز المالي</h3><p>مشتقة مباشرة من دفتر الأستاذ حتى التاريخ المحدد، بدون تخزين إجماليات منفصلة.</p></div><button type="button" className="accounting-button ghost" onClick={load} disabled={state.loading}><RefreshCw size={14}/>تحديث</button></div>
+    <div className="accounting-report-heading"><div><h3>الميزانية / قائمة المركز المالي</h3><p>مشتقة مباشرة من دفتر الأستاذ حتى التاريخ المحدد، بدون تخزين إجماليات منفصلة.</p></div><div className="accounting-report-actions"><button type="button" className="accounting-button ghost" onClick={()=>exportBalanceSheetReport(report,date)} disabled={!report}>تصدير Excel</button><button type="button" className="accounting-button ghost" onClick={load} disabled={state.loading}><RefreshCw size={14}/>تحديث</button></div></div>
     <Controls><Field label="حتى تاريخ"><input type="date" value={date} onChange={(e)=>setDate(e.target.value)}/></Field></Controls>
     {state.error&&<div className="accounting-notice error">{state.error}</div>}
     {state.loading?<Empty>جارِ تحميل قائمة المركز المالي...</Empty>:report&&<>
