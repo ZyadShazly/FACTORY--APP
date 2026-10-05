@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "../supabaseClient";
 import { accountMatchesLookup, compactAccountCode } from "./accountCodes";
+import { downloadJournalImportTemplate, exportJournalRegister, parseJournalImportCsv, printJournal } from "./accountingExports";
 
 const STATUS_LABELS={draft:"مسودة",posted:"مرحّل",reversed:"معكوس"};
 const ORIGIN_LABELS={manual:"يدوي",opening:"افتتاحي",system:"تلقائي",reversal:"عكسي"};
@@ -137,6 +138,7 @@ export function JournalWorkspace({accounts,profile,permissions,onNavigate}){
   const [settingsDraft,setSettingsDraft]=useState({activation_date:"",enabled:false});
   const [periodDraft,setPeriodDraft]=useState({start:"",end:""});
   const [periodAction,setPeriodAction]=useState(null);
+  const [importPreview,setImportPreview]=useState(null);
   const [state,setState]=useState({loading:true,busy:false,error:"",success:""});
 
   const isOwner=profile?.role==="owner";
@@ -224,6 +226,41 @@ export function JournalWorkspace({accounts,profile,permissions,onNavigate}){
     setReverse(null);await load();setState((s)=>({...s,busy:false,success:"تم إنشاء قيد عكسي من آخر شكل فعلي للقيد."}));
   };
 
+  const readImportFile=async(event)=>{
+    const file=event.target.files?.[0];
+    event.target.value="";
+    if(!file)return;
+    try{
+      const text=await file.text();
+      const entries=parseJournalImportCsv(text);
+      const lineCount=entries.reduce((sum,entry)=>sum+(entry.lines||[]).length,0);
+      setImportPreview({fileName:file.name,entries,lineCount});
+      setState((current)=>({...current,error:"",success:""}));
+    }catch(error){
+      setImportPreview(null);
+      setState((current)=>({...current,error:error?.message||"تعذر قراءة ملف الاستيراد.",success:""}));
+    }
+  };
+
+  const confirmImport=async()=>{
+    if(!importPreview?.entries?.length)return;
+    setState((current)=>({...current,busy:true,error:"",success:""}));
+    const result=await supabase.rpc("import_accounting_journal_drafts",{import_entries:importPreview.entries});
+    if(result.error){
+      setState((current)=>({...current,busy:false,error:result.error.message||"تعذر استيراد القيود.",success:""}));
+      return;
+    }
+    const count=Array.isArray(result.data)?result.data.length:importPreview.entries.length;
+    setImportPreview(null);
+    await load();
+    setState((current)=>({...current,busy:false,success:`تم استيراد ${count} قيد كمسودات للمراجعة قبل الترحيل.`}));
+  };
+
+  const handlePrint=(row)=>{
+    const opened=printJournal(row,accounts);
+    if(!opened)setState((current)=>({...current,error:"المتصفح منع نافذة الطباعة. اسمح بالنوافذ المنبثقة ثم حاول مرة أخرى."}));
+  };
+
   const saveSettings=async()=>{
     if(!isOwner)return;
     setState((s)=>({...s,busy:true,error:"",success:""}));
@@ -280,7 +317,12 @@ export function JournalWorkspace({accounts,profile,permissions,onNavigate}){
           <label>إلى<input type="date" value={filters.to} onChange={(e)=>setFilters((f)=>({...f,to:e.target.value}))}/></label>
           <button type="button" className="accounting-button ghost" onClick={load} disabled={state.loading}>تحديث</button>
         </div>
-        {canCreate&&<button type="button" className="accounting-button primary" onClick={()=>setEditor(blankEditor())}>+ قيد جديد</button>}
+        <div className="journal-toolbar-actions">
+          <button type="button" className="accounting-button ghost" onClick={()=>exportJournalRegister(workspace.journals,accounts,filters)} disabled={state.loading||!workspace.journals.length}>تصدير Excel</button>
+          {canCreate&&<button type="button" className="accounting-button ghost" onClick={downloadJournalImportTemplate}>قالب الاستيراد</button>}
+          {canCreate&&<label className="accounting-button ghost journal-file-button">استيراد قيود<input type="file" accept=".csv,text/csv" onChange={readImportFile}/></label>}
+          {canCreate&&<button type="button" className="accounting-button primary" onClick={()=>setEditor(blankEditor())}>+ قيد جديد</button>}
+        </div>
       </div>
 
       {state.error&&<div className="accounting-notice error">{state.error}</div>}
@@ -306,6 +348,7 @@ export function JournalWorkspace({accounts,profile,permissions,onNavigate}){
             </div>}
           </details>
           <div className="accounting-row-actions">
+            <button type="button" onClick={()=>handlePrint(row)}>طباعة / PDF</button>
             {row.status==="draft"&&canCreate&&<button type="button" onClick={()=>setEditor(editorFromJournal(row,"draft-edit"))}>تعديل المسودة</button>}
             {row.status==="draft"&&canPost&&<button type="button" onClick={()=>postJournal(row)} disabled={state.busy||!workspace.settings?.enabled}>ترحيل</button>}
             {row.status==="posted"&&canMasterEdit&&<button type="button" onClick={()=>setEditor(editorFromJournal(row,"posted-edit"))}>تعديل Master</button>}
@@ -316,6 +359,23 @@ export function JournalWorkspace({accounts,profile,permissions,onNavigate}){
     </section>
 
     {editor&&<JournalEditor editor={editor} accounts={accounts} busy={state.busy} onChange={patchEditor} onClose={()=>setEditor(null)} onSave={saveEditor}/>}
+
+    {importPreview&&<div className="accounting-modal-layer" role="dialog" aria-modal="true" aria-label="استيراد القيود">
+      <div className="accounting-modal compact">
+        <div className="accounting-modal-head"><div><span>{importPreview.fileName}</span><h3>مراجعة استيراد القيود</h3></div><button type="button" className="accounting-close" onClick={()=>setImportPreview(null)}>×</button></div>
+        <div className="accounting-import-summary">
+          <div><span>عدد القيود</span><b>{importPreview.entries.length}</b></div>
+          <div><span>عدد السطور</span><b>{importPreview.lineCount}</b></div>
+        </div>
+        <div className="accounting-notice">الاستيراد ينشئ <b>مسودات فقط</b>. لن يتم ترحيل أي قيد تلقائيًا. لو أي قيد أو حساب أو ميزان غير صحيح، يتم رفض الدفعة كاملة بدون استيراد جزئي.</div>
+        <details className="accounting-import-help"><summary>أعمدة الملف المطلوبة</summary><p>entry_key · entry_date · reference · description · entry_origin · account_code · debit · credit · line_description</p><p>استخدم نفس entry_key لكل سطور القيد الواحد. كود الحساب يقبل الشكل المختصر بدون نقاط أو الشكل الداخلي بالنقاط.</p></details>
+        <div className="accounting-modal-actions">
+          <button type="button" className="accounting-button ghost" onClick={()=>setImportPreview(null)}>إلغاء</button>
+          <button type="button" className="accounting-button ghost" onClick={downloadJournalImportTemplate}>تحميل القالب</button>
+          <button type="button" className="accounting-button primary" disabled={state.busy} onClick={confirmImport}>{state.busy?"جارِ الاستيراد...":"استيراد كمسودات"}</button>
+        </div>
+      </div>
+    </div>}
 
     {reverse&&<div className="accounting-modal-layer" role="dialog" aria-modal="true" aria-label="عكس القيد">
       <div className="accounting-modal compact">
