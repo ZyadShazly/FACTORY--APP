@@ -1,5 +1,5 @@
-import { downloadExcelWorkbook } from "../reporting/excelWorkbook";
-import { compactAccountCode } from "./accountCodes";
+import { downloadExcelWorkbook } from "../reporting/excelWorkbook.js";
+import { compactAccountCode } from "./accountCodes.js";
 
 const num=(value)=>Number(value||0);
 const stamp=()=>new Date().toISOString().slice(0,10);
