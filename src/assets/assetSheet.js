@@ -10,7 +10,7 @@ function safeCell(value){
 }
 export function assetSheetTemplate(){
  return "\uFEFF"+ASSET_SHEET_COLUMNS.map(safeCell).join(",")+"\r\n"+
- ["ماكينة تقطيع","machine","serialized","1","قطعة","","","", "", "", "2026-10-01","12000","مثال فقط - احذف هذا الصف قبل الاستيراد"].map(safeCell).join(",")+"\r\n";
+ ["ماكينة تقطيع","equipment","serialized","1","قطعة","","","", "", "", "2026-10-01","12000","مثال فقط - احذف هذا الصف قبل الاستيراد"].map(safeCell).join(",")+"\r\n";
 }
 export function exportAssetCsv(rows,categories=[],locations=[],includeCosts=false){
  const headers=["asset_code",...ASSET_SHEET_COLUMNS,"operational_status"];
@@ -47,7 +47,7 @@ export function parseAssetCsv(text){
   if(values.length!==columns.length)throw new Error("عدد الأعمدة غير صحيح في الصف "+(index+2));
   const a=Object.fromEntries(columns.map((key,i)=>[key,values[i]?.trim()||""]));
   if(!a.name||a.name.length>200)throw new Error("اسم الأصل مطلوب في الصف "+(index+2));
-  if(!["tool","machine","equipment","vehicle","furniture","device","other"].includes(a.asset_type))throw new Error("نوع الأصل غير معروف في الصف "+(index+2)+": "+a.asset_type);
+  if(!["tool","equipment","asset","key","vehicle","device","other"].includes(a.asset_type))throw new Error("نوع الأصل غير معروف في الصف "+(index+2)+": "+a.asset_type);
   if(!["serialized","quantity"].includes(a.tracking_mode))throw new Error("طريقة التتبع غير صحيحة في الصف "+(index+2));
   const qty=Number(a.quantity);
   if(!Number.isFinite(qty)||qty<=0||(a.tracking_mode==="serialized"&&qty!==1))throw new Error("كمية غير صالحة في الصف "+(index+2));
