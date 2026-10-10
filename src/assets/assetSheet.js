@@ -8,9 +8,17 @@ function safeCell(value){
   const guarded=/^[\s]*[=+@\-]/.test(s)?"'"+s:s;
   return '"'+guarded.replace(/"/g,'""')+'"';
 }
-export function assetSheetTemplate(){
- return "\uFEFF"+ASSET_SHEET_COLUMNS.map(safeCell).join(",")+"\r\n"+
- ["ماكينة تقطيع","equipment","serialized","1","قطعة","","","", "", "", "2026-10-01","12000","مثال فقط - احذف هذا الصف قبل الاستيراد"].map(safeCell).join(",")+"\r\n";
+export function assetSheetTemplate(categories=[],locations=[]){
+ const locs=locations.filter(l=>l.is_active!==false).map(l=>l.name);
+ const cats=categories.filter(l=>l.is_active!==false).map(l=>l.name);
+ const locationsToShow=locs.length?locs:[""];
+ const lines=[ASSET_SHEET_COLUMNS.map(safeCell).join(",")];
+ // Each real registered location is listed as an EXAMPLE; users replace example names before import.
+ for(const place of locationsToShow){
+  const values=["مثال - استبدل باسم الأصل","equipment","","1","قطعة",cats.length===1?cats[0]:"",place,"","","","","","احذف أو عدّل هذا الصف قبل الاستيراد"];
+  lines.push(values.map(safeCell).join(","));
+ }
+ return "\\uFEFF"+lines.join("\\r\\n")+"\\r\\n";
 }
 export function exportAssetCsv(rows,categories=[],locations=[],includeCosts=false){
  const headers=["asset_code",...ASSET_SHEET_COLUMNS,"operational_status"];
@@ -42,18 +50,18 @@ export function parseAssetCsv(text){
  if(rows.length<2)throw new Error("الملف لا يحتوي على أصول.");
  const columns=rows.shift().map(s=>s.trim());
  if(new Set(columns).size!==columns.length)throw new Error("عناوين الأعمدة مكررة.");
- for(const key of ["name","asset_type","tracking_mode","quantity"])if(!columns.includes(key))throw new Error("عمود مطلوب: "+key);
+ for(const key of ["name","asset_type","quantity"])if(!columns.includes(key))throw new Error("عمود مطلوب: "+key);
  const records=rows.map((values,index)=>{
   if(values.length!==columns.length)throw new Error("عدد الأعمدة غير صحيح في الصف "+(index+2));
   const a=Object.fromEntries(columns.map((key,i)=>[key,values[i]?.trim()||""]));
   if(!a.name||a.name.length>200)throw new Error("اسم الأصل مطلوب في الصف "+(index+2));
   if(!["tool","equipment","asset","key","vehicle","device","other"].includes(a.asset_type))throw new Error("نوع الأصل غير معروف في الصف "+(index+2)+": "+a.asset_type);
-  if(!["serialized","quantity"].includes(a.tracking_mode))throw new Error("طريقة التتبع غير صحيحة في الصف "+(index+2));
+  if(a.tracking_mode&&!["serialized","quantity"].includes(a.tracking_mode))throw new Error("طريقة التتبع غير صحيحة في الصف "+(index+2));
   const qty=Number(a.quantity);
-  if(!Number.isFinite(qty)||qty<=0||(a.tracking_mode==="serialized"&&qty!==1))throw new Error("كمية غير صالحة في الصف "+(index+2));
+  if(!Number.isFinite(qty)||qty<=0||(!Number.isInteger(qty))||(a.tracking_mode==="serialized"&&qty!==1))throw new Error("كمية غير صالحة في الصف "+(index+2));
   if(a.purchase_cost&&(!Number.isFinite(Number(a.purchase_cost))||Number(a.purchase_cost)<0))throw new Error("تكلفة غير صالحة في الصف "+(index+2));
   if(a.purchase_date&&!/^\d{4}-\d{2}-\d{2}$/.test(a.purchase_date))throw new Error("تاريخ الشراء يجب أن يكون YYYY-MM-DD في الصف "+(index+2));
-  return a;
+  return {...a,tracking_mode:a.tracking_mode||(qty===1?"serialized":"quantity")};
  });
  return records;
 }
