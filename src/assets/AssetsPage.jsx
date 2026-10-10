@@ -27,17 +27,20 @@ export function AssetsPage({data,profile,permissions,refresh}){
   setError("");setSheetPreview([]);
   if(!/\.csv$/i.test(file.name))return setError("ارفع ملف CSV محفوظ من Excel، وليس XLSX.");
   try{const records=parseAssetCsv(await file.text());
+   const enabledLocations=(data.assetLocations||[]).filter(l=>l.is_active!==false);
+   const enabledCategories=(data.assetCategories||[]).filter(l=>l.is_active!==false);
    const existing=new Set((data.assets||[]).map(a=>[a.asset_type,a.name?.trim().toLowerCase(),a.serial_number?.trim().toLowerCase()].join("|")));
    const within=new Set();
    const mapped=records.map(a=>{
-    const category=(data.assetCategories||[]).find(c=>c.name.trim()===a.category&&c.is_active!==false);
-    const location=(data.assetLocations||[]).find(l=>l.name.trim()===a.location&&l.is_active!==false);
+    const category=enabledCategories.find(c=>c.name.trim()===a.category)||(a.category?null:enabledCategories.length===1?enabledCategories[0]:null);
+    const location=enabledLocations.find(l=>l.name.trim()===a.location)||(a.location?null:enabledLocations.length===1?enabledLocations[0]:null);
     const id=[a.asset_type,a.name.toLowerCase(),a.serial_number.toLowerCase()].join("|");
     if(existing.has(id)||within.has(id))throw new Error("أصل مكرر بالاسم والنوع والرقم التسلسلي: "+a.name);
     within.add(id);
     if(a.category&&!category)throw new Error("التصنيف غير موجود أو غير نشط: "+a.category);
     if(a.location&&!location)throw new Error("الموقع غير موجود أو غير نشط: "+a.location);
-    return {...blankAsset(),...a,category_id:category?.id||"",current_location_id:location?.id||"",quantity:Number(a.quantity),purchase_cost:a.purchase_cost||"",purchase_date:a.purchase_date||""};
+    if(enabledLocations.length>1&&!location)throw new Error("حدد الموقع من الأماكن المسجلة في البرنامج للأصل: "+a.name);
+    return {...blankAsset(),...a,category_id:category?.id||null,current_location_id:location?.id||null,supplier_id:null,quantity:Number(a.quantity),purchase_cost:a.purchase_cost||null,purchase_date:a.purchase_date||null,warranty_until:null};
    });
    setSheetPreview(mapped);
   }catch(e){setError(e.message)}
@@ -48,7 +51,7 @@ export function AssetsPage({data,profile,permissions,refresh}){
   setSheetBusy(true);setError("");let done=0;
   try{
    for(const a of sheetPreview){
-    await rpc("create_asset",{payload:a});
+    await rpc("create_asset",{payload:{...a,category_id:a.category_id||null,current_location_id:a.current_location_id||null,supplier_id:null}});
     done++;
    }
    setSheetPreview([]);setSuccess("تم استيراد "+done+" أصل إلى سجل الأصول التشغيلي فقط. راجع التسجيل المحاسبي بشكل مستقل.");
@@ -76,10 +79,10 @@ export function AssetsPage({data,profile,permissions,refresh}){
  <div className="asset-tabs">{tabs.map(([id,label])=><button key={id} className={tab===id?"active":""} onClick={()=>setTab(id)}>{label}</button>)}</div>
  {tab==="overview"&&<><div className="v22-grid cols-4"><StatCard label="إجمالي السجلات" value={stats.total}/><StatCard label="متاح للإصدار" value={stats.available} tone="positive"/><StatCard label="عهد نشطة" value={stats.active}/><StatCard label="مخاطر وصيانة" value={stats.risk} tone="negative"/></div><Panel><h3>التنبيهات الحالية</h3>{alerts.length?<AlertList alerts={alerts}/>:<EmptyState title="لا توجد تنبيهات حرجة" description="الأصول والعهد ضمن الحدود المحددة."/>}</Panel></>}
  {tab==="registry"&&<Panel><div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",marginBottom:16}}>
- <Button variant="ghost" onClick={()=>downloadAssetCsv("nextep-assets-template.csv",assetSheetTemplate())}>تحميل نموذج Excel (CSV)</Button>
+ <Button variant="ghost" onClick={()=>downloadAssetCsv("nextep-assets-template.csv",assetSheetTemplate(data.assetCategories||[],data.assetLocations||[]))}>تحميل نموذج Excel (CSV)</Button>
  <Button variant="ghost" onClick={exportSheet}>تصدير السجل لـ Excel (CSV)</Button>
  {permissions.assets_manage&&<label style={{display:"inline-flex",alignItems:"center",gap:6,cursor:"pointer"}}>استيراد Excel (CSV)<input type="file" accept=".csv,text/csv" onChange={readAssetSheet} disabled={sheetBusy} style={{maxWidth:190}}/></label>}
- </div><p style={{fontSize:13}}>التصنيف ينظم العِدّة فقط؛ لا ينشئ حساب أصول ثابتة أو إهلاك. احفظ ملف Excel بصيغة CSV UTF-8 قبل رفعه.</p>
+ </div><p style={{fontSize:13}}>التصنيف ينظم العِدّة فقط؛ لا ينشئ حساب أصول ثابتة أو إهلاك. لو عندك موقع واحد بيتحدد تلقائيًا؛ لو عندك أكتر من موقع هتلاقي مثال لكل موقع في النموذج، واكتب اسم الموقع المطابق لكل أصل. الفردي/الكمي بيتحدد تلقائيًا حسب الكمية. احذف صفوف الأمثلة قبل الاستيراد، واحفظ CSV UTF-8.</p>
  {sheetPreview.length>0&&<div style={{padding:12,border:"1px solid currentColor",marginBottom:12}}>
  <b>معاينة: {sheetPreview.length} أصل جاهز للاستيراد التشغيلي</b>
  <p>أول 5 سجلات: {sheetPreview.slice(0,5).map(a=>a.name).join("، ")}</p>
