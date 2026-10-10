@@ -25,7 +25,7 @@ export function AssetsPage({data,profile,permissions,refresh}){
  async function readAssetSheet(event){
   const file=event.target.files?.[0];event.target.value="";if(!file)return;
   setError("");setSheetPreview([]);
-  if(!/\\.csv$/i.test(file.name))return setError("ارفع ملف CSV محفوظ من Excel، وليس XLSX.");
+  if(!/\.csv$/i.test(file.name))return setError("ارفع ملف CSV محفوظ من Excel، وليس XLSX.");
   try{const records=parseAssetCsv(await file.text());
    const existing=new Set((data.assets||[]).map(a=>[a.asset_type,a.name?.trim().toLowerCase(),a.serial_number?.trim().toLowerCase()].join("|")));
    const within=new Set();
