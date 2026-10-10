@@ -50,17 +50,25 @@ export function parseAssetCsv(text){
  if(rows.length<2)throw new Error("الملف لا يحتوي على أصول.");
  const columns=rows.shift().map(s=>s.trim());
  if(new Set(columns).size!==columns.length)throw new Error("عناوين الأعمدة مكررة.");
- for(const key of ["name","asset_type","quantity"])if(!columns.includes(key))throw new Error("عمود مطلوب: "+key);
+ for(const key of ["name","quantity"])if(!columns.includes(key))throw new Error("عمود مطلوب: "+key);
  const records=rows.map((values,index)=>{
   if(values.length!==columns.length)throw new Error("عدد الأعمدة غير صحيح في الصف "+(index+2));
   const a=Object.fromEntries(columns.map((key,i)=>[key,values[i]?.trim()||""]));
   if(!a.name||a.name.length>200)throw new Error("اسم الأصل مطلوب في الصف "+(index+2));
+  a.asset_type=a.asset_type||"tool";
   if(!["tool","equipment","asset","key","vehicle","device","other"].includes(a.asset_type))throw new Error("نوع الأصل غير معروف في الصف "+(index+2)+": "+a.asset_type);
   if(a.tracking_mode&&!["serialized","quantity"].includes(a.tracking_mode))throw new Error("طريقة التتبع غير صحيحة في الصف "+(index+2));
   const qty=Number(a.quantity);
   if(!Number.isFinite(qty)||qty<=0||(!Number.isInteger(qty))||(a.tracking_mode==="serialized"&&qty!==1))throw new Error("كمية غير صالحة في الصف "+(index+2));
   if(a.purchase_cost&&(!Number.isFinite(Number(a.purchase_cost))||Number(a.purchase_cost)<0))throw new Error("تكلفة غير صالحة في الصف "+(index+2));
-  if(a.purchase_date&&!/^\d{4}-\d{2}-\d{2}$/.test(a.purchase_date))throw new Error("تاريخ الشراء يجب أن يكون YYYY-MM-DD في الصف "+(index+2));
+  if(a.purchase_date){
+   let d=a.purchase_date.trim();
+   if(/^\\d{4,5}$/.test(d)){const day=Number(d);if(day>0&&day<100000){const dt=new Date(Date.UTC(1899,11,30)+day*86400000);d=dt.toISOString().slice(0,10)}}
+   const m=d.match(/^(\\d{1,2})[\\/-](\\d{1,2})[\\/-](\\d{4})$/);
+   if(m)d=m[3]+"-"+m[2].padStart(2,"0")+"-"+m[1].padStart(2,"0");
+   if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(d)||Number.isNaN(Date.parse(d)))throw new Error("تاريخ شراء غير مفهوم في الصف "+(index+2)+"؛ امسح الخانة لو التاريخ غير معروف.");
+   a.purchase_date=d;
+  }
   return {...a,tracking_mode:a.tracking_mode||(qty===1?"serialized":"quantity")};
  });
  return records;
