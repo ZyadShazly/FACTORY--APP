@@ -10,9 +10,9 @@ const xmlHeader='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 function sheet(rows,validations="",widths=""){let body='<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0"/></sheetViews><sheetFormatPr defaultRowHeight="18"/>'+widths+'<sheetData>';rows.forEach((row,ri)=>{body+='<row r="'+(ri+1)+'">';row.forEach((value,ci)=>{if(value===null||value===undefined||value==="")return;let ref=col(ci)+(ri+1);let string=String(value);body+='<c r="'+ref+'" t="inlineStr"><is><t xml:space="preserve">'+esc(string)+'</t></is></c>';});body+='</row>';});body+='</sheetData>'+validations+'</worksheet>';return xmlHeader+body;}
 function safeValues(list){return [...new Set(list.filter(Boolean).map(String))].slice(0,500);}
 export function assetXlsxTemplate(categories=[],locations=[],types={}){const cats=safeValues(categories.filter(v=>v.is_active!==false).map(v=>v.name)),locs=safeValues(locations.filter(v=>v.is_active!==false).map(v=>v.name)),typesList=Object.entries(types);
-const columns=["name","asset_type","tracking_mode","quantity","unit","category","location","brand","model","serial_number","purchase_date","purchase_cost","notes"];
-const rows=[columns,["","equipment","","1","قطعة",cats.length===1?cats[0]:"",locs.length===1?locs[0]:"","","","","","",""]];
-const refs=[["B","A",Math.max(1,typesList.length)],["C","D",2],["F","B",Math.max(1,cats.length)],["G","C",Math.max(1,locs.length)]];
+const columns=["name","quantity","location","category","asset_type","notes"];
+const rows=[columns,["","1",locs.length===1?locs[0]:"",cats.length===1?cats[0]:"tool",""]];
+const refs=[["E","A",Math.max(1,typesList.length)],["D","B",Math.max(1,cats.length)],["C","C",Math.max(1,locs.length)]];
 const validations='<dataValidations count="'+refs.length+'">'+refs.map(([c,target,n])=>'<dataValidation type="list" allowBlank="1" showErrorMessage="1" errorTitle="قيمة غير موجودة" error="اختر من القائمة" sqref="'+c+'2:'+c+'501"><formula1>\'Lists\'!$'+target+'$2:$'+target+'$'+(n+1)+'</formula1></dataValidation>').join("")+'</dataValidations>';
 const values=[["asset_type","category","location","tracking_mode"],...Array.from({length:Math.max(typesList.length,cats.length,locs.length,2)},(_,i)=>[typesList[i]?.[0]||"",cats[i]||"",locs[i]||"",["serialized","quantity"][i]||""])];
 const files={
@@ -20,7 +20,7 @@ const files={
  "_rels/.rels":xmlHeader+'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>',
  "xl/workbook.xml":xmlHeader+'<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Assets" sheetId="1" r:id="rId1"/><sheet name="Lists" sheetId="2" r:id="rId2"/></sheets></workbook>',
  "xl/_rels/workbook.xml.rels":xmlHeader+'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/></Relationships>',
- "xl/worksheets/sheet1.xml":sheet(rows,validations,'<cols><col min="1" max="1" width="34" customWidth="1"/><col min="2" max="13" width="22" customWidth="1"/></cols>'),
+ "xl/worksheets/sheet1.xml":sheet(rows,validations,'<cols><col min="1" max="1" width="34" customWidth="1"/><col min="2" max="6" width="22" customWidth="1"/></cols>'),
  "xl/worksheets/sheet2.xml":sheet(values)
 };return zip(files);}
 function readU16(a,i){return a[i]+a[i+1]*256;}function readU32(a,i){return (a[i]+a[i+1]*256+a[i+2]*65536+a[i+3]*16777216)>>>0;}
