@@ -6,6 +6,7 @@ import{ArchiveSection}from"../ui";
 import{confirmationStatusLabel,userFacingError}from"../userExperience";
 import{ASSET_TYPES,ASSIGNMENT_STATUS,buildConfirmationUrl,CONFIRMATION_METHOD_LABELS,isPreviewConfirmationUrl,linkedProfileForEmployee,normalizeInternationalPhone,OPERATIONAL_STATUS,outstanding,publicConfirmationBase,whatsappMessage,whatsappUrl}from"./domain";
 import{AssignmentEmergencyActions,ConfirmationBadge,EmergencyActionModal,EMERGENCY_ACTIONS,ReturnEmergencyActions}from"./EmergencyControls";
+import{assetXlsxTemplate,readAssetXlsx,downloadXlsx}from"./assetWorkbook";
 import"./assets.css";
 import{assetSheetTemplate,downloadAssetCsv,exportAssetCsv,parseAssetCsv}from"./assetSheet";
 
@@ -25,8 +26,11 @@ export function AssetsPage({data,profile,permissions,refresh}){
  async function readAssetSheet(event){
   const file=event.target.files?.[0];event.target.value="";if(!file)return;
   setError("");setSheetPreview([]);
-  if(!/\.csv$/i.test(file.name))return setError("ارفع ملف CSV محفوظ من Excel، وليس XLSX.");
-  try{const records=parseAssetCsv(await file.text());
+  if(!/\.(csv|xlsx)$/i.test(file.name))return setError("ارفع ملف Excel بصيغة XLSX أو CSV.");
+  try{const csv=/\.csv$/i.test(file.name);
+   const excelRows=csv?null:await readAssetXlsx(file);
+   const csvText=excelRows?([Object.keys(excelRows[0]||{}),...excelRows.map(v=>Object.keys(excelRows[0]||{}).map(k=>v[k]??""))].map(row=>row.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(",")).join("\n")):await file.text();
+   const records=parseAssetCsv(csvText);
    const enabledLocations=(data.assetLocations||[]).filter(l=>l.is_active!==false);
    const enabledCategories=(data.assetCategories||[]).filter(l=>l.is_active!==false);
    const existing=new Set((data.assets||[]).map(a=>[a.asset_type,a.name?.trim().toLowerCase(),a.serial_number?.trim().toLowerCase()].join("|")));
@@ -79,10 +83,10 @@ export function AssetsPage({data,profile,permissions,refresh}){
  <div className="asset-tabs">{tabs.map(([id,label])=><button key={id} className={tab===id?"active":""} onClick={()=>setTab(id)}>{label}</button>)}</div>
  {tab==="overview"&&<><div className="v22-grid cols-4"><StatCard label="إجمالي السجلات" value={stats.total}/><StatCard label="متاح للإصدار" value={stats.available} tone="positive"/><StatCard label="عهد نشطة" value={stats.active}/><StatCard label="مخاطر وصيانة" value={stats.risk} tone="negative"/></div><Panel><h3>التنبيهات الحالية</h3>{alerts.length?<AlertList alerts={alerts}/>:<EmptyState title="لا توجد تنبيهات حرجة" description="الأصول والعهد ضمن الحدود المحددة."/>}</Panel></>}
  {tab==="registry"&&<Panel><div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",marginBottom:16}}>
- <Button variant="ghost" onClick={()=>downloadAssetCsv("nextep-assets-template.csv",assetSheetTemplate(data.assetCategories||[],data.assetLocations||[]))}>تحميل نموذج Excel (CSV)</Button>
+ <Button variant="ghost" onClick={()=>downloadXlsx("nextep-assets-template.xlsx",assetXlsxTemplate(data.assetCategories||[],data.assetLocations||[],ASSET_TYPES))}>تحميل نموذج Excel بالاختيارات</Button>
  <Button variant="ghost" onClick={exportSheet}>تصدير السجل لـ Excel (CSV)</Button>
- {permissions.assets_manage&&<label style={{display:"inline-flex",alignItems:"center",gap:6,cursor:"pointer"}}>استيراد Excel (CSV)<input type="file" accept=".csv,text/csv" onChange={readAssetSheet} disabled={sheetBusy} style={{maxWidth:190}}/></label>}
- </div><p style={{fontSize:13}}>التصنيف ينظم العِدّة فقط؛ لا ينشئ حساب أصول ثابتة أو إهلاك. لو عندك موقع واحد بيتحدد تلقائيًا؛ لو عندك أكتر من موقع هتلاقي مثال لكل موقع في النموذج، واكتب اسم الموقع المطابق لكل أصل. الفردي/الكمي بيتحدد تلقائيًا حسب الكمية. احذف صفوف الأمثلة قبل الاستيراد، واحفظ CSV UTF-8.</p>
+ {permissions.assets_manage&&<label style={{display:"inline-flex",alignItems:"center",gap:6,cursor:"pointer"}}>استيراد Excel (XLSX / CSV)<input type="file" accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" onChange={readAssetSheet} disabled={sheetBusy} style={{maxWidth:190}}/></label>}
+ </div><p style={{fontSize:13}}>التصنيف ينظم العِدّة فقط؛ لا ينشئ حساب أصول ثابتة أو إهلاك. لو عندك موقع واحد بيتحدد تلقائيًا؛ لو عندك أكتر من موقع هتلاقي مثال لكل موقع في النموذج، واكتب اسم الموقع المطابق لكل أصل. الفردي/الكمي بيتحدد تلقائيًا حسب الكمية. احذف صفوف الأمثلة قبل الاستيراد، واحفظ الملف بصيغة XLSX وارفعه مباشرة.</p>
  {sheetPreview.length>0&&<div style={{padding:12,border:"1px solid currentColor",marginBottom:12}}>
  <b>معاينة: {sheetPreview.length} أصل جاهز للاستيراد التشغيلي</b>
  <p>أول 5 سجلات: {sheetPreview.slice(0,5).map(a=>a.name).join("، ")}</p>
