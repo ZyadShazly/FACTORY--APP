@@ -18,7 +18,7 @@ export function assetSheetTemplate(categories=[],locations=[]){
   const values=["مثال - استبدل باسم الأصل","equipment","","1","قطعة",cats.length===1?cats[0]:"",place,"","","","","","احذف أو عدّل هذا الصف قبل الاستيراد"];
   lines.push(values.map(safeCell).join(","));
  }
- return "\\uFEFF"+lines.join("\\r\\n")+"\\r\\n";
+ return "\uFEFF"+lines.join("\r\n")+"\r\n";
 }
 export function exportAssetCsv(rows,categories=[],locations=[],includeCosts=false){
  const headers=["asset_code",...ASSET_SHEET_COLUMNS,"operational_status"];
