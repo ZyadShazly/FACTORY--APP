@@ -19,3 +19,13 @@ test("Existing asset balance updates remain protected by ledger",()=>{
  assert.match(sql,/app\.asset_balance_update/);
  assert.match(sql,/Cached balances may only be changed by ledger movements/);
 });
+
+test("SU migration preserves maintenance workflow protection in all integrity definitions",()=>{
+ const implementations=sql.match(/create or replace function public\.protect_asset_integrity\(\)[\s\S]*?end \$\$;/g)||[];
+ assert.equal(implementations.length,2);
+ for(const implementation of implementations){
+   assert.match(implementation,/app\.asset_maintenance_rpc/);
+   assert.match(implementation,/Maintenance status may only change through the maintenance workflow/);
+   assert.match(implementation,/app\.asset_balance_update/);
+ }
+});
