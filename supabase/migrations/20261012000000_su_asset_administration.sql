@@ -96,3 +96,72 @@ begin
 end $$;
 revoke all on function public.su_delete_unused_asset(uuid,text) from public,anon;
 grant execute on function public.su_delete_unused_asset(uuid,text) to authenticated;
+
+-- Full SU asset metadata amendment, with explicit before/after and dependent-record checks.
+-- Quantity remains ledger-driven, never a direct cache rewrite.
+create or replace function public.su_update_asset_details(target_asset_id uuid, payload jsonb, reason text)
+returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare a public.assets%rowtype; previous jsonb; next_tracking text; next_serial text; next_qty numeric;
+begin
+ if not public.can_su_admin_assets() then raise exception 'SU asset administration required'; end if;
+ if btrim(coalesce(reason,''))='' then raise exception 'Change reason required'; end if;
+ select * into a from public.assets where id=target_asset_id for update;
+ if not found then raise exception 'Asset not found'; end if;
+ previous:=to_jsonb(a);
+ next_tracking:=coalesce(nullif(payload->>'tracking_mode',''),a.tracking_mode);
+ next_serial:=nullif(btrim(payload->>'serial_number'),'');
+ if next_tracking not in ('serialized','quantity') then raise exception 'Invalid tracking mode'; end if;
+ if next_tracking='serialized' and (a.total_quantity<>1 or a.assigned_quantity<>0) then
+   raise exception 'Individual tracking requires exactly one piece and no active custody';
+ end if;
+ if next_tracking is distinct from a.tracking_mode then
+   if exists(select 1 from public.asset_assignment_items where asset_id=a.id) or
+      exists(select 1 from public.asset_maintenance_orders where asset_id=a.id) or
+      exists(select 1 from public.asset_movements where asset_id=a.id and movement_type<>'created') then
+      raise exception 'Tracking cannot be changed after custody, maintenance or other movements; create replacement records';
+   end if;
+ end if;
+ -- The original integrity trigger rejects tracking changes after any movement. Temporarily
+ -- allow only this constrained SU transition; the balances are unchanged.
+ perform set_config('app.su_asset_tracking','allowed',true);
+ update public.assets set
+  asset_code=coalesce(nullif(btrim(payload->>'asset_code'),''),a.asset_code),
+  name=coalesce(nullif(btrim(payload->>'name'),''),a.name),
+  asset_type=coalesce(nullif(payload->>'asset_type',''),a.asset_type),
+  category_id=coalesce(nullif(payload->>'category_id','')::uuid,a.category_id),
+  tracking_mode=next_tracking,
+  brand=payload->>'brand', model=payload->>'model', serial_number=next_serial,
+  qr_value=coalesce(nullif(payload->>'qr_value',''),a.qr_value),
+  barcode_value=nullif(payload->>'barcode_value',''),
+  unit=coalesce(nullif(btrim(payload->>'unit'),''),a.unit),
+  purchase_date=nullif(payload->>'purchase_date','')::date,
+  purchase_cost=nullif(payload->>'purchase_cost','')::numeric,
+  warranty_until=nullif(payload->>'warranty_until','')::date,
+  operational_status=coalesce(nullif(payload->>'operational_status',''),a.operational_status),
+  current_location_id=nullif(payload->>'current_location_id','')::uuid,
+  warehouse=payload->>'warehouse', shelf=payload->>'shelf',
+  notes=payload->>'notes',updated_at=now(),updated_by=auth.uid()
+ where id=a.id;
+ perform set_config('app.su_asset_tracking','',true);
+ return jsonb_build_object('ok',true,'before',previous,'after',(select to_jsonb(t) from public.assets t where t.id=a.id),'reason',reason);
+end $$;
+revoke all on function public.su_update_asset_details(uuid,jsonb,text) from public,anon;
+grant execute on function public.su_update_asset_details(uuid,jsonb,text) to authenticated;
+
+create or replace function public.protect_asset_integrity() returns trigger language plpgsql set search_path=public,pg_temp as $$
+begin
+ if tg_op='DELETE' then
+   if current_setting('app.su_asset_delete',true)='allowed' and public.can_su_admin_assets() then return old; end if;
+   raise exception 'Assets cannot be deleted; retire them';
+ end if;
+ if new.tracking_mode is distinct from old.tracking_mode and
+    not (current_setting('app.su_asset_tracking',true)='allowed' and public.can_su_admin_assets())
+    and exists(select 1 from public.asset_movements where asset_id=old.id) then
+   raise exception 'tracking_mode cannot change after movements exist';
+ end if;
+ if (new.total_quantity is distinct from old.total_quantity or new.available_quantity is distinct from old.available_quantity or new.assigned_quantity is distinct from old.assigned_quantity)
+    and current_setting('app.asset_balance_update',true)<>'on' then
+   raise exception 'Cached balances may only be changed by ledger movements';
+ end if;
+ return new;
+end $$;
