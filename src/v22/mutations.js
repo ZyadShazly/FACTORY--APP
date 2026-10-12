@@ -31,7 +31,19 @@ export async function syncMutation({ scope, mutationResult, refetch, refetchTime
 
 const criticalMutationsInFlight = new Map();
 
-async function runCriticalMutationOnce({ scope, mutate, refetch, verify, mutationTimeoutMs = 12000, refetchTimeoutMs = 8000, verifyTimeoutMs = 8000 }) {
+async function runCriticalMutationOnce({ scope, mutate, refetch, verify, preflight, mutationTimeoutMs = 12000, refetchTimeoutMs = 8000, verifyTimeoutMs = 8000 }) {
+  // Optional server-backed preflight: prevent unsafe changes before the mutate callback.
+  // Existing operations without preflight keep their previous behavior.
+  if (preflight) {
+    try {
+      const result=await Promise.resolve().then(preflight);
+      if (result?.allowed === false || result?.error) {
+        return {mutationResult:null,error:result.error||new Error(result.guidance||"العملية غير مسموحة بسبب ارتباطات أو أرصدة"),mutationSaved:false,refreshError:null,verificationResult:null,preflightResult:result};
+      }
+    } catch(error) {
+      return {mutationResult:null,error,mutationSaved:false,refreshError:null,verificationResult:null};
+    }
+  }
   let mutationResult;
   try {
     mutationResult = await withBoundedTimeout(Promise.resolve().then(mutate), mutationTimeoutMs, "انتهت مهلة إرسال العملية؛ تحقق من حالتها قبل إعادة المحاولة");
