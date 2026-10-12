@@ -113,6 +113,16 @@ begin
  select * into a from public.assets where id=target_asset_id for update;
  if not found then raise exception 'Asset not found'; end if;
  previous:=to_jsonb(a);
+ -- Operational states and locations require dedicated audited workflows.
+ -- Never silently rewrite them through a metadata editing operation.
+ if payload ? 'operational_status'
+    and (payload->>'operational_status') is distinct from a.operational_status then
+   raise exception 'Operational status requires its dedicated movement workflow';
+ end if;
+ if payload ? 'current_location_id'
+    and nullif(payload->>'current_location_id','')::uuid is distinct from a.current_location_id then
+   raise exception 'Location changes require the asset transfer workflow';
+ end if;
  next_tracking:=coalesce(nullif(payload->>'tracking_mode',''),a.tracking_mode);
  next_serial:=nullif(btrim(payload->>'serial_number'),'');
  if next_tracking not in ('serialized','quantity') then raise exception 'Invalid tracking mode'; end if;
@@ -142,8 +152,8 @@ begin
   purchase_date=nullif(payload->>'purchase_date','')::date,
   purchase_cost=nullif(payload->>'purchase_cost','')::numeric,
   warranty_until=nullif(payload->>'warranty_until','')::date,
-  operational_status=coalesce(nullif(payload->>'operational_status',''),a.operational_status),
-  current_location_id=nullif(payload->>'current_location_id','')::uuid,
+  operational_status=a.operational_status,
+  current_location_id=a.current_location_id,
   warehouse=payload->>'warehouse', shelf=payload->>'shelf',
   notes=payload->>'notes',updated_at=now(),updated_by=auth.uid()
  where id=a.id;
