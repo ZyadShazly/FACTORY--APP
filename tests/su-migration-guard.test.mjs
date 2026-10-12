@@ -40,3 +40,13 @@ test("SU metadata-and-quantity correction runs atomically in one RPC",()=>{
  const save=ui.slice(start,end);
  assert.doesNotMatch(save,/rpc\("adjust_asset_quantity"/,"SU save must not perform a second, non-atomic RPC");
 });
+
+test("SU metadata RPC cannot bypass stock status or location movement workflow",()=>{
+ assert.match(sql,/Operational status requires its dedicated movement workflow/);
+ assert.match(sql,/Location changes require the asset transfer workflow/);
+ assert.match(sql,/operational_status=a\.operational_status/);
+ assert.match(sql,/current_location_id=a\.current_location_id/);
+ const ui=fs.readFileSync(path.join("src","assets","AssetsPage.jsx"),"utf8");
+ assert.match(ui,/<Select disabled=\{editing\} value=\{form\.operational_status\}/);
+ assert.match(ui,/<Select disabled=\{editing\} value=\{form\.current_location_id\}/);
+});
