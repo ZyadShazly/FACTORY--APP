@@ -41,8 +41,8 @@ end $$;
 revoke all on function public.su_archive_asset(uuid,text,boolean) from public,anon;
 grant execute on function public.su_archive_asset(uuid,text,boolean) to authenticated;
 
--- Preserve the immutable movement ledger. Only never-used assets without
--- movements/attachments/references can be permanently deleted.
+-- Preserve operational ledger history. Only unused assets with at most their initial
+-- creation movement, and no attachments/references, can be permanently deleted.
 create or replace function public.protect_asset_integrity() returns trigger language plpgsql
 set search_path=public,pg_temp as $$
 begin
@@ -62,6 +62,17 @@ begin
  return new;
 end $$;
 
+-- A limited deletion exception for the original creation movement ONLY.
+create or replace function public.immutable_asset_ledger() returns trigger language plpgsql
+set search_path=public,pg_temp as $
+begin
+  if tg_op='DELETE' and current_setting('app.su_asset_delete',true)='allowed'
+     and public.can_su_admin_assets() and old.movement_type='created' then
+    return old;
+  end if;
+  raise exception 'Asset movement ledger is immutable';
+end $;
+
 create or replace function public.su_delete_unused_asset(target_asset_id uuid, confirmation_code text)
 returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
 declare a public.assets%rowtype;
@@ -70,13 +81,15 @@ begin
   select * into a from public.assets where id=target_asset_id for update;
   if not found then raise exception 'Asset not found'; end if;
   if confirmation_code is distinct from a.asset_code then raise exception 'Asset code confirmation does not match'; end if;
-  if exists(select 1 from public.asset_movements where asset_id=a.id)
+  if exists(select 1 from public.asset_movements where asset_id=a.id and movement_type <> 'created')
+     or (select count(*) from public.asset_movements where asset_id=a.id) > 1
      or exists(select 1 from public.asset_assignment_items where asset_id=a.id)
      or exists(select 1 from public.asset_attachments where asset_id=a.id)
      or exists(select 1 from public.asset_maintenance_orders where asset_id=a.id) then
     raise exception 'Asset has history or references. Archive it instead';
   end if;
   perform set_config('app.su_asset_delete','allowed',true);
+  delete from public.asset_movements where asset_id=a.id;
   delete from public.assets where id=a.id;
   perform set_config('app.su_asset_delete','',true);
   return jsonb_build_object('ok',true);
