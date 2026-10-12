@@ -39,7 +39,9 @@ export function AssetsPage({data,profile,permissions,refresh}){
   catch(e){setError(e.message)}finally{setBusy(false)}
  }
  async function suDelete(asset){
-  const impact=suAssetImpact(asset);\n  if(!window.confirm(`${impact.summary}\n\nالحذف النهائي قد يؤثر على سجل الأصول والتقارير. النظام سيرفض الحذف لو توجد عهد أو حركات بعد الإنشاء أو مرفقات أو صيانة. لو توجد ارتباطات استخدم الأرشفة بدلًا من ذلك.\n\nهل تريد محاولة حذف هذا السجل؟`))return;\n  const code=window.prompt(`للتأكيد النهائي، اكتب كود الأصل ${asset.asset_code}:`);
+  const impact=suAssetImpact(asset);
+  if(!window.confirm(`${impact.summary}\n\nالحذف النهائي قد يؤثر على سجل الأصول والتقارير. النظام سيرفض الحذف لو توجد عهد أو حركات بعد الإنشاء أو مرفقات أو صيانة. لو توجد ارتباطات استخدم الأرشفة بدلًا من ذلك.\n\nهل تريد محاولة حذف هذا السجل؟`))return;
+  const code=window.prompt(`للتأكيد النهائي، اكتب كود الأصل ${asset.asset_code}:`);
   if(code!==asset.asset_code)return;
   if(!window.confirm("تأكيد نهائي: هل تريد حذف سجل الأصل غير المستخدم؟ لا يمكن التراجع."))return;
   setBusy(true);setError("");
@@ -52,6 +54,7 @@ export function AssetsPage({data,profile,permissions,refresh}){
   if(!Number.isFinite(desired)||desired<0||!suQuantity.reason.trim()){setError("أدخل كمية صحيحة وسبب التعديل.");return}
   const delta=desired-current;
   if(delta===0){setSuQuantity(null);return}
+  if(!window.confirm(`${suAssetImpact(suQuantity.asset).summary}\n\nالكمية الجديدة: ${desired} | الفرق: ${delta}\nسيتم تسجيل الفرق بحركة جرد مع الحفاظ على أرصدة العهد والحجوزات. هل تؤكد؟`))return;
   setBusy(true);setError("");
   try{await rpc("adjust_asset_quantity",{target_asset_id:suQuantity.asset.id,quantity_delta:delta,adjustment_reason:suQuantity.reason.trim()});await reload();setSuQuantity(null);setSuccess("تم تعديل الكمية بحركة جرد.");}
   catch(e){setError(e.message)}finally{setBusy(false)}
