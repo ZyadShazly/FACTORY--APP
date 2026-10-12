@@ -29,3 +29,14 @@ test("SU migration preserves maintenance workflow protection in all integrity de
    assert.match(implementation,/app\.asset_balance_update/);
  }
 });
+
+test("SU metadata-and-quantity correction runs atomically in one RPC",()=>{
+ assert.match(sql,/perform public\.adjust_asset_quantity\(a\.id,next_qty-a\.total_quantity,reason\)/);
+ assert.match(sql,/next_tracking<>'quantity'/);
+ const ui=fs.readFileSync(path.join("src","assets","AssetsPage.jsx"),"utf8");
+ assert.match(ui,/rpc\("su_update_asset_details"/);
+ const start=ui.indexOf("async function saveAsset");
+ const end=ui.indexOf("function suAssetImpact",start);
+ const save=ui.slice(start,end);
+ assert.doesNotMatch(save,/rpc\("adjust_asset_quantity"/,"SU save must not perform a second, non-atomic RPC");
+});
