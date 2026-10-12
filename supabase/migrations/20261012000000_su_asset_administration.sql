@@ -64,14 +64,14 @@ end $$;
 
 -- A limited deletion exception for the original creation movement ONLY.
 create or replace function public.immutable_asset_ledger() returns trigger language plpgsql
-set search_path=public,pg_temp as $
+set search_path=public,pg_temp as $$
 begin
   if tg_op='DELETE' and current_setting('app.su_asset_delete',true)='allowed'
      and public.can_su_admin_assets() and old.movement_type='created' then
     return old;
   end if;
   raise exception 'Asset movement ledger is immutable';
-end $;
+end $$;
 
 create or replace function public.su_delete_unused_asset(target_asset_id uuid, confirmation_code text)
 returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
