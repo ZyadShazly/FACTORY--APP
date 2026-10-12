@@ -148,6 +148,13 @@ begin
   notes=payload->>'notes',updated_at=now(),updated_by=auth.uid()
  where id=a.id;
  perform set_config('app.su_asset_tracking','',true);
+ -- Metadata and stock movement occur in this SAME database transaction.
+ next_qty:=coalesce(nullif(payload->>'quantity','')::numeric,a.total_quantity);
+ if next_qty<0 then raise exception 'Quantity cannot be negative'; end if;
+ if next_qty is distinct from a.total_quantity then
+   if next_tracking<>'quantity' then raise exception 'Serialized asset quantity cannot be adjusted'; end if;
+   perform public.adjust_asset_quantity(a.id,next_qty-a.total_quantity,reason);
+ end if;
  return jsonb_build_object('ok',true,'before',previous,'after',(select to_jsonb(t) from public.assets t where t.id=a.id),'reason',reason);
 end $$;
 revoke all on function public.su_update_asset_details(uuid,jsonb,text) from public,anon;
