@@ -50,3 +50,12 @@ test("SU metadata RPC cannot bypass stock status or location movement workflow",
  assert.match(ui,/<Select disabled=\{editing\} value=\{form\.operational_status\}/);
  assert.match(ui,/<Select disabled=\{editing\} value=\{form\.current_location_id\}/);
 });
+
+test("SU archiving preserves open maintenance and cached stock invariants",()=>{
+ const start=sql.indexOf("create or replace function public.su_archive_asset");
+ const end=sql.indexOf("revoke all on function public.su_archive_asset",start);
+ const archive=sql.slice(start,end);
+ assert.match(archive,/asset_maintenance_orders[\s\S]*status='open'/);
+ assert.match(archive,/available_quantity \+ a\.assigned_quantity <> a\.total_quantity/);
+ assert.match(archive,/asset_assignment_items/);
+});
