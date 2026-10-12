@@ -8,8 +8,12 @@ const migration=readFileSync("supabase/migrations/20260810310000_asset_descripti
 test("asset registry exposes protected descriptive editing without changing ledger quantities",()=>{
   assert.match(ui,/rpc\("update_asset_record"/);
   assert.match(ui,/تعديل البيانات/);
-  assert.match(ui,/disabled=\{editing\|\|form\.tracking_mode==="serialized"\}/);
-  assert.match(ui,/disabled=\{editing\}[\s\S]*value=\{form\.purchase_cost/);
+  assert.match(ui,/disabled=\{\(editing&&!suAdmin\)\|\|form\.tracking_mode==="serialized"\}/);
+  assert.match(ui,/function AssetModal\(\{[^)]*suAdmin=false\}\)/);
+  assert.match(ui,/suAdmin=\{suAssetAdmin\}/);
+  assert.match(ui,/rpc\("su_update_asset_details"/);
+  assert.match(ui,/disabled=\{editing&&!suAdmin\} value=\{form\.purchase_cost/);
+  assert.match(ui,/disabled=\{editing&&!suAdmin\} value=\{form\.unit/);
   assert.doesNotMatch(migration,/set[\s\S]*operational_status=/i);
   assert.doesNotMatch(migration,/set[\s\S]*current_location_id=/i);
   assert.match(migration,/Quantity, location and operational status require ledger-backed workflows/);
