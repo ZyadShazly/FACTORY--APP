@@ -9,7 +9,7 @@ test("asset registry exposes protected descriptive editing without changing ledg
   assert.match(ui,/rpc\("update_asset_record"/);
   assert.match(ui,/تعديل البيانات/);
   assert.match(ui,/disabled=\{\(editing&&!suAdmin\)\|\|form\.tracking_mode==="serialized"\}/);
-  assert.match(ui,/function AssetModal\([^)]*suAdmin=false\)/);
+  assert.match(ui,/function AssetModal\(\{[^)]*suAdmin=false\}\)/);
   assert.match(ui,/suAdmin=\{suAssetAdmin\}/);
   assert.match(ui,/rpc\("su_update_asset_details"/);
   assert.match(ui,/disabled=\{editing&&!suAdmin\} value=\{form\.purchase_cost/);
