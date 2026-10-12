@@ -28,6 +28,12 @@ begin
       values(a.id,'reversed',0,reason,jsonb_build_object('su_action','restore'));
   else
     if a.operational_status = 'retired' then raise exception 'Already archived'; end if;
+    if exists(select 1 from public.asset_maintenance_orders where asset_id=a.id and status='open') then
+      raise exception 'Complete or cancel open maintenance before archiving';
+    end if;
+    if a.available_quantity + a.assigned_quantity <> a.total_quantity then
+      raise exception 'Asset balances are inconsistent; reconcile movements first';
+    end if;
     if a.assigned_quantity <> 0 or exists (
       select 1 from public.asset_assignment_items i join public.asset_assignments ass on ass.id=i.assignment_id
       where i.asset_id=a.id and ass.status in ('draft','pending_receiver_confirmation','issued','partially_returned','settlement_pending')
