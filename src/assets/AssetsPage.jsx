@@ -22,16 +22,24 @@ export function AssetsPage({data,profile,permissions,refresh}){
  const alerts=data.assetAlerts||[];
  async function reload(){await Promise.all(["assets","assetCategories","assetLocations","assetAssignments","assetAssignmentItems","assetReturnEvents","assetReturnItems","assetSettlements","assetMaintenanceOrders","assetMovements","assetAlerts"].map(refresh))}
  async function saveAsset(e){e.preventDefault();setBusy(true);setError("");try{const result=editingAssetId?await rpc("update_asset_record",{target_id:editingAssetId,payload:assetForm}):await rpc("create_asset",{payload:assetForm});if(file){const bucket="asset-attachments",path=`${result.asset.id}/${crypto.randomUUID()}-${file.name.replace(/[^a-zA-Z0-9._-]/g,"_")}`;const upload=await supabase.storage.from(bucket).upload(path,file);if(upload.error)throw upload.error;try{await rpc("register_asset_attachment",{target_asset:result.asset.id,file_path:path,file_name:file.name,file_type:file.type||"application/octet-stream",file_size:file.size})}catch(metadataError){const cleanup=await supabase.rpc("discard_unregistered_upload",{bucket_name:bucket,file_path:path});if(cleanup.error)console.error("[Assets] attachment cleanup failed",cleanup.error);throw metadataError}}await reload();setAssetForm(null);setEditingAssetId(null);setFile(null);setSuccess(editingAssetId?"تم تحديث بيانات الأصل الوصفية مع حفظ أثر التعديل.":"تم تسجيل الأصل وإنشاء حركة الرصيد الافتتاحية.")}catch(e){setError(e.message)}finally{setBusy(false)}}
+ function suAssetImpact(asset){
+  const movements=(data.assetMovements||[]).filter(m=>m.asset_id===asset.id);
+  const assignmentItems=(data.assetAssignmentItems||[]).filter(i=>i.asset_id===asset.id);
+  const maintenance=(data.assetMaintenanceOrders||[]).filter(o=>o.asset_id===asset.id);
+  const pending=maintenance.filter(o=>o.status==="open").length;
+  return {movements:movements.length,assignments:assignmentItems.length,maintenance:maintenance.length,pending,
+    summary:`الأصل: ${asset.asset_code} — ${asset.name}\nالإجمالي: ${asset.total_quantity} | المتاح: ${asset.available_quantity} | في العهدة: ${asset.assigned_quantity}\nحركات سجل الأصول: ${movements.length} | بنود عهد: ${assignmentItems.length} | أوامر صيانة: ${maintenance.length} (مفتوحة: ${pending})`};
+ }
  async function suArchive(asset,restore=false){
   const reason=window.prompt(restore?"سبب إعادة تفعيل الأصل:":"سبب أرشفة الأصل (لن تفقد الحركات والعهد):");
   if(!reason?.trim())return;
-  if(!window.confirm(`${restore?"إعادة تفعيل":"أرشفة"} ${asset.asset_code} — ${asset.name}؟`))return;
+  if(!window.confirm(`${suAssetImpact(asset).summary}\n\n${restore?"إعادة التفعيل ستجعل الأصل صالحًا للاستخدام مجددًا.":"الأرشفة توقف استخدام الأصل في العهد الجديدة وتحافظ على سجل الحركات. العمليات المرتبطة قد تمنع التنفيذ."}\n\nهل تريد المتابعة؟`))return;
   setBusy(true);setError("");
   try{await rpc("su_archive_asset",{target_asset_id:asset.id,reason:reason.trim(),restore});await reload();setSuccess(restore?"تمت إعادة تفعيل الأصل.":"تمت أرشفة الأصل مع الاحتفاظ بسجله.");}
   catch(e){setError(e.message)}finally{setBusy(false)}
  }
  async function suDelete(asset){
-  const code=window.prompt(`الحذف النهائي متاح فقط للسجل غير المستخدم. لتأكيد حذف ${asset.name} اكتب كود الأصل: ${asset.asset_code}`);
+  const impact=suAssetImpact(asset);\n  if(!window.confirm(`${impact.summary}\n\nالحذف النهائي قد يؤثر على سجل الأصول والتقارير. النظام سيرفض الحذف لو توجد عهد أو حركات بعد الإنشاء أو مرفقات أو صيانة. لو توجد ارتباطات استخدم الأرشفة بدلًا من ذلك.\n\nهل تريد محاولة حذف هذا السجل؟`))return;\n  const code=window.prompt(`للتأكيد النهائي، اكتب كود الأصل ${asset.asset_code}:`);
   if(code!==asset.asset_code)return;
   if(!window.confirm("تأكيد نهائي: هل تريد حذف سجل الأصل غير المستخدم؟ لا يمكن التراجع."))return;
   setBusy(true);setError("");
