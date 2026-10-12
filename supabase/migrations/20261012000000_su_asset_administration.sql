@@ -59,6 +59,11 @@ begin
     and current_setting('app.asset_balance_update',true)<>'on' then
    raise exception 'Cached balances may only be changed by ledger movements';
  end if;
+ if (new.operational_status = 'under_maintenance' or old.operational_status = 'under_maintenance')
+    and new.operational_status is distinct from old.operational_status
+    and current_setting('app.asset_maintenance_rpc',true)<>'on' then
+   raise exception 'Maintenance status may only change through the maintenance workflow';
+ end if;
  return new;
 end $$;
 
@@ -162,6 +167,11 @@ begin
  if (new.total_quantity is distinct from old.total_quantity or new.available_quantity is distinct from old.available_quantity or new.assigned_quantity is distinct from old.assigned_quantity)
     and current_setting('app.asset_balance_update',true)<>'on' then
    raise exception 'Cached balances may only be changed by ledger movements';
+ end if;
+ if (new.operational_status = 'under_maintenance' or old.operational_status = 'under_maintenance')
+    and new.operational_status is distinct from old.operational_status
+    and current_setting('app.asset_maintenance_rpc',true)<>'on' then
+   raise exception 'Maintenance status may only change through the maintenance workflow';
  end if;
  return new;
 end $$;
