@@ -1,0 +1,21 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+
+const sql=fs.readFileSync(path.join("supabase","migrations","20261012000000_su_asset_administration.sql"),"utf8");
+test("SU SQL function bodies all use balanced dollar quoting",()=>{
+ const delimiters=[...sql.matchAll(/\$\$/g)];
+ assert.equal(delimiters.length%2,0,"Unbalanced $$ delimiters");
+ assert.doesNotMatch(sql,/\bas \$\s*\nbegin\b/i);
+ assert.doesNotMatch(sql,/\bend \$\s*;/i);
+});
+test("SU migration does not overwrite unrelated tables or clear data",()=>{
+ assert.doesNotMatch(sql,/\b(drop\s+table|truncate\s+|delete\s+from\s+public\.(?!asset_movements\b|assets\b))/i);
+ assert.match(sql,/can_su_admin_assets\(\)/);
+ assert.match(sql,/auth\.uid\(\)/);
+});
+test("Existing asset balance updates remain protected by ledger",()=>{
+ assert.match(sql,/app\.asset_balance_update/);
+ assert.match(sql,/Cached balances may only be changed by ledger movements/);
+});
