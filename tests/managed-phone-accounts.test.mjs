@@ -56,6 +56,10 @@ test("production login accepts phone input through an internal email alias and e
   assert.match(clientSource, /email = managedPhoneAuthEmail\(credentials\.phone\)/);
   assert.match(clientSource, /signInWithPassword\(\{ email, password: credentials\.password \}\)/);
   assert.match(appSource, /action: "change_password"/);
+  assert.match(appSource, /onComplete=\{\(\) => signOut\("تم تغيير كلمة السر بنجاح/);
+  assert.doesNotMatch(appSource, /onComplete=\{\(\) => fetchProfile\(session\.user\.id\)\}/);
+  assert.match(appSource, /response\?\.status === 401/);
+  assert.match(appSource, /جلسة تسجيل الدخول لم تعد صالحة/);
   assert.match(appSource, /supabase\.functions\.invoke\("admin-manage-user"/);
   assert.doesNotMatch(appSource, /supabase\.auth\.signUp\(/);
   assert.doesNotMatch(appSource, />حساب جديد</);
