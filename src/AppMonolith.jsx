@@ -624,7 +624,7 @@ export default function App() {
   if (bootstrapStatus === "missing-profile") return <BootstrapFailure missingProfile message={bootstrapError} session={session} onRetry={retryBootstrap} onSignOut={() => signOut()}/>;
   if (!session) return <AuthGate notice={authNotice} />;
   if (!profile) return <BootstrapFailure message="تعذر تحديد حالة الحساب." session={session} onRetry={retryBootstrap} onSignOut={() => signOut()}/>;
-  if (profile.must_change_password) return <PasswordChangeGate profile={profile} onComplete={() => fetchProfile(session.user.id)} onSignOut={() => signOut()} />;
+  if (profile.must_change_password) return <PasswordChangeGate profile={profile} onComplete={() => signOut("تم تغيير كلمة السر بنجاح. سجّل الدخول مجددًا بكلمة السر الجديدة.")} onSignOut={() => signOut()} />;
   if (!data) return <BootstrapLoading text="جارِ تحميل بيانات مساحة العمل..." />;
 
   const role = profile.role;
@@ -1711,7 +1711,19 @@ function TeamTab({ profiles, employees, refresh, currentProfile }) {
     } });
     if (result.error || !result.data?.ok) {
       setCreatingAccount(false);
-      return setMessage({ type: "error", text: result.data?.error || result.error?.message || "تعذر إنشاء الحساب المُدار." });
+      const response = result.error?.context;
+      let serverMessage = result.data?.error;
+      if (!serverMessage && response?.json) {
+        try {
+          serverMessage = (await response.json())?.error;
+        } catch {
+          // Keep the HTTP status-specific fallback when the response is not JSON.
+        }
+      }
+      const message = response?.status === 401
+        ? "جلسة تسجيل الدخول لم تعد صالحة. سجّل الخروج ثم ادخل مرة أخرى قبل إنشاء الحساب."
+        : serverMessage || result.error?.message || "تعذر إنشاء الحساب المُدار.";
+      return setMessage({ type: "error", text: message });
     }
     await load();
     setNewAccount({ fullName: "", phone: "", temporaryPassword: "", role: MANAGER_ASSIGNABLE_ROLES[0] });
