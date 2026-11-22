@@ -9,7 +9,7 @@ const ORIGIN_LABELS={manual:"يدوي",opening:"افتتاحي",system:"تلقا
 function today(){return new Date().toISOString().slice(0,10)}
 function amount(value){const n=Number(value||0);return Number.isFinite(n)?n:0}
 function money(value){return new Intl.NumberFormat("ar-SA",{minimumFractionDigits:2,maximumFractionDigits:2}).format(amount(value))}
-function blankLine(){return{account_id:"",debit:"",credit:"",description:""}}
+function blankLine(){return{account_id:"",debit:"",credit:"",description:"",partner_type:"",partner_id:""}}
 function blankEditor(){return{mode:"create",id:"",entry_origin:"manual",entry_date:today(),reference:"",description:"",lines:[blankLine(),blankLine()],edit_reason:"",legacy_account_ids:[]}}
 
 function editorFromJournal(row,mode){
@@ -73,7 +73,7 @@ function JournalAccountPicker({accounts,value,legacyAccountIds=[],onSelect,index
   </div>;
 }
 
-function JournalEditor({editor,accounts,busy,onChange,onClose,onSave}){
+function JournalEditor({editor,accounts,customers=[],busy,onChange,onClose,onSave}){
   const totals=useMemo(()=>editor.lines.reduce((acc,line)=>({
     debit:acc.debit+amount(line.debit),credit:acc.credit+amount(line.credit),
   }),{debit:0,credit:0}),[editor.lines]);
@@ -108,6 +108,7 @@ function JournalEditor({editor,accounts,busy,onChange,onClose,onSave}){
           <input aria-label={"مدين السطر "+(index+1)} type="number" min="0" step="0.01" placeholder="مدين" value={line.debit} onChange={(e)=>patchLine(index,{debit:e.target.value,credit:e.target.value?"":line.credit})}/>
           <input aria-label={"دائن السطر "+(index+1)} type="number" min="0" step="0.01" placeholder="دائن" value={line.credit} onChange={(e)=>patchLine(index,{credit:e.target.value,debit:e.target.value?"":line.debit})}/>
           <input aria-label={"بيان السطر "+(index+1)} placeholder="بيان السطر" value={line.description} onChange={(e)=>patchLine(index,{description:e.target.value})}/>
+          <select aria-label="العميل المرتبط بالسطر" value={line.partner_id||""} onChange={(e)=>patchLine(index,{partner_type:e.target.value?"customer":"",partner_id:e.target.value})}><option value="">بدون عميل</option>{customers.map((customer)=><option key={customer.id} value={customer.id}>{customer.name}</option>)}</select>
           <button type="button" className="journal-remove-line" onClick={()=>removeLine(index)} disabled={editor.lines.length<=2}>×</button>
         </div>)}
       </div>
@@ -133,6 +134,7 @@ function JournalEditor({editor,accounts,busy,onChange,onClose,onSave}){
 export function JournalWorkspace({accounts,profile,permissions,onNavigate}){
   const [filters,setFilters]=useState({from:"",to:""});
   const [workspace,setWorkspace]=useState({settings:{},periods:[],journals:[]});
+  const [customers,setCustomers]=useState([]);
   const [editor,setEditor]=useState(null);
   const [reverse,setReverse]=useState(null);
   const [settingsDraft,setSettingsDraft]=useState({activation_date:"",enabled:false});
@@ -164,6 +166,8 @@ export function JournalWorkspace({accounts,profile,permissions,onNavigate}){
     }
     const data=result.data||{};
     setWorkspace({settings:data.settings||{},periods:Array.isArray(data.periods)?data.periods:[],journals:Array.isArray(data.journals)?data.journals:[]});
+    const customerResult=await supabase.from("customers").select("id,name").is("archived_at",null).order("name");
+    if(!customerResult.error)setCustomers(customerResult.data||[]);
     setSettingsDraft({activation_date:data.settings?.activation_date||"",enabled:Boolean(data.settings?.enabled)});
     setState((s)=>({...s,loading:false}));
   },[filters.from,filters.to]);
@@ -196,6 +200,8 @@ export function JournalWorkspace({accounts,profile,permissions,onNavigate}){
       lines:editor.lines.map((line)=>({
         account_id:line.account_id,debit:amount(line.debit),credit:amount(line.credit),
         description:line.description.trim()||null,
+        partner_type:line.partner_id?"customer":null,
+        partner_id:line.partner_id||null,
       })),
     };
 
@@ -358,7 +364,7 @@ export function JournalWorkspace({accounts,profile,permissions,onNavigate}){
       </div>}
     </section>
 
-    {editor&&<JournalEditor editor={editor} accounts={accounts} busy={state.busy} onChange={patchEditor} onClose={()=>setEditor(null)} onSave={saveEditor}/>}
+    {editor&&<JournalEditor editor={editor} accounts={accounts} customers={customers} busy={state.busy} onChange={patchEditor} onClose={()=>setEditor(null)} onSave={saveEditor}/>}
 
     {importPreview&&<div className="accounting-modal-layer" role="dialog" aria-modal="true" aria-label="استيراد القيود">
       <div className="accounting-modal compact">
