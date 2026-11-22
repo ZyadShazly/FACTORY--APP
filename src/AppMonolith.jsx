@@ -1374,6 +1374,18 @@ function CustomersTab({ data, refresh, canManage }) {
   const [pendingReceipt, setPendingReceipt] = useState(null); const [receiptBusy, setReceiptBusy] = useState(false);
   const [archiveAction, setArchiveAction] = useState(null);
   const [cashBankAccounts, setCashBankAccounts] = useState([]);
+  const [customerManualJournalLines,setCustomerManualJournalLines] = useState([]);
+
+  useEffect(() => {
+    let active = true;
+    void supabase.rpc("get_customer_manual_journal_lines").then((result) => {
+      if (!active) return;
+      if (!result.error) setCustomerManualJournalLines(Array.isArray(result.data) ? result.data : []);
+    });
+    return () => { active = false; };
+  }, [data]);
+
+  const customerData = useMemo(() => ({...data,customerManualJournalLines}),[data,customerManualJournalLines]);
 
   const loadCashBankAccounts = useCallback(async () => {
     const result = await supabase.rpc("get_cash_bank_posting_accounts");
@@ -1410,7 +1422,7 @@ function CustomersTab({ data, refresh, canManage }) {
     if (!receipt.customerId) return setErr("اختر العميل");
     if (!receipt.cashBankAccountId) return setErr("اختر حساب التحصيل (بنك أو خزينة)");
     if (num(receipt.amount) <= 0) return setErr("أدخل مبلغ أكبر من صفر");
-    const due = customerBalances(receipt.customerId, data).due;
+    const due = customerBalances(receipt.customerId, customerData).due;
     if (num(receipt.amount) > due) return setPendingReceipt({ ...receipt, due, advance: num(receipt.amount) - due });
     await commitReceipt();
   }
@@ -1465,7 +1477,7 @@ function CustomersTab({ data, refresh, canManage }) {
         <SearchBox value={search} onChange={setSearch} placeholder="ابحث باسم العميل..." />
         {filtered.length === 0 ? <Empty text="لا توجد نتائج" /> : (
           <Table headers={["العميل", "الهاتف", "إجمالي المستحقات", "إجمالي التحصيل", "المستحق", "السلفة", ""]}>
-            {filtered.map((c) => { const balances = customerBalances(c.id, data); const bal = balances.due; return (
+            {filtered.map((c) => { const balances = customerBalances(c.id, customerData); const bal = balances.due; return (
               <React.Fragment key={c.id}>
                 <tr>
                   <Td>{c.name}</Td><Td>{c.phone || "—"}</Td><Td>{formatMoney(customerSaleTotal(c.id, data) + customerRentalTotal(c.id, data) + customerProjectTotal(c.id, data))}</Td><Td>{formatMoney(customerReceiptTotal(c.id, data))}</Td>
@@ -1476,7 +1488,7 @@ function CustomersTab({ data, refresh, canManage }) {
                     <button onClick={() => setExpanded(expanded === c.id ? null : c.id)} style={{ background: "none", border: "none", color: C.brass, cursor: "pointer", fontSize: 12.5 }}>{expanded === c.id ? "إخفاء الحركات" : "عرض الحركات"}</button>
                   </Td>
                 </tr>
-                {expanded === c.id && <tr><Td colSpan={7} style={{ background: C.panelAlt }}><CustomerLedger customerId={c.id} data={data} cashBankAccounts={cashBankAccounts} /><CustomerAdjustmentsPanel customerId={c.id} due={balances.due} rows={data.customerAdjustments||[]} canReverse={canManage} onChanged={refresh}/><CommercialAdvancesPanel partyType="customer" partyId={c.id} canReverse={canManage} onChanged={refresh}/></Td></tr>}
+                {expanded === c.id && <tr><Td colSpan={7} style={{ background: C.panelAlt }}><CustomerLedger customerId={c.id} data={customerData} cashBankAccounts={cashBankAccounts} /><CustomerAdjustmentsPanel customerId={c.id} due={balances.due} rows={data.customerAdjustments||[]} canReverse={canManage} onChanged={refresh}/><CommercialAdvancesPanel partyType="customer" partyId={c.id} canReverse={canManage} onChanged={refresh}/></Td></tr>}
               </React.Fragment>
             ); })}
           </Table>
@@ -1500,7 +1512,8 @@ function CustomerLedger({ customerId, data, cashBankAccounts = [] }) {
   const projects = (data.projects || []).filter((p) => p.customer_id === customerId && p.lifecycle === "closed" && num(p.revenue) > 0).map((p) => ({ date: String(p.project_closed_at || p.lifecycle_changed_at || p.delivery_date || p.updated_at || "").slice(0,10), type: "إقفال مشروع", amount: num(p.revenue), note: `${p.project_code || "مشروع"} · ${p.project_name || "—"}` }));
   const receipts = data.customerReceipts.filter((r) => r.customer_id === customerId).map((r) => ({ date: r.receipt_date, type: transactionClassLabel(r), amount: r.status === "reversed" ? 0 : -r.amount, note: r.reversal_reason ? `${r.note || ""}${r.note ? " · " : ""}سبب العكس: ${r.reversal_reason}` : r.note, cashBank: cashBankLedgerLabel(r.cash_bank_account_id, cashBankAccounts) }));
   const adjustments = (data.customerAdjustments || []).filter((r) => r.customer_id === customerId).map((r) => ({ date: r.adjustment_date, type: r.status === "reversed" ? "تسوية عميل معكوسة" : "تسوية عميل", amount: r.status === "reversed" ? 0 : -r.amount, note: `${r.reason || "—"}${r.reversal_reason ? ` · سبب العكس: ${r.reversal_reason}` : ""}` }));
-  const rows = [...sales, ...rentals, ...projects, ...receipts, ...adjustments].sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+  const manualJournals = (data.customerManualJournalLines || []).filter((r) => r.customer_id === customerId).map((r) => ({ date:r.entry_date, type:Number(r.debit||0)>0?"قيد يومية مدين":"قيد يومية دائن", amount:Number(r.debit||0)-Number(r.credit||0), note:`${r.entry_number||"قيد"} · ${r.line_description||r.journal_description||"قيد يدوي"}${r.reference?` · ${r.reference}`:""}` }));
+  const rows = [...sales, ...rentals, ...projects, ...receipts, ...adjustments, ...manualJournals].sort((a, b) => (a.date || "").localeCompare(b.date || ""));
   if (rows.length === 0) return <div style={{ color: C.muted, fontSize: 13 }}>لا توجد حركات مسجلة</div>;
   return <Table headers={["التاريخ", "النوع", "البيان", "حساب التحصيل", "المبلغ"]}>{rows.map((r, i) => <tr key={i}><Td>{r.date}</Td><Td style={{ color: r.type === "تحصيل" ? C.green : C.brass }}>{r.type}</Td><Td>{r.note || "—"}</Td><Td>{r.cashBank || "—"}</Td><Td>{formatMoney(Math.abs(r.amount))}</Td></tr>)}</Table>;
 }

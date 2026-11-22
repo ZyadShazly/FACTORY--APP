@@ -104,7 +104,7 @@
 .journal-modal{width:min(980px,100%)}
 .journal-lines-editor{display:grid;gap:8px;margin-top:16px}
 .journal-lines-head{display:flex;justify-content:space-between;align-items:center}
-.journal-line-row{display:grid;grid-template-columns:minmax(220px,1.4fr) minmax(100px,.55fr) minmax(100px,.55fr) minmax(180px,1fr) 36px;gap:7px}
+.journal-line-row{display:grid;grid-template-columns:minmax(220px,1.4fr) minmax(100px,.55fr) minmax(100px,.55fr) minmax(160px,1fr) minmax(150px,.9fr) 36px;gap:7px}
 .journal-line-row select,.journal-line-row input{width:100%;border:1px solid var(--color-border);background:var(--color-app-bg);color:var(--color-text);border-radius:8px;padding:8px 9px;font:inherit}
 .journal-account-picker{position:relative;display:grid;gap:5px}
 .journal-account-selected{display:flex;align-items:center;justify-content:space-between;gap:7px;border:1px solid var(--color-border);background:var(--color-surface-muted);border-radius:8px;padding:6px 8px;font-size:11.5px}
