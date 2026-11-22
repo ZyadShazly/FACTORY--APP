@@ -44,5 +44,5 @@ test("supplier and customer ledgers show the selected cash or bank account",()=>
   assert.match(app,/cashBank: cashBankLedgerLabel\(r\.cash_bank_account_id, cashBankAccounts\)/);
   assert.match(app,/افتراضي \/ حركة قديمة/);
   assert.match(app,/SupplierLedger supplierId=\{s\.id\} data=\{supplierData\} cashBankAccounts=\{cashBankAccounts\}/);
-  assert.match(app,/CustomerLedger customerId=\{c\.id\} data=\{data\} cashBankAccounts=\{cashBankAccounts\}/);
+  assert.match(app,/CustomerLedger customerId=\{c\.id\} data=\{customerData\} cashBankAccounts=\{cashBankAccounts\}/);
 });
