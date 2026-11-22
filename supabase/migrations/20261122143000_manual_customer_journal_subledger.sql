@@ -97,7 +97,7 @@ as $$
         and l.partner_id=target_customer
         and l.account_id=private.accounting_resolve_mapping('accounts_receivable','global','')
         and j.status='posted'
-        and j.entry_origin in ('manual','opening')
+        and j.entry_origin='manual'
         and j.source_module is null
     ),0)
   )
