@@ -18,7 +18,7 @@ function editorFromJournal(row,mode){
     reference:row.reference||"",description:row.description||"",
     lines:(row.lines||[]).map((line)=>({
       account_id:line.account_id||"",debit:String(line.debit||""),credit:String(line.credit||""),
-      description:line.description||"",
+      description:line.description||"",partner_type:line.partner_type||"",partner_id:line.partner_id||"",
     })),
     edit_reason:"",
     legacy_account_ids:[...new Set((row.lines||[]).map((line)=>line.account_id).filter(Boolean))],
