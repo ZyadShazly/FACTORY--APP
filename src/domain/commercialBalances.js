@@ -19,8 +19,11 @@ export function customerBalances(customerId, data) {
   const rows = (data.customerReceipts || []).filter((row) => row.customer_id === customerId);
   const settled = rows.reduce((sum, row) => sum + settledAmount(row), 0);
   const adjustments = (data.customerAdjustments || []).filter((row) => row.customer_id === customerId && row.status === "posted").reduce((sum, row) => sum + Number(row.amount || 0), 0);
+  const manualJournalNet = (data.customerManualJournalLines || [])
+    .filter((row) => row.customer_id === customerId)
+    .reduce((sum, row) => sum + Number(row.debit || 0) - Number(row.credit || 0), 0);
   return {
-    due: Math.max(0, charges - settled - adjustments),
+    due: Math.max(0, charges - settled - adjustments + manualJournalNet),
     advance: rows.reduce((sum, row) => sum + availableAdvance(row), 0),
     cashReceived: rows.filter(active).reduce((sum, row) => sum + Number(row.amount || 0), 0),
     legacyUnclassified: rows.filter((row) => active(row) && legacy(row)).length,
