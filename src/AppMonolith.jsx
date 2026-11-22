@@ -1422,7 +1422,7 @@ function CustomersTab({ data, refresh, canManage }) {
     if (!receipt.customerId) return setErr("اختر العميل");
     if (!receipt.cashBankAccountId) return setErr("اختر حساب التحصيل (بنك أو خزينة)");
     if (num(receipt.amount) <= 0) return setErr("أدخل مبلغ أكبر من صفر");
-    const due = customerBalances(receipt.customerId, data).due;
+    const due = customerBalances(receipt.customerId, customerData).due;
     if (num(receipt.amount) > due) return setPendingReceipt({ ...receipt, due, advance: num(receipt.amount) - due });
     await commitReceipt();
   }
@@ -1512,7 +1512,8 @@ function CustomerLedger({ customerId, data, cashBankAccounts = [] }) {
   const projects = (data.projects || []).filter((p) => p.customer_id === customerId && p.lifecycle === "closed" && num(p.revenue) > 0).map((p) => ({ date: String(p.project_closed_at || p.lifecycle_changed_at || p.delivery_date || p.updated_at || "").slice(0,10), type: "إقفال مشروع", amount: num(p.revenue), note: `${p.project_code || "مشروع"} · ${p.project_name || "—"}` }));
   const receipts = data.customerReceipts.filter((r) => r.customer_id === customerId).map((r) => ({ date: r.receipt_date, type: transactionClassLabel(r), amount: r.status === "reversed" ? 0 : -r.amount, note: r.reversal_reason ? `${r.note || ""}${r.note ? " · " : ""}سبب العكس: ${r.reversal_reason}` : r.note, cashBank: cashBankLedgerLabel(r.cash_bank_account_id, cashBankAccounts) }));
   const adjustments = (data.customerAdjustments || []).filter((r) => r.customer_id === customerId).map((r) => ({ date: r.adjustment_date, type: r.status === "reversed" ? "تسوية عميل معكوسة" : "تسوية عميل", amount: r.status === "reversed" ? 0 : -r.amount, note: `${r.reason || "—"}${r.reversal_reason ? ` · سبب العكس: ${r.reversal_reason}` : ""}` }));
-  const rows = [...sales, ...rentals, ...projects, ...receipts, ...adjustments].sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+  const manualJournals = (data.customerManualJournalLines || []).filter((r) => r.customer_id === customerId).map((r) => ({ date:r.entry_date, type:Number(r.debit||0)>0?"قيد يومية مدين":"قيد يومية دائن", amount:Number(r.debit||0)-Number(r.credit||0), note:`${r.entry_number||"قيد"} · ${r.line_description||r.journal_description||"قيد يدوي"}${r.reference?` · ${r.reference}`:""}` }));
+  const rows = [...sales, ...rentals, ...projects, ...receipts, ...adjustments, ...manualJournals].sort((a, b) => (a.date || "").localeCompare(b.date || ""));
   if (rows.length === 0) return <div style={{ color: C.muted, fontSize: 13 }}>لا توجد حركات مسجلة</div>;
   return <Table headers={["التاريخ", "النوع", "البيان", "حساب التحصيل", "المبلغ"]}>{rows.map((r, i) => <tr key={i}><Td>{r.date}</Td><Td style={{ color: r.type === "تحصيل" ? C.green : C.brass }}>{r.type}</Td><Td>{r.note || "—"}</Td><Td>{r.cashBank || "—"}</Td><Td>{formatMoney(Math.abs(r.amount))}</Td></tr>)}</Table>;
 }
