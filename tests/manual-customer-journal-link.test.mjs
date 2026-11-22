@@ -42,7 +42,7 @@ test("customer workspace includes manual journal lines in balances and statement
 
 test("manual customer journal posting is limited to receivables and preserves legacy records", () => {
   assert.match(migration, /accounting_resolve_mapping\('accounts_receivable','global',''\)/);
-  assert.match(migration, /entry_origin in \('manual','opening'\)/);
+  assert.match(migration, /entry_origin='manual'/);
   assert.match(migration, /source_module is null/);
   assert.match(migration, /partner_type='customer'/);
   assert.match(migration, /Active customer required/);
