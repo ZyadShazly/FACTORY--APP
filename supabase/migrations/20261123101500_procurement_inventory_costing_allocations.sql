@@ -651,6 +651,19 @@ begin
     update public.expense_project_allocations
     set cost_posting_status=case new.status when 'submitted' then 'submitted' when 'approved' then 'posted' when 'rejected' then 'rejected' when 'reversed' then 'reversed' else 'not_posted' end
     where id=nullif(new.source_line_reference,'')::uuid and actual_cost_entry_id=new.id;
+    update public.expenses e
+    set cost_posting_status=case
+      when exists(select 1 from public.expense_project_allocations a where a.expense_id=e.id)
+       and not exists(select 1 from public.expense_project_allocations a where a.expense_id=e.id and a.cost_posting_status<>'posted')
+        then 'posted'
+      when exists(select 1 from public.expense_project_allocations a where a.expense_id=e.id and a.cost_posting_status='submitted')
+        then 'submitted'
+      when exists(select 1 from public.expense_project_allocations a where a.expense_id=e.id and a.cost_posting_status='rejected')
+        then 'rejected'
+      when exists(select 1 from public.expense_project_allocations a where a.expense_id=e.id and a.cost_posting_status='reversed')
+        then 'reversed'
+      else 'not_posted' end
+    where e.id=new.source_id;
   elsif new.source_type='purchase_invoice_allocation' then
     update public.purchase_line_project_allocations
     set cost_posting_status=case new.status when 'submitted' then 'submitted' when 'approved' then 'posted' when 'rejected' then 'rejected' when 'reversed' then 'reversed' else 'not_posted' end
@@ -669,5 +682,71 @@ revoke all on function public.prepare_allocated_expense_actual_cost(uuid,jsonb) 
 revoke all on function public.prepare_purchase_line_project_costs(uuid) from public,anon;
 grant execute on function public.prepare_allocated_expense_actual_cost(uuid,jsonb) to authenticated;
 grant execute on function public.prepare_purchase_line_project_costs(uuid) to authenticated;
+
+ 
+-- Cancellation must also reverse/reject every distributed project-cost entry.
+create or replace function public.cancel_expense(target_expense_id uuid, reason text)
+returns jsonb language plpgsql security definer set search_path=''
+as $
+declare
+  actor uuid:=auth.uid();
+  actor_role text:=public.current_identity_role();
+  expense_row public.expenses%rowtype;
+  cost_status text;
+  allocation record;
+begin
+  if actor is null or actor_role not in ('owner','manager') then
+    raise exception using errcode='42501',message='Owner or manager role required';
+  end if;
+  if btrim(coalesce(reason,''))='' then
+    raise exception using errcode='22023',message='Cancellation reason is required';
+  end if;
+  select * into expense_row from public.expenses where id=target_expense_id for update;
+  if not found then raise exception 'Expense not found'; end if;
+  if expense_row.cancelled_at is not null then return to_jsonb(expense_row); end if;
+
+  if expense_row.actual_cost_entry_id is not null then
+    select status into cost_status from public.project_actual_cost_entries
+    where id=expense_row.actual_cost_entry_id for update;
+    if cost_status='approved' then
+      if actor_role<>'owner' then raise exception using errcode='42501',message='Owner role required to reverse an approved expense'; end if;
+      perform public.reverse_project_actual_cost(expense_row.actual_cost_entry_id,btrim(reason));
+    elsif cost_status='submitted' then
+      perform public.reject_project_actual_cost(expense_row.actual_cost_entry_id,btrim(reason));
+    elsif cost_status not in ('rejected','reversed') then
+      raise exception 'Expense Actual Cost state cannot be cancelled';
+    end if;
+  end if;
+
+  for allocation in
+    select a.actual_cost_entry_id,c.status
+    from public.expense_project_allocations a
+    join public.project_actual_cost_entries c on c.id=a.actual_cost_entry_id
+    where a.expense_id=target_expense_id
+    for update of c
+  loop
+    if allocation.status='approved' then
+      if actor_role<>'owner' then
+        raise exception using errcode='42501',message='Owner role required to reverse an approved allocated expense';
+      end if;
+      perform public.reverse_project_actual_cost(allocation.actual_cost_entry_id,btrim(reason));
+    elsif allocation.status='submitted' then
+      perform public.reject_project_actual_cost(allocation.actual_cost_entry_id,btrim(reason));
+    elsif allocation.status not in ('rejected','reversed') then
+      raise exception 'Allocated expense Actual Cost state cannot be cancelled';
+    end if;
+  end loop;
+
+  update public.expenses
+  set cancelled_at=now(),cancelled_by=actor,cancellation_reason=btrim(reason),
+      cost_posting_status='reversed'
+  where id=target_expense_id
+  returning * into expense_row;
+  return to_jsonb(expense_row);
+end
+$;
+
+revoke all on function public.cancel_expense(uuid,text) from public,anon;
+grant execute on function public.cancel_expense(uuid,text) to authenticated;
 
 commit;
