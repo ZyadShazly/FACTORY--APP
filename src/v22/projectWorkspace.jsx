@@ -115,22 +115,43 @@ const PROCUREMENT_STATUS_LABELS = {
 
 function ProjectMaterialsPurchasesTab({ project, data, canViewFinancials }) {
   const [workspace, setWorkspace] = useState({ orders:[], order_items:[], invoices:[], invoice_lines:[] });
+  const [inventory, setInventory] = useState({ items:[], balances:[], warehouses:[] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [stockError, setStockError] = useState("");
+  const [issueBusy, setIssueBusy] = useState(false);
+  const [issueSuccess, setIssueSuccess] = useState("");
+  const [selectedBalance, setSelectedBalance] = useState("");
+  const [issueQuantity, setIssueQuantity] = useState("");
+  const [issueDescription, setIssueDescription] = useState("");
 
   async function loadPurchases() {
     setLoading(true);
     setError("");
-    const result = await supabase.rpc("get_procurement_workspace_v2", { target_project:project.id });
-    if (result.error) {
-      setError(friendlyError(result.error));
+    const [purchaseResult, inventoryResult] = await Promise.all([
+      supabase.rpc("get_procurement_workspace_v2", { target_project:project.id }),
+      supabase.rpc("get_inventory_workspace"),
+    ]);
+    if (purchaseResult.error) {
+      setError(friendlyError(purchaseResult.error));
       setWorkspace({ orders:[], order_items:[], invoices:[], invoice_lines:[] });
     } else {
       setWorkspace({
-        orders:Array.isArray(result.data?.orders) ? result.data.orders : [],
-        order_items:Array.isArray(result.data?.order_items) ? result.data.order_items : [],
-        invoices:Array.isArray(result.data?.invoices) ? result.data.invoices : [],
-        invoice_lines:Array.isArray(result.data?.invoice_lines) ? result.data.invoice_lines : [],
+        orders:Array.isArray(purchaseResult.data?.orders) ? purchaseResult.data.orders : [],
+        order_items:Array.isArray(purchaseResult.data?.order_items) ? purchaseResult.data.order_items : [],
+        invoices:Array.isArray(purchaseResult.data?.invoices) ? purchaseResult.data.invoices : [],
+        invoice_lines:Array.isArray(purchaseResult.data?.invoice_lines) ? purchaseResult.data.invoice_lines : [],
+      });
+    }
+    if (inventoryResult.error) {
+      setStockError(friendlyError(inventoryResult.error));
+      setInventory({ items:[], balances:[], warehouses:[] });
+    } else {
+      setStockError("");
+      setInventory({
+        items:Array.isArray(inventoryResult.data?.items) ? inventoryResult.data.items : [],
+        balances:Array.isArray(inventoryResult.data?.balances) ? inventoryResult.data.balances : [],
+        warehouses:Array.isArray(inventoryResult.data?.warehouses) ? inventoryResult.data.warehouses : [],
       });
     }
     setLoading(false);
@@ -138,17 +159,50 @@ function ProjectMaterialsPurchasesTab({ project, data, canViewFinancials }) {
 
   useEffect(() => { void loadPurchases(); }, [project.id]);
 
-  if (loading) return <Panel><p>جارٍ تحميل مشتريات المشروع...</p></Panel>;
-
   const orders = [...workspace.orders].sort((a,b)=>new Date(b.created_at||b.order_date||0)-new Date(a.created_at||a.order_date||0));
   const supplierName = id => data.suppliers.find(row=>row.id===id)?.name || "مورد غير محدد";
   const materialName = id => data.materials.find(row=>row.id===id)?.name || "";
   const amount = (value,currency) => money(number(value)) + (currency ? " " + currency : "");
+  const availableBalances = (inventory.balances || []).filter(row => number(row.quantity_on_hand) > 0);
+  const selectedStock = availableBalances.find(row => row.inventory_item_id + ":" + row.warehouse_id === selectedBalance);
+  const selectedItem = selectedStock && inventory.items.find(row => row.id === selectedStock.inventory_item_id);
+  const selectedWarehouse = selectedStock && inventory.warehouses.find(row => row.id === selectedStock.warehouse_id);
+
+  async function issueStockToProject() {
+    if (!selectedStock) return setStockError("اختر صنفًا ومخزنًا به رصيد متاح.");
+    const quantity = Number(issueQuantity);
+    if (!Number.isFinite(quantity) || quantity <= 0) return setStockError("أدخل كمية أكبر من صفر.");
+    if (quantity > number(selectedStock.quantity_on_hand)) return setStockError("الكمية المطلوبة أكبر من المتاح في المخزن.");
+    if (!issueDescription.trim()) return setStockError("اكتب وصف استخدام الخامة في المشروع.");
+    setIssueBusy(true);
+    setStockError("");
+    setIssueSuccess("");
+    const result = await supabase.rpc("issue_inventory_to_project", {
+      target_inventory_item:selectedStock.inventory_item_id,
+      target_warehouse:selectedStock.warehouse_id,
+      target_project:project.id,
+      issue_quantity:quantity,
+      description:issueDescription.trim(),
+      budget_item:null,
+      milestone:null,
+    });
+    setIssueBusy(false);
+    if (result.error) {
+      setStockError(friendlyError(result.error));
+      return;
+    }
+    setIssueSuccess("تم صرف الكمية للمشروع وتسجيل تكلفتها تلقائيًا. لم يتم إنشاء فاتورة مورد أو استلام مخزون جديد.");
+    setIssueQuantity("");
+    setIssueDescription("");
+    await loadPurchases();
+  }
+
+  if (loading) return <Panel><p>جارٍ تحميل مشتريات ومخزون المشروع...</p></Panel>;
 
   return <div className="workspace-section">
     <div className="workspace-section-head">
-      <div><h3>الخامات والمشتريات</h3><p>أوامر الشراء وبنودها وفواتير المورد المرتبطة بهذا المشروع.</p></div>
-      <Button variant="ghost" onClick={loadPurchases}>تحديث المشتريات</Button>
+      <div><h3>الخامات والمشتريات</h3><p>استلام فواتير المورد مركزيًا، ثم صرف الكميات المستهلكة لهذا المشروع من المخزون.</p></div>
+      <Button variant="ghost" onClick={loadPurchases}>تحديث البيانات</Button>
     </div>
     <ErrorState error={error}/>
     {error ? <Panel><p>تعذر تحميل سجل المشتريات. لم نعرض رسالة «لا توجد مشتريات» لأن البيانات لم تُحمّل بنجاح.</p></Panel>
@@ -174,11 +228,40 @@ function ProjectMaterialsPurchasesTab({ project, data, canViewFinancials }) {
           })}</ul> : <p className="workspace-note">لا توجد بنود مسجلة لأمر الشراء.</p>}
           {invoices.length>0 && <div className="workspace-note">فواتير المورد: {invoices.map(invoice=>(invoice.invoice_number || "فاتورة") + " (" + (PROCUREMENT_STATUS_LABELS[invoice.status] || invoice.status) + ")").join("، ")}</div>}
         </Panel>;
-      })}</div> : <Panel><EmptyState title="لا توجد مشتريات مرتبطة" description="ستظهر هنا أوامر الشراء التي تحمل نفس معرّف المشروع." /></Panel>}
-    <Panel className="workspace-note"><p>عرض أوامر الشراء هنا للمتابعة فقط؛ لا ينشئ قيدًا محاسبيًا أو تكلفة فعلية إضافية. التكلفة الفعلية تظل خاضعة لمسار فاتورة المورد واعتماد التكلفة، لمنع احتساب أمر الشراء والفاتورة مرتين.</p></Panel>
+      })}</div> : <Panel><EmptyState title="لا توجد مشتريات مرتبطة" description="فواتير المورد والاستلام المركزي يظهران في شاشة المشتريات، ولا يشترط ربطهما بمشروع عند الاستلام." /></Panel>}
+
+    <Panel>
+      <div className="workspace-section-head"><div><h3>صرف خامات من المخزون للمشروع</h3><p>اختر الصنف والمخزن والكمية فقط؛ النظام يحسب التكلفة تلقائيًا حسب طريقة تقييم المخزون النشطة.</p></div></div>
+      <ErrorState error={stockError}/>
+      {issueSuccess && <SuccessState>{issueSuccess}</SuccessState>}
+      {!stockError && !availableBalances.length
+        ? <EmptyState title="لا توجد كميات متاحة للصرف" description="استلم فاتورة المورد وحوّل الكميات المقبولة إلى المخزون أولًا من شاشة المشتريات."/>
+        : <div className="project-manager-action">
+          <Field label="الصنف والمخزن والرصيد المتاح">
+            <Select value={selectedBalance} onChange={event=>setSelectedBalance(event.target.value)}>
+              <option value="">اختر صنفًا من المخزون</option>
+              {availableBalances.map(row=>{
+                const item=inventory.items.find(entry=>entry.id===row.inventory_item_id);
+                return <option key={row.inventory_item_id+":"+row.warehouse_id} value={row.inventory_item_id+":"+row.warehouse_id}>
+                  {(item?.name || row.item_name || "صنف مخزون")} — {(inventory.warehouses.find(entry=>entry.id===row.warehouse_id)?.name || row.warehouse_name || "مخزن")} · متاح {number(row.quantity_on_hand)} {item?.unit || ""}
+                </option>;
+              })}
+            </Select>
+          </Field>
+          <Field label="الكمية المطلوب صرفها">
+            <Input type="number" min="0" step="0.0001" value={issueQuantity} onChange={event=>setIssueQuantity(event.target.value)} placeholder="أدخل الكمية"/>
+          </Field>
+          <Field label="بيان الاستخدام داخل المشروع">
+            <Input value={issueDescription} onChange={event=>setIssueDescription(event.target.value)} placeholder="مثال: ألواح مستخدمة في تنفيذ الموقع"/>
+          </Field>
+          {selectedStock && <p className="workspace-note">المتاح حاليًا: {number(selectedStock.quantity_on_hand)} {selectedItem?.unit || ""} — المخزن: {selectedWarehouse?.name || selectedStock.warehouse_name || "—"}{canViewFinancials ? " — قيمة المخزون الحالية: " + money(number(selectedStock.inventory_value)) : ""}</p>}
+          <Button disabled={issueBusy || !selectedStock} onClick={issueStockToProject}>{issueBusy ? "جارٍ تسجيل الصرف…" : "صرف الكمية للمشروع"}</Button>
+        </div>}
+      <p className="workspace-note">الصرف يخصم الكمية من المخزون مرة واحدة ويسجل تكلفة المشروع باستخدام المتوسط المرجح أو FIFO. لا يعيد تسجيل فاتورة المورد ولا ينشئ استلامًا أو قيد شراء إضافيًا.</p>
+    </Panel>
+    <Panel className="workspace-note"><p>أوامر الشراء وفواتير المورد تُسجل مركزيًا. هذه الشاشة تعرض المستندات للمتابعة، أما تكلفة الخامات على المشروع فتُسجل عند صرف الكمية الفعلية إليه.</p></Panel>
   </div>;
 }
-
 
 function ProjectExpensesTab({ rows, canViewFinancials, refresh }) {
   const [busyId,setBusyId]=useState("");
