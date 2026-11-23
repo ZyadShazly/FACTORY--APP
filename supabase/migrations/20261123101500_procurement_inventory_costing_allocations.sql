@@ -191,7 +191,7 @@ begin
   new.metadata:=coalesce(new.metadata,'{}'::jsonb)||jsonb_build_object('_fifo_layer_consumptions',allocations);
   return new;
 end
-$;
+$$;
 revoke all on function private.inventory_fifo_prepare_outbound_trigger() from public,anon,authenticated;
 
 drop trigger if exists inventory_fifo_prepare_outbound on public.inventory_movements;
@@ -219,7 +219,7 @@ begin
   end loop;
   return new;
 end
-$;
+$$;
 revoke all on function private.inventory_fifo_record_outbound_trigger() from public,anon,authenticated;
 
 drop trigger if exists inventory_fifo_record_outbound on public.inventory_movements;
@@ -435,7 +435,7 @@ as $$
     else coalesce((select to_jsonb(s) from public.inventory_valuation_settings s where s.id=true),
       jsonb_build_object('valuation_method','moving_average','effective_from',current_date))
   end
-$;
+$$;
 
 create or replace function public.set_inventory_valuation_method(target_method text)
 returns jsonb language plpgsql security definer
@@ -459,7 +459,7 @@ begin
   end if;
   return to_jsonb(saved);
 end
-$;
+$$;
 
 revoke all on function public.get_inventory_valuation_settings() from public,anon;
 revoke all on function public.set_inventory_valuation_method(text) from public,anon;
