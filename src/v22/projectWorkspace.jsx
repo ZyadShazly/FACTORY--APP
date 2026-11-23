@@ -236,9 +236,13 @@ function ProjectMaterialsPurchasesTab({ project, data, canViewFinancials }) {
       <div className="workspace-section-head"><div><h3>صرف خامات من المخزون للمشروع</h3><p>اختر الصنف والمخزن والكمية فقط؛ النظام يحسب التكلفة تلقائيًا حسب طريقة تقييم المخزون النشطة.</p></div></div>
       <ErrorState error={stockError}/>
       {issueSuccess && <SuccessState>{issueSuccess}</SuccessState>}
-      {!stockError && !availableBalances.length
-        ? <EmptyState title="لا توجد كميات متاحة للصرف" description="استلم فاتورة المورد وحوّل الكميات المقبولة إلى المخزون أولًا من شاشة المشتريات."/>
-        : <div className="project-manager-action">
+      {stockError
+        ? <p className="workspace-note">تعذر تحميل أرصدة المخزون؛ لن نعرض نموذج صرف قبل التأكد من الرصيد المتاح.</p>
+        : !canIssueStock
+          ? <p className="workspace-note">عرض أرصدة المخزون متاح، لكن صلاحية صرف الخامات للمشروع تقتصر على المالك أو المدير.</p>
+          : !availableBalances.length
+            ? <EmptyState title="لا توجد كميات متاحة للصرف" description="استلم فاتورة المورد وحوّل الكميات المقبولة إلى المخزون أولًا من شاشة المشتريات."/>
+            : <div className="project-manager-action">
           <Field label="الصنف والمخزن والرصيد المتاح">
             <Select value={selectedBalance} onChange={event=>setSelectedBalance(event.target.value)}>
               <option value="">اختر صنفًا من المخزون</option>
