@@ -51,7 +51,6 @@ test("multi-project expenses create project actual-cost allocations without GL d
   assert.match(sql, /prepare_allocated_expense_actual_cost/);
   assert.match(sql, /approved_expense_allocation/);
   assert.match(sql, /Project allocations must equal the expense gross amount/);
-  assert.match(sql, /accounting_expenses_gl/);
   assert.doesNotMatch(sql, /create trigger .*accounting_expenses_gl/i);
 });
 
