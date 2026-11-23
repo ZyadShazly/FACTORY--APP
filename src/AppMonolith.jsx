@@ -1539,7 +1539,6 @@ function ExpensesTab({ data, profileRole, refresh }) {
       const allocated=Math.round((allocationRows.reduce((sum,row)=>sum+num(row.amount),0)+Number.EPSILON)*100)/100;
       if (allocated!==grossAmount) return setErr("مجموع التوزيع يجب أن يساوي إجمالي المصروف شامل الضريبة.");
     }
-    const taxRate = num(form.taxRate || 0);
     if (!Number.isFinite(taxRate) || taxRate < 0 || taxRate > 100) return setErr("نسبة الضريبة يجب أن تكون بين 0 و100");
     const commandId = form.commandId || globalThis.crypto.randomUUID();
     if (!form.commandId) setForm((current) => ({ ...current, commandId }));
@@ -1560,7 +1559,7 @@ function ExpensesTab({ data, profileRole, refresh }) {
       ? "تم إرسال المصروف، لكن تعذر التحقق أو تحديث الشاشة. حدّث الصفحة دون إنشاء مصروف جديد."
       : result.error.message);
     if (allocationMode) {
-      const expenseId=result.data?.id;
+      const expenseId=result.mutationResult?.data?.id;
       if (!expenseId) return setErr("تم تسجيل المصروف، لكن لم أستطع تأكيد رقمه لبدء توزيع التكلفة. حدّث الصفحة ولا تعِد التسجيل.");
       const allocationResult=await supabase.rpc("prepare_allocated_expense_actual_cost",{
         target_expense_id:expenseId,
