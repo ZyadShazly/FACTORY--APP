@@ -115,7 +115,7 @@ const PROCUREMENT_STATUS_LABELS = {
 
 function ProjectMaterialsPurchasesTab({ project, data, canViewFinancials }) {
   const [workspace, setWorkspace] = useState({ orders:[], order_items:[], invoices:[], invoice_lines:[] });
-  const [inventory, setInventory] = useState({ items:[], balances:[], warehouses:[] });
+  const [inventory, setInventory] = useState({ items:[], balances:[], warehouses:[], capabilities:{} });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [stockError, setStockError] = useState("");
@@ -145,13 +145,14 @@ function ProjectMaterialsPurchasesTab({ project, data, canViewFinancials }) {
     }
     if (inventoryResult.error) {
       setStockError(friendlyError(inventoryResult.error));
-      setInventory({ items:[], balances:[], warehouses:[] });
+      setInventory({ items:[], balances:[], warehouses:[], capabilities:{} });
     } else {
       setStockError("");
       setInventory({
         items:Array.isArray(inventoryResult.data?.items) ? inventoryResult.data.items : [],
         balances:Array.isArray(inventoryResult.data?.balances) ? inventoryResult.data.balances : [],
         warehouses:Array.isArray(inventoryResult.data?.warehouses) ? inventoryResult.data.warehouses : [],
+        capabilities:inventoryResult.data?.capabilities || {},
       });
     }
     setLoading(false);
@@ -164,6 +165,7 @@ function ProjectMaterialsPurchasesTab({ project, data, canViewFinancials }) {
   const materialName = id => data.materials.find(row=>row.id===id)?.name || "";
   const amount = (value,currency) => money(number(value)) + (currency ? " " + currency : "");
   const availableBalances = (inventory.balances || []).filter(row => number(row.quantity_on_hand) > 0);
+  const canIssueStock = Boolean(inventory.capabilities?.manage);
   const selectedStock = availableBalances.find(row => row.inventory_item_id + ":" + row.warehouse_id === selectedBalance);
   const selectedItem = selectedStock && inventory.items.find(row => row.id === selectedStock.inventory_item_id);
   const selectedWarehouse = selectedStock && inventory.warehouses.find(row => row.id === selectedStock.warehouse_id);
