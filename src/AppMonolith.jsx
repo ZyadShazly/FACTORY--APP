@@ -1001,7 +1001,6 @@ function SalesTab({ data, refresh, canManage, focusedSaleId = "" }) {
     const unitPrice = form.unitPrice === "" ? Number(selectedProduct.selling_price) : num(form.unitPrice);
     if (!Number.isFinite(unitPrice) || unitPrice <= 0) return setErr("سعر الوحدة يجب أن يكون أكبر من صفر");
     const taxRate = form.taxRate === "" ? 0 : num(form.taxRate);
-    if (!Number.isFinite(taxRate) || taxRate < 0 || taxRate > 100) return setErr("نسبة الضريبة يجب أن تكون بين 0 و100");
     const commandId = form.commandId || globalThis.crypto.randomUUID();
     if (!form.commandId) setForm((current) => ({ ...current, commandId }));
     const result = await runCriticalMutation({
@@ -1531,6 +1530,7 @@ function ExpensesTab({ data, profileRole, refresh }) {
     if (num(form.amount) <= 0) return setErr("أدخل مبلغ قبل الضريبة أكبر من صفر");
     if (!form.cashBankAccountId) return setErr("اختر حساب السداد (بنك أو خزينة)");
     const taxRate = num(form.taxRate || 0);
+    if (!Number.isFinite(taxRate) || taxRate < 0 || taxRate > 100) return setErr("نسبة الضريبة يجب أن تكون بين 0 و100");
     const grossAmount = Math.round((num(form.amount) + num(form.amount)*taxRate/100 + Number.EPSILON)*100)/100;
     if (allocationMode) {
       if (form.projectId) return setErr("امسح المشروع المباشر قبل استخدام توزيع المصروف على عدة مشروعات.");
