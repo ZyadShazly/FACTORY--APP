@@ -248,10 +248,11 @@ begin
   end if;
 
   if original.movement_type='transfer_in' then
+    perform 1 from public.inventory_fifo_layers
+    where source_movement_id=original.id for update;
     if exists(
       select 1 from public.inventory_fifo_layers
       where source_movement_id=original.id and remaining_quantity<original_quantity
-      for update
     ) then
       raise exception 'Reverse the stock issues consuming transferred FIFO layers before reversing the transfer';
     end if;
