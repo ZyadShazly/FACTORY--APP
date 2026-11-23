@@ -959,4 +959,59 @@ $;
 revoke all on function public.transfer_inventory(uuid,uuid,uuid,numeric,text,uuid,uuid) from public,anon;
 grant execute on function public.transfer_inventory(uuid,uuid,uuid,numeric,text,uuid,uuid) to authenticated;
 
+
+-- Supplier invoice cancellation/reversal must also unwind managerial project costs.
+create or replace function private.sync_supplier_invoice_project_cost_reversal()
+returns trigger language plpgsql security definer set search_path=''
+as $
+declare
+  actor_role text:=public.current_identity_role();
+  cost_row record;
+begin
+  if tg_op<>'UPDATE'
+     or old.status not in ('approved','paid')
+     or new.status not in ('cancelled','reversed')
+     or old.status is not distinct from new.status then
+    return new;
+  end if;
+  if actor_role not in ('owner','manager') then
+    raise exception using errcode='42501',message='Owner or manager role required to reverse supplier invoice project costs';
+  end if;
+
+  for cost_row in
+    select c.id,c.status
+    from public.supplier_invoice_lines sil
+    join public.project_actual_cost_entries c on c.id=sil.actual_cost_entry_id
+    where sil.supplier_invoice_id=new.id
+    union
+    select c.id,c.status
+    from public.supplier_invoice_lines sil
+    join public.purchase_line_project_allocations a on a.supplier_invoice_line_id=sil.id
+    join public.project_actual_cost_entries c on c.id=a.actual_cost_entry_id
+    where sil.supplier_invoice_id=new.id
+    for update
+  loop
+    if cost_row.status='approved' then
+      if actor_role<>'owner' then
+        raise exception using errcode='42501',message='Owner role required to reverse an approved supplier invoice project cost';
+      end if;
+      perform public.reverse_project_actual_cost(cost_row.id,
+        coalesce(nullif(btrim(new.notes),''),'عكس تكلفة فاتورة المورد'));
+    elsif cost_row.status='submitted' then
+      perform public.reject_project_actual_cost(cost_row.id,
+        coalesce(nullif(btrim(new.notes),''),'إلغاء فاتورة المورد'));
+    elsif cost_row.status not in ('rejected','reversed') then
+      raise exception 'Supplier invoice project-cost state cannot be reversed';
+    end if;
+  end loop;
+  return new;
+end
+$;
+revoke all on function private.sync_supplier_invoice_project_cost_reversal() from public,anon,authenticated;
+
+drop trigger if exists sync_supplier_invoice_project_cost_reversal on public.supplier_invoices;
+create trigger sync_supplier_invoice_project_cost_reversal
+after update of status on public.supplier_invoices
+for each row execute function private.sync_supplier_invoice_project_cost_reversal();
+
 commit;
