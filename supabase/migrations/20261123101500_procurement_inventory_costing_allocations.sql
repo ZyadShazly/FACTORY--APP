@@ -374,7 +374,7 @@ begin
   end if;
 
   if valuation_method='fifo' then
-    avg_cost:=round(fifo_value/issue_quantity,4);
+    avg_cost:=round(fifo_value/issue_quantity,8);
   else
     avg_cost:=case when balance.quantity_on_hand=0 then 0
       else round(balance.inventory_value/balance.quantity_on_hand,4) end;
