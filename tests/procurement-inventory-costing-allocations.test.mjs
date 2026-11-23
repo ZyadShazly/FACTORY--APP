@@ -83,3 +83,11 @@ test("expense and procurement screens expose multi-project allocation entry", as
   assert.match(procurement, /save_purchase_invoice_project_allocations/);
   assert.match(procurement, /توزيع تكلفة المشتريات العامة/);
 });
+
+test("supplier invoice cancellation reverses or rejects direct and allocated project costs", () => {
+  assert.match(sql, /sync_supplier_invoice_project_cost_reversal/);
+  assert.match(sql, /old\.status not in \('approved','paid'\)[\s\S]*new\.status not in \('cancelled','reversed'\)/);
+  assert.match(sql, /purchase_line_project_allocations a[\s\S]*actual_cost_entry_id/);
+  assert.match(sql, /reverse_project_actual_cost\(cost_row\.id/);
+  assert.match(sql, /reject_project_actual_cost\(cost_row\.id/);
+});
