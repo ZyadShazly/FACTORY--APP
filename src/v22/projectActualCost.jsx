@@ -22,6 +22,8 @@ export function ProjectActualCostTab({ project, profile }) {
   const [success, setSuccess] = useState("");
   const [pendingAction, setPendingAction] = useState(null);
   const [actionReason, setActionReason] = useState("");
+  const [entryForm, setEntryForm] = useState({ description:"", cost_category:"material", quantity:"1", unit:"وحدة", unit_cost:"", cost_date:new Date().toISOString().slice(0,10), notes:"" });
+  const [savingEntry, setSavingEntry] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true); setError("");
@@ -44,6 +46,41 @@ export function ProjectActualCostTab({ project, profile }) {
     const rows = Array.isArray(snapshot?.entries) ? snapshot.entries : [];
     return rows.filter((row) => (statusFilter === "all" || row.status === statusFilter) && (categoryFilter === "all" || row.cost_category === categoryFilter));
   }, [snapshot, statusFilter, categoryFilter]);
+
+  async function saveManualEntry(event) {
+    event.preventDefault();
+    const quantity = Number(entryForm.quantity);
+    const unitCost = Number(entryForm.unit_cost);
+    if (!entryForm.description.trim()) return setError("اكتب بيان التكلفة.");
+    if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(unitCost) || unitCost <= 0) return setError("أدخل كمية وتكلفة وحدة أكبر من صفر.");
+    const sourceId = globalThis.crypto?.randomUUID?.();
+    if (!sourceId) return setError("المتصفح لا يدعم إنشاء مرجع آمن للعملية. حدّث المتصفح وحاول مرة أخرى.");
+    setSavingEntry(true); setError(""); setSuccess("");
+    const payload = {
+      project_id: project.id,
+      cost_category: entryForm.cost_category,
+      source_type: "manual_adjustment",
+      source_id: sourceId,
+      source_line_reference: "manual-entry",
+      source_revision: 1,
+      source_reference_key: `manual-cost:${project.id}:${sourceId}`,
+      description: entryForm.description.trim(),
+      quantity,
+      unit: entryForm.unit.trim() || "وحدة",
+      unit_cost: unitCost,
+      cost_date: entryForm.cost_date,
+      notes: entryForm.notes.trim() || null,
+    };
+    const saved = await supabase.rpc("save_project_actual_cost", { payload });
+    if (saved.error) {
+      setSavingEntry(false);
+      return setError(saved.error.message || "تعذر حفظ التكلفة.");
+    }
+    await load();
+    setEntryForm({ description:"", cost_category:"material", quantity:"1", unit:"وحدة", unit_cost:"", cost_date:new Date().toISOString().slice(0,10), notes:"" });
+    setSavingEntry(false);
+    setSuccess("تم حفظ التكلفة كمسودة. أرسلها للمراجعة ثم اعتمدها لتدخل في تكلفة المشروع.");
+  }
 
   async function runAction(name, row, reason) {
     setBusyId(row.id); setError(""); setSuccess("");
@@ -85,6 +122,21 @@ export function ProjectActualCostTab({ project, profile }) {
       <StatCard label="التكلفة المتوقعة عند الإكمال" value={money(variance.forecast_final_cost)} tone={Number(variance.forecast_final_cost) > Number(variance.estimated_cost) ? "negative" : "normal"}/>
       <StatCard label="الربح المتوقع" value={money(variance.forecast_profit)} tone={Number(variance.forecast_profit) >= 0 ? "positive" : "negative"}/>
     </div>
+
+    <Panel>
+      <div className="actual-cost-toolbar"><div><h3>إضافة تكلفة مباشرة للمشروع</h3><p>تُحفظ كمسودة تكلفة فعلية ولا تُرحّل إلى المحاسبة أو المخزون تلقائيًا.</p></div></div>
+      <form className="actual-cost-entry-form" onSubmit={saveManualEntry}>
+        <Field label="بيان التكلفة"><Input required value={entryForm.description} onChange={(e)=>setEntryForm(current=>({...current,description:e.target.value}))} placeholder="مثال: شراء خشب للمشروع"/></Field>
+        <Field label="التصنيف"><Select value={entryForm.cost_category} onChange={(e)=>setEntryForm(current=>({...current,cost_category:e.target.value}))}>{Object.entries(CATEGORY_LABELS).filter(([key])=>!["asset_consumption","employee_cash_custody"].includes(key)).map(([key,label])=><option key={key} value={key}>{label}</option>)}</Select></Field>
+        <Field label="الكمية"><Input type="number" min="0.0001" step="0.0001" required value={entryForm.quantity} onChange={(e)=>setEntryForm(current=>({...current,quantity:e.target.value}))}/></Field>
+        <Field label="الوحدة"><Input value={entryForm.unit} onChange={(e)=>setEntryForm(current=>({...current,unit:e.target.value}))}/></Field>
+        <Field label="تكلفة الوحدة"><Input type="number" min="0.0001" step="0.0001" required value={entryForm.unit_cost} onChange={(e)=>setEntryForm(current=>({...current,unit_cost:e.target.value}))}/></Field>
+        <Field label="التاريخ"><Input type="date" required value={entryForm.cost_date} onChange={(e)=>setEntryForm(current=>({...current,cost_date:e.target.value}))}/></Field>
+        <Field label="ملاحظات"><Input value={entryForm.notes} onChange={(e)=>setEntryForm(current=>({...current,notes:e.target.value}))}/></Field>
+        <div className="actual-cost-entry-total"><span>الإجمالي التقديري</span><strong>{money(Number(entryForm.quantity||0)*Number(entryForm.unit_cost||0))}</strong></div>
+        <div className="actual-cost-entry-submit"><Button type="submit" disabled={savingEntry}>{savingEntry?"جارٍ الحفظ...":"حفظ كمسودة تكلفة"}</Button></div>
+      </form>
+    </Panel>
 
     <Panel className="actual-cost-summary-card">
       <div className="actual-cost-summary-head"><div><h3>حالة التكلفة</h3><p>المعتمد فقط يدخل في تكلفة المشروع، أما المرسل فينتظر الاعتماد.</p></div><Button variant="ghost" onClick={load}><RefreshCw size={15}/> تحديث</Button></div>
