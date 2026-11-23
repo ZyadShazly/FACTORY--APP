@@ -819,13 +819,13 @@ begin
        (select coalesce(sum(jsonb_array_length(value->'allocations')),0)
         from jsonb_array_elements(target_allocations))
        or exists(
-         select 1 from jsonb_array_elements(target_allocations) item
-         cross join jsonb_array_elements(item->'allocations') expected
+         select 1 from jsonb_array_elements(target_allocations) payload_line
+         cross join jsonb_array_elements(payload_line->'allocations') expected
          where not exists(
            select 1 from public.supplier_invoice_lines sil
            join public.purchase_line_project_allocations a on a.supplier_invoice_line_id=sil.id
            where sil.supplier_invoice_id=target_invoice_id
-             and sil.purchase_order_item_id=(item->>'purchase_order_item_id')::uuid
+             and sil.purchase_order_item_id=(payload_line->>'purchase_order_item_id')::uuid
              and a.project_id=(expected->>'project_id')::uuid
              and a.allocated_amount=round((expected->>'allocated_amount')::numeric,2)
              and a.actual_cost_entry_id is not null
