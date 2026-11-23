@@ -46,3 +46,41 @@ test("inventory settings UI uses protected valuation RPCs and keeps moving avera
   assert.match(inventoryUi, /value="moving_average"/);
   assert.match(inventoryUi, /value="fifo"/);
 });
+
+test("multi-project expenses create project actual-cost allocations without GL duplication", () => {
+  assert.match(sql, /prepare_allocated_expense_actual_cost/);
+  assert.match(sql, /approved_expense_allocation/);
+  assert.match(sql, /Project allocations must equal the expense gross amount/);
+  assert.match(sql, /accounting_expenses_gl/);
+  assert.doesNotMatch(sql, /create trigger .*accounting_expenses_gl/i);
+});
+
+test("expense cancellation reverses or rejects every allocated actual-cost entry", () => {
+  assert.match(sql, /create or replace function public\.cancel_expense\(target_expense_id uuid, reason text\)/i);
+  assert.match(sql, /from public\.expense_project_allocations a[\s\S]*join public\.project_actual_cost_entries c/i);
+  assert.match(sql, /reverse_project_actual_cost\(allocation\.actual_cost_entry_id/);
+  assert.match(sql, /reject_project_actual_cost\(allocation\.actual_cost_entry_id/);
+});
+
+test("general purchase invoice lines support exact base-currency project allocations", () => {
+  assert.match(sql, /save_purchase_invoice_project_allocations/);
+  assert.match(sql, /prepare_purchase_line_project_costs/);
+  assert.match(sql, /Project allocations must equal invoice line total in base currency/);
+  assert.match(sql, /purchase_invoice_allocation/);
+});
+
+test("warehouse transfer carries FIFO weighted unit cost and source layer lineage", () => {
+  assert.match(sql, /create or replace function public\.transfer_inventory\(/);
+  assert.match(sql, /out_row\.unit_cost/);
+  assert.match(sql, /source_movement_id',out_row\.id/);
+  assert.match(sql, /transfer:'\|\|new\.id::text/);
+});
+
+test("expense and procurement screens expose multi-project allocation entry", async () => {
+  const app = await readFile(new URL("../src/AppMonolith.jsx", import.meta.url), "utf8");
+  const procurement = await readFile(new URL("../src/operational/ProcurementWorkspace.jsx", import.meta.url), "utf8");
+  assert.match(app, /prepare_allocated_expense_actual_cost/);
+  assert.match(app, /توزيع على عدة مشروعات/);
+  assert.match(procurement, /save_purchase_invoice_project_allocations/);
+  assert.match(procurement, /توزيع تكلفة المشتريات العامة/);
+});
