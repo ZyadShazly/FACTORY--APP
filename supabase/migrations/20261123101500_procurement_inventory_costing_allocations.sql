@@ -206,30 +206,31 @@ begin
   from public.inventory_valuation_settings where id=true;
   valuation_method:=coalesce(valuation_method,'moving_average');
 
+  remaining_to_issue:=issue_quantity;
+  for layer in
+    select * from public.inventory_fifo_layers
+    where inventory_item_id=target_inventory_item and warehouse_id=target_warehouse
+      and remaining_quantity>0
+    order by received_at,id
+    for update
+  loop
+    exit when remaining_to_issue<=0;
+    take_quantity:=least(layer.remaining_quantity,remaining_to_issue);
+    layer_amount:=round(take_quantity*layer.unit_cost,2);
+    fifo_value:=fifo_value+layer_amount;
+    fifo_consumptions:=fifo_consumptions||jsonb_build_array(jsonb_build_object(
+      'layer_id',layer.id,'quantity',take_quantity,'unit_cost',layer.unit_cost,'amount',layer_amount
+    ));
+    update public.inventory_fifo_layers
+    set remaining_quantity=remaining_quantity-take_quantity
+    where id=layer.id;
+    remaining_to_issue:=remaining_to_issue-take_quantity;
+  end loop;
+  if remaining_to_issue>0.0001 then
+    raise exception 'Inventory valuation layers are short; reconcile the opening balance before issuing stock';
+  end if;
+
   if valuation_method='fifo' then
-    remaining_to_issue:=issue_quantity;
-    for layer in
-      select * from public.inventory_fifo_layers
-      where inventory_item_id=target_inventory_item and warehouse_id=target_warehouse
-        and remaining_quantity>0
-      order by received_at,id
-      for update
-    loop
-      exit when remaining_to_issue<=0;
-      take_quantity:=least(layer.remaining_quantity,remaining_to_issue);
-      layer_amount:=round(take_quantity*layer.unit_cost,2);
-      fifo_value:=fifo_value+layer_amount;
-      fifo_consumptions:=fifo_consumptions||jsonb_build_array(jsonb_build_object(
-        'layer_id',layer.id,'quantity',take_quantity,'unit_cost',layer.unit_cost,'amount',layer_amount
-      ));
-      update public.inventory_fifo_layers
-      set remaining_quantity=remaining_quantity-take_quantity
-      where id=layer.id;
-      remaining_to_issue:=remaining_to_issue-take_quantity;
-    end loop;
-    if remaining_to_issue>0.0001 then
-      raise exception 'FIFO layers are short; reconcile opening balance before issuing stock';
-    end if;
     avg_cost:=round(fifo_value/issue_quantity,4);
   else
     avg_cost:=case when balance.quantity_on_hand=0 then 0
@@ -245,21 +246,20 @@ begin
     jsonb_build_object('valuation_method',valuation_method,'fifo_issue_value',case when valuation_method='fifo' then fifo_value else null end)
   ) returning * into movement;
 
-  if valuation_method='fifo' then
-    if round(fifo_value,2)<>round((-movement.value_delta),2) then
-      raise exception 'FIFO issue valuation does not reconcile with inventory movement';
-    end if;
-    for consumption in select * from jsonb_array_elements(fifo_consumptions)
-    loop
-      insert into public.inventory_fifo_consumptions(
-        issue_movement_id,layer_id,quantity,unit_cost,amount
-      ) values(
-        movement.id,(consumption->>'layer_id')::uuid,
-        (consumption->>'quantity')::numeric,(consumption->>'unit_cost')::numeric,
-        (consumption->>'amount')::numeric
-      );
-    end loop;
+  if valuation_method='fifo'
+     and round(fifo_value,2)<>round((-movement.value_delta),2) then
+    raise exception 'FIFO issue valuation does not reconcile with inventory movement';
   end if;
+  for consumption in select * from jsonb_array_elements(fifo_consumptions)
+  loop
+    insert into public.inventory_fifo_consumptions(
+      issue_movement_id,layer_id,quantity,unit_cost,amount
+    ) values(
+      movement.id,(consumption->>'layer_id')::uuid,
+      (consumption->>'quantity')::numeric,(consumption->>'unit_cost')::numeric,
+      (consumption->>'amount')::numeric
+    );
+  end loop;
 
   entry:=public.save_project_actual_cost(jsonb_build_object(
     'project_id',target_project,'cost_category','material','source_type','warehouse_issue_line',
