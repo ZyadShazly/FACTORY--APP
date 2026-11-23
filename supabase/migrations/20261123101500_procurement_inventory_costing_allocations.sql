@@ -104,7 +104,7 @@ begin
       raise exception 'Transfer-in movement is missing its source movement reference';
     end if;
     for source_layer in
-      select c.quantity,l.unit_cost,l.received_at,l.layer_type
+      select c.quantity,l.id as original_layer_id,l.unit_cost,l.received_at,l.layer_type
       from public.inventory_fifo_consumptions c
       join public.inventory_fifo_layers l on l.id=c.layer_id
       where c.issue_movement_id=source_movement
@@ -115,7 +115,7 @@ begin
         received_at,original_quantity,remaining_quantity,unit_cost
       ) values(
         new.inventory_item_id,new.warehouse_id,new.id,
-        'transfer:'||new.id::text||':'||source_layer.received_at::text||':'||source_layer.unit_cost::text,
+        'transfer:'||new.id::text||':'||source_layer.original_layer_id::text,
         source_layer.layer_type,source_layer.received_at,source_layer.quantity,
         source_layer.quantity,source_layer.unit_cost
       ) on conflict(source_key) do nothing;
