@@ -180,6 +180,8 @@ declare
   fifo_value numeric:=0;
   remaining_to_issue numeric;
   layer_amount numeric;
+  fifo_consumptions jsonb:='[]'::jsonb;
+  consumption jsonb;
 begin
   if actor is null or not public.is_current_profile_active()
      or role_name not in ('owner','manager') then
@@ -206,10 +208,6 @@ begin
 
   if valuation_method='fifo' then
     remaining_to_issue:=issue_quantity;
-    perform 1 from public.inventory_fifo_layers
-    where inventory_item_id=target_inventory_item and warehouse_id=target_warehouse
-      and remaining_quantity>0
-    order by received_at,id for update;
     for layer in
       select * from public.inventory_fifo_layers
       where inventory_item_id=target_inventory_item and warehouse_id=target_warehouse
@@ -221,6 +219,9 @@ begin
       take_quantity:=least(layer.remaining_quantity,remaining_to_issue);
       layer_amount:=round(take_quantity*layer.unit_cost,2);
       fifo_value:=fifo_value+layer_amount;
+      fifo_consumptions:=fifo_consumptions||jsonb_build_array(jsonb_build_object(
+        'layer_id',layer.id,'quantity',take_quantity,'unit_cost',layer.unit_cost,'amount',layer_amount
+      ));
       update public.inventory_fifo_layers
       set remaining_quantity=remaining_quantity-take_quantity
       where id=layer.id;
@@ -245,27 +246,19 @@ begin
   ) returning * into movement;
 
   if valuation_method='fifo' then
-    remaining_to_issue:=issue_quantity;
-    for layer in
-      select * from public.inventory_fifo_layers
-      where inventory_item_id=target_inventory_item and warehouse_id=target_warehouse
-        and received_at<=movement.posted_at
-      order by received_at,id
-    loop
-      -- Consumption rows are reconstructed from the layer delta created above.
-      -- The original quantity less remaining is cumulative; subtract earlier issues.
-      exit when remaining_to_issue<=0;
-      take_quantity:=least(
-        (select coalesce(sum(c.quantity),0) from public.inventory_fifo_consumptions c where c.layer_id=layer.id
-          and c.issue_movement_id<>movement.id),
-        0
-      );
-    end loop;
-    -- Layer deltas are stored by the dedicated FIFO consume helper below; this
-    -- guard makes an incomplete layer-consumption write fail the whole transaction.
     if round(fifo_value,2)<>round((-movement.value_delta),2) then
       raise exception 'FIFO issue valuation does not reconcile with inventory movement';
     end if;
+    for consumption in select * from jsonb_array_elements(fifo_consumptions)
+    loop
+      insert into public.inventory_fifo_consumptions(
+        issue_movement_id,layer_id,quantity,unit_cost,amount
+      ) values(
+        movement.id,(consumption->>'layer_id')::uuid,
+        (consumption->>'quantity')::numeric,(consumption->>'unit_cost')::numeric,
+        (consumption->>'amount')::numeric
+      );
+    end loop;
   end if;
 
   entry:=public.save_project_actual_cost(jsonb_build_object(
