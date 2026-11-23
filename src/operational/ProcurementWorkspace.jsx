@@ -31,7 +31,7 @@ function recordName(row,serialKey){return row?.display_name||row?.[serialKey]||"
 function DocumentIdentity({row,serialKey}){return <span><strong>{recordName(row,serialKey)}</strong><br/><small>المرجع الداخلي: {row?.[serialKey]||"—"}</small></span>}
 
 function ProcurementDocument({
-  selection,workspace,projects,suppliers,onApproveRequest,onRejectRequest,onApproveOrder,
+  selection,workspace,projects,suppliers,onApproveRequest,onRejectRequest,onApproveOrder,onReverseInvoice,
   onSendOrder,onRenameOrder,sendReference,setSendReference,orderName,setOrderName
 }){
   if(!selection)return null;
@@ -99,6 +99,7 @@ function ProcurementDocument({
       {type==="request"&&row.status==="submitted"&&<><Button tone="danger" onClick={()=>onRejectRequest(row)}>رفض بسبب</Button><Button onClick={()=>onApproveRequest(row)}>اعتماد الطلب</Button></>}
       {type==="order"&&row.status==="draft"&&<><Field label="اسم أمر الشراء"><input style={inputStyle} value={orderName} onChange={event=>setOrderName(event.target.value)}/></Field><Button tone="ghost" onClick={()=>onRenameOrder(row)}>حفظ الاسم</Button><Button onClick={()=>onApproveOrder(row)}>اعتماد بعد المعاينة</Button></>}
       {type==="order"&&row.status==="approved"&&<><Field label="مرجع الإرسال للمورد"><input style={inputStyle} value={sendReference} onChange={event=>setSendReference(event.target.value)} placeholder="بريد / واتساب / مرجع خارجي"/></Field><Button onClick={()=>onSendOrder(row)}>إرسال بعد المعاينة</Button></>}
+      {type==="invoice"&&row.status==="approved"&&<Button tone="danger" onClick={()=>onReverseInvoice(row)}>عكس الفاتورة والاستلام وتصحيح سعر الأمر</Button>}
     </div>
   </article>;
 }
@@ -252,6 +253,15 @@ export function ProcurementWorkspace({data,onNavigate}){
       await load({preserveFeedback:true});
     }
   }
+  async function reverseInvoice(row){
+    const rawPrice=window.prompt("اكتب سعر الوحدة الصحيح لإعادة إصدار الفاتورة:", "950");
+    if(rawPrice===null)return;
+    const replacementPrice=Number(rawPrice);
+    if(!Number.isFinite(replacementPrice)||replacementPrice<0)return setError("أدخل سعر وحدة صحيحًا.");
+    const confirmed=window.confirm("سيتم عكس قيد الفاتورة والاستلام وحركة المخزون، ثم إعادة أمر الشراء لحالة مستلم بالكامل وتحديث سعره إلى "+replacementPrice+". هل تريد المتابعة؟");
+    if(!confirmed)return;
+    await call("reverse_supplier_invoice_and_receipt",{target_invoice:row.id,replacement_unit_price:replacementPrice,reason:"تصحيح سعر فاتورة المورد رقم "+row.invoice_number}, "تم عكس الفاتورة والاستلام وتحديث سعر أمر الشراء. أعد إصدار الفاتورة بالسعر الصحيح.");
+  }
   function projectName(id){const project=projects.find(item=>item.id===id);return project?.project_name||project?.name||"بدون مشروع"}
   function supplierName(id){return suppliers.find(item=>item.id===id)?.name||"—"}
   function openDocument(type,row){setSelected({type,row});setSendReference(row.supplier_send_reference||"");setOrderName(row.display_name||"")}
@@ -368,6 +378,7 @@ export function ProcurementWorkspace({data,onNavigate}){
         onApproveRequest={approveRequest}
         onRejectRequest={row=>setRejecting(row)}
         onApproveOrder={row=>call("approve_purchase_order",{target_order:row.id},"تم اعتماد أمر الشراء بعد المعاينة.")}
+        onReverseInvoice={reverseInvoice}
         onSendOrder={row=>call("mark_purchase_order_sent",{target_order:row.id,send_reference:sendReference||null},"تم تسجيل إرسال أمر الشراء للمورد.")}
         onRenameOrder={async row=>{if(!orderName.trim())return setError("اسم أمر الشراء مطلوب.");const saved=await call("set_purchase_order_display_name",{target_id:row.id,new_display_name:orderName.trim()},"تم تحديث اسم أمر الشراء.",{keepSelection:true});if(saved!==true)setSelected({type:"order",row:saved})}}
       />
