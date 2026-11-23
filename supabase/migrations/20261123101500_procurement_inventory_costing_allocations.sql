@@ -247,7 +247,20 @@ begin
     return new;
   end if;
 
-  if original.movement_type in ('receipt','production_receipt','adjustment_in','transfer_in','production_return','opening_balance') then
+  if original.movement_type='transfer_in' then
+    if exists(
+      select 1 from public.inventory_fifo_layers
+      where source_movement_id=original.id and remaining_quantity<original_quantity
+      for update
+    ) then
+      raise exception 'Reverse the stock issues consuming transferred FIFO layers before reversing the transfer';
+    end if;
+    update public.inventory_fifo_layers set remaining_quantity=0
+    where source_movement_id=original.id;
+    return new;
+  end if;
+
+  if original.movement_type in ('receipt','production_receipt','adjustment_in','production_return','opening_balance') then
     select * into original_layer
     from public.inventory_fifo_layers
     where source_movement_id=original.id
