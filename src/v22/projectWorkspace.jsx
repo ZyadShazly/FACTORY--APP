@@ -104,6 +104,81 @@ function identityLabel(data, profileId, employeeId) {
   return profile?.full_name || profile?.email || employee?.full_name || "عضو غير متاح";
 }
 
+
+const PROCUREMENT_STATUS_LABELS = {
+  draft:"مسودة", submitted:"بانتظار الاعتماد", approved:"معتمد", rejected:"مرفوض",
+  cancelled:"ملغي", converted:"تم التحويل", completed:"مكتمل", received:"عرض مستلم",
+  selected:"مختار", partially_received:"استلام جزئي", fully_received:"مستلم بالكامل",
+  invoiced:"مفوتر", closed:"مغلق", sent:"مرسل للمورد", confirmed:"مؤكد", matched:"مطابق",
+  paid:"مدفوعة", pending:"معلقة",
+};
+
+function ProjectMaterialsPurchasesTab({ project, data, canViewFinancials }) {
+  const [workspace, setWorkspace] = useState({ orders:[], order_items:[], invoices:[], invoice_lines:[] });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  async function loadPurchases() {
+    setLoading(true);
+    setError("");
+    const result = await supabase.rpc("get_procurement_workspace_v2", { target_project:project.id });
+    if (result.error) {
+      setError(friendlyError(result.error));
+      setWorkspace({ orders:[], order_items:[], invoices:[], invoice_lines:[] });
+    } else {
+      setWorkspace({
+        orders:Array.isArray(result.data?.orders) ? result.data.orders : [],
+        order_items:Array.isArray(result.data?.order_items) ? result.data.order_items : [],
+        invoices:Array.isArray(result.data?.invoices) ? result.data.invoices : [],
+        invoice_lines:Array.isArray(result.data?.invoice_lines) ? result.data.invoice_lines : [],
+      });
+    }
+    setLoading(false);
+  }
+
+  useEffect(() => { void loadPurchases(); }, [project.id]);
+
+  if (loading) return <Panel><p>جارٍ تحميل مشتريات المشروع...</p></Panel>;
+
+  const orders = [...workspace.orders].sort((a,b)=>new Date(b.created_at||b.order_date||0)-new Date(a.created_at||a.order_date||0));
+  const supplierName = id => data.suppliers.find(row=>row.id===id)?.name || "مورد غير محدد";
+  const materialName = id => data.materials.find(row=>row.id===id)?.name || "";
+  const amount = (value,currency) => money(number(value)) + (currency ? " " + currency : "");
+
+  return <div className="workspace-section">
+    <div className="workspace-section-head">
+      <div><h3>الخامات والمشتريات</h3><p>أوامر الشراء وبنودها وفواتير المورد المرتبطة بهذا المشروع.</p></div>
+      <Button variant="ghost" onClick={loadPurchases}>تحديث المشتريات</Button>
+    </div>
+    <ErrorState error={error}/>
+    {error ? <Panel><p>تعذر تحميل سجل المشتريات. لم نعرض رسالة «لا توجد مشتريات» لأن البيانات لم تُحمّل بنجاح.</p></Panel>
+      : orders.length ? <div className="milestone-list">{orders.map(order=>{
+        const items=workspace.order_items.filter(item=>item.purchase_order_id===order.id);
+        const invoices=workspace.invoices.filter(invoice=>invoice.purchase_order_id===order.id);
+        return <Panel key={order.id} className="milestone-card">
+          <div className="milestone-head">
+            <div><small>{order.order_number || "أمر شراء"} · {order.order_date || String(order.created_at||"").slice(0,10) || "—"}</small><h4>{order.display_name || order.order_number || "أمر شراء"}</h4></div>
+            <span>{PROCUREMENT_STATUS_LABELS[order.status] || order.status || "—"}</span>
+          </div>
+          <div className="milestone-meta">
+            <span>المورد: {supplierName(order.supplier_id)}</span>
+            {canViewFinancials && <span>الإجمالي: {amount(order.total_amount,order.currency)}</span>}
+          </div>
+          {items.length ? <ul className="workspace-simple-list">{items.map(item=>{
+            const knownMaterial=materialName(item.material_id);
+            const label=knownMaterial || item.description || "بند مشتريات";
+            return <li key={item.id}>
+              <span>{label}{item.description && knownMaterial ? " — " + item.description : ""}</span>
+              <small>{number(item.quantity)} {item.unit || ""}{canViewFinancials ? " × " + amount(item.unit_price,order.currency) : ""}</small>
+            </li>;
+          })}</ul> : <p className="workspace-note">لا توجد بنود مسجلة لأمر الشراء.</p>}
+          {invoices.length>0 && <div className="workspace-note">فواتير المورد: {invoices.map(invoice=>(invoice.invoice_number || "فاتورة") + " (" + (PROCUREMENT_STATUS_LABELS[invoice.status] || invoice.status) + ")").join("، ")}</div>}
+        </Panel>;
+      })}</div> : <Panel><EmptyState title="لا توجد مشتريات مرتبطة" description="ستظهر هنا أوامر الشراء التي تحمل نفس معرّف المشروع." /></Panel>}
+    <Panel className="workspace-note"><p>عرض أوامر الشراء هنا للمتابعة فقط؛ لا ينشئ قيدًا محاسبيًا أو تكلفة فعلية إضافية. التكلفة الفعلية تظل خاضعة لمسار فاتورة المورد واعتماد التكلفة، لمنع احتساب أمر الشراء والفاتورة مرتين.</p></Panel>
+  </div>;
+}
+
 export function ProjectWorkspace({ project, data, profile, permissions, refresh, onBack, FileUploader, ProjectTimeline }) {
   const [tab, setTab] = useState("overview");
   const [error, setError] = useState(""); const [success, setSuccess] = useState(""); const [busy, setBusy] = useState(false);
@@ -274,7 +349,7 @@ export function ProjectWorkspace({ project, data, profile, permissions, refresh,
     {tab === "team" && <div className="workspace-section"><div className="workspace-section-head"><div><h3>فريق المشروع</h3><p>العضوية تحدد رؤية المشروع ولا تمنح صلاحيات نظام عامة.</p></div><PermissionGuard allow={permissions.projects_manage_team}><Button onClick={()=>setShowMemberForm(true)}><Plus size={15}/> إضافة عضو</Button></PermissionGuard></div>{showMemberForm&&<Panel className="workspace-editor"><div className="v22-form-grid"><Field label="الهوية"><Select value={member.identity} onChange={(e)=>setMember({...member,identity:e.target.value})}><IdentityOptions data={data}/></Select></Field><Field label="دور المشروع"><Select value={member.project_role} onChange={(e)=>setMember({...member,project_role:e.target.value})}>{Object.entries(PROJECT_MEMBER_ROLES).filter(([key])=>key!=="project_manager").map(([key,label])=><option key={key} value={key}>{label}</option>)}</Select></Field><Field label="من"><Input type="date" value={member.start_date} onChange={(e)=>setMember({...member,start_date:e.target.value})}/></Field><Field label="حتى"><Input type="date" value={member.end_date} onChange={(e)=>setMember({...member,end_date:e.target.value})}/></Field></div><div className="v22-actions"><Button variant="ghost" onClick={()=>setShowMemberForm(false)}>إلغاء</Button><Button disabled={busy||!member.identity} onClick={addMember}>إضافة للفريق</Button></div></Panel>}{summary.members.length?<div className="team-grid">{summary.members.map((row)=><Panel key={row.id} className="team-card"><div className="team-avatar">{identityLabel(data,row.profile_id,row.employee_id).slice(0,1)}</div><div><strong>{identityLabel(data,row.profile_id,row.employee_id)}</strong><span>{PROJECT_MEMBER_ROLES[row.project_role]}</span><small>{row.start_date||"بداية مفتوحة"} — {row.end_date||"مستمر"}</small></div>{row.project_role!=="project_manager"&&<PermissionGuard allow={permissions.projects_manage_team}><Button variant="ghost" onClick={()=>removeMember(row)}>إزالة</Button></PermissionGuard>}</Panel>)}</div>:<Panel><EmptyState title="لم يُحدد فريق المشروع" description="عيّن مدير المشروع من مسار الاعتماد، وأضف بقية أعضاء التنفيذ هنا دون منحهم صلاحيات عامة تلقائيًا."/></Panel>}</div>}
 
     {tab === "files" && <FileUploader project={project} files={summary.files} permissions={permissions} profile={profile} refresh={refresh}/>} 
-    {tab === "materials" && <LinkedRows title="الخامات والمشتريات" rows={summary.purchases} empty="لا توجد مشتريات مرتبطة" render={(row)=><><span>{data.materials.find((m)=>m.id===row.material_id)?.name||"مادة"}</span><small>{number(row.qty)} × {permissions.project_financials_view?money(row.unit_cost):"تكلفة محجوبة"}</small></>}/>} 
+    {tab === "materials" && <ProjectMaterialsPurchasesTab project={project} data={data} canViewFinancials={permissions.project_financials_view}/>} 
     {tab === "production" && <LinkedRows title="أوامر الإنتاج" rows={summary.productionOrders} empty="لا توجد أوامر إنتاج مرتبطة" render={(row)=><><span>{data.products.find((p)=>p.id===row.product_id)?.name||"أمر إنتاج"}</span><small>{row.status||"—"} · {number(row.qty)} وحدة</small></>}/>} 
     {tab === "labor" && <div className="workspace-two-columns"><LinkedRows title="العمالة اليومية" rows={summary.labor} empty="لا توجد عمالة يومية مرتبطة" render={(row)=><><span>{row.worker_name}</span><small>{row.work_date} · {permissions.project_financials_view?money(row.total_amount):"التكلفة محجوبة"}</small></>}/><LinkedRows title="سجلات الرواتب المرتبطة حاليًا" rows={summary.payroll} empty="لا توجد سجلات رواتب مرتبطة" render={(row)=><><span>{data.employees.find((e)=>e.id===row.employee_id)?.full_name||"موظف"}</span><small>{row.payroll_month} · {permissions.project_financials_view?money(row.net_salary):"التكلفة محجوبة"}</small></>}/></div>}
     {tab === "expenses" && <LinkedRows title="المصروفات المرتبطة" rows={summary.expenses} empty="لا توجد مصروفات مرتبطة" render={(row)=><><span>{row.category||"مصروف"}</span><small>{row.expense_date||row.created_at?.slice(0,10)} · {permissions.project_financials_view?money(row.amount):"القيمة محجوبة"}</small></>}/>} 
