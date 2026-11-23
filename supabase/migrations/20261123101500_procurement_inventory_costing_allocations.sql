@@ -300,4 +300,45 @@ $$;
 revoke all on function public.issue_inventory_to_project(uuid,uuid,uuid,numeric,text,uuid,uuid) from public,anon;
 grant execute on function public.issue_inventory_to_project(uuid,uuid,uuid,numeric,text,uuid,uuid) to authenticated;
 
+
+create or replace function public.get_inventory_valuation_settings()
+returns jsonb language sql stable security definer
+set search_path='public','private','pg_temp'
+as $
+  select case
+    when auth.uid() is null or not public.is_current_profile_active() then null
+    else coalesce((select to_jsonb(s) from public.inventory_valuation_settings s where s.id=true),
+      jsonb_build_object('valuation_method','moving_average','effective_from',current_date))
+  end
+$;
+
+create or replace function public.set_inventory_valuation_method(target_method text)
+returns jsonb language plpgsql security definer
+set search_path='public','private','pg_temp'
+as $
+declare saved public.inventory_valuation_settings%rowtype;
+begin
+  if auth.uid() is null or not public.is_current_profile_active()
+     or public.current_identity_role() not in ('owner','manager') then
+    raise exception 'Owner or manager role required';
+  end if;
+  if target_method not in ('moving_average','fifo') then
+    raise exception 'Unsupported inventory valuation method';
+  end if;
+  update public.inventory_valuation_settings
+  set valuation_method=target_method,updated_by=auth.uid(),updated_at=now()
+  where id=true returning * into saved;
+  if not found then
+    insert into public.inventory_valuation_settings(id,valuation_method,effective_from,updated_by)
+    values(true,target_method,current_date,auth.uid()) returning * into saved;
+  end if;
+  return to_jsonb(saved);
+end
+$;
+
+revoke all on function public.get_inventory_valuation_settings() from public,anon;
+revoke all on function public.set_inventory_valuation_method(text) from public,anon;
+grant execute on function public.get_inventory_valuation_settings() to authenticated;
+grant execute on function public.set_inventory_valuation_method(text) to authenticated;
+
 commit;
