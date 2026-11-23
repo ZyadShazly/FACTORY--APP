@@ -980,16 +980,18 @@ begin
 
   for cost_row in
     select c.id,c.status
-    from public.supplier_invoice_lines sil
-    join public.project_actual_cost_entries c on c.id=sil.actual_cost_entry_id
-    where sil.supplier_invoice_id=new.id
-    union
-    select c.id,c.status
-    from public.supplier_invoice_lines sil
-    join public.purchase_line_project_allocations a on a.supplier_invoice_line_id=sil.id
-    join public.project_actual_cost_entries c on c.id=a.actual_cost_entry_id
-    where sil.supplier_invoice_id=new.id
-    for update
+    from public.project_actual_cost_entries c
+    join (
+      select sil.actual_cost_entry_id as id
+      from public.supplier_invoice_lines sil
+      where sil.supplier_invoice_id=new.id and sil.actual_cost_entry_id is not null
+      union
+      select a.actual_cost_entry_id as id
+      from public.supplier_invoice_lines sil
+      join public.purchase_line_project_allocations a on a.supplier_invoice_line_id=sil.id
+      where sil.supplier_invoice_id=new.id and a.actual_cost_entry_id is not null
+    ) linked on linked.id=c.id
+    for update of c
   loop
     if cost_row.status='approved' then
       if actor_role<>'owner' then
