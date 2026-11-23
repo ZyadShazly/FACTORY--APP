@@ -91,12 +91,38 @@ revoke all on public.inventory_valuation_settings,public.inventory_fifo_layers,
 create or replace function private.inventory_fifo_receipt_layer_trigger()
 returns trigger language plpgsql security definer set search_path=''
 as $$
-declare activation_date date;
+declare activation_date date; source_movement uuid; source_layer record;
 begin
   if new.movement_type not in ('receipt','production_receipt','adjustment_in','transfer_in','production_return','opening_balance') then return new; end if;
   select s.effective_from into activation_date
   from public.inventory_valuation_settings s where s.id=true;
   if activation_date is null or new.posted_at::date < activation_date then return new; end if;
+
+  if new.movement_type='transfer_in' then
+    source_movement:=nullif(new.metadata->>'source_movement_id','')::uuid;
+    if source_movement is null then
+      raise exception 'Transfer-in movement is missing its source movement reference';
+    end if;
+    for source_layer in
+      select c.quantity,l.unit_cost,l.received_at,l.layer_type
+      from public.inventory_fifo_consumptions c
+      join public.inventory_fifo_layers l on l.id=c.layer_id
+      where c.issue_movement_id=source_movement
+      order by l.received_at,l.id
+    loop
+      insert into public.inventory_fifo_layers(
+        inventory_item_id,warehouse_id,source_movement_id,source_key,layer_type,
+        received_at,original_quantity,remaining_quantity,unit_cost
+      ) values(
+        new.inventory_item_id,new.warehouse_id,new.id,
+        'transfer:'||new.id::text||':'||source_layer.received_at::text||':'||source_layer.unit_cost::text,
+        source_layer.layer_type,source_layer.received_at,source_layer.quantity,
+        source_layer.quantity,source_layer.unit_cost
+      ) on conflict(source_key) do nothing;
+    end loop;
+    return new;
+  end if;
+
   insert into public.inventory_fifo_layers(
     inventory_item_id,warehouse_id,source_movement_id,source_key,layer_type,
     received_at,original_quantity,remaining_quantity,unit_cost
