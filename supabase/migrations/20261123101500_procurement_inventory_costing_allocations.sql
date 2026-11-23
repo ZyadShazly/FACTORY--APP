@@ -490,7 +490,7 @@ create or replace function public.prepare_allocated_expense_actual_cost(
 )
 returns jsonb language plpgsql security definer
 set search_path='public','private','pg_temp'
-as $
+as $$
 declare
   actor uuid:=auth.uid();
   source_expense public.expenses%rowtype;
@@ -593,12 +593,12 @@ begin
   end loop;
   return jsonb_build_object('expense_id',target_expense_id,'entries',results,'total_allocated',total_allocated);
 end
-$;
+$$;
 
 create or replace function public.prepare_purchase_line_project_costs(target_invoice_id uuid)
 returns jsonb language plpgsql security definer
 set search_path='public','private','pg_temp'
-as $
+as $$
 declare
   actor uuid:=auth.uid();
   invoice public.supplier_invoices%rowtype;
@@ -662,11 +662,11 @@ begin
   end loop;
   return jsonb_build_object('invoice_id',target_invoice_id,'entries',results,'created_count',created_count);
 end
-$;
+$$;
 
 create or replace function private.sync_project_allocation_actual_cost_status()
 returns trigger language plpgsql security definer set search_path=''
-as $
+as $$
 begin
   if new.source_type='approved_expense_allocation' then
     update public.expense_project_allocations
@@ -692,7 +692,7 @@ begin
   end if;
   return new;
 end
-$;
+$$;
 revoke all on function private.sync_project_allocation_actual_cost_status() from public,anon,authenticated;
 drop trigger if exists sync_project_allocation_actual_cost_status on public.project_actual_cost_entries;
 create trigger sync_project_allocation_actual_cost_status
@@ -708,7 +708,7 @@ grant execute on function public.prepare_purchase_line_project_costs(uuid) to au
 -- Cancellation must also reverse/reject every distributed project-cost entry.
 create or replace function public.cancel_expense(target_expense_id uuid, reason text)
 returns jsonb language plpgsql security definer set search_path=''
-as $
+as $$
 declare
   actor uuid:=auth.uid();
   actor_role text:=public.current_identity_role();
@@ -765,7 +765,7 @@ begin
   returning * into expense_row;
   return to_jsonb(expense_row);
 end
-$;
+$$;
 
 revoke all on function public.cancel_expense(uuid,text) from public,anon;
 grant execute on function public.cancel_expense(uuid,text) to authenticated;
@@ -776,7 +776,7 @@ create or replace function public.save_purchase_invoice_project_allocations(
 )
 returns jsonb language plpgsql security definer
 set search_path='public','private','pg_temp'
-as $
+as $$
 declare
   actor uuid:=auth.uid();
   invoice public.supplier_invoices%rowtype;
@@ -889,7 +889,7 @@ begin
   result:=public.prepare_purchase_line_project_costs(target_invoice_id);
   return result||jsonb_build_object('allocations_saved',true);
 end
-$;
+$$;
 
 revoke all on function public.save_purchase_invoice_project_allocations(uuid,jsonb) from public,anon;
 grant execute on function public.save_purchase_invoice_project_allocations(uuid,jsonb) to authenticated;
@@ -907,7 +907,7 @@ create or replace function public.transfer_inventory(
 )
 returns jsonb language plpgsql security definer
 set search_path='public','private','pg_temp'
-as $
+as $$
 declare
   actor uuid:=auth.uid();
   balance record;
@@ -955,7 +955,7 @@ begin
 
   return jsonb_build_object('transfer_id',transfer_key,'out_movement',to_jsonb(out_row),'in_movement',to_jsonb(in_row));
 end
-$;
+$$;
 revoke all on function public.transfer_inventory(uuid,uuid,uuid,numeric,text,uuid,uuid) from public,anon;
 grant execute on function public.transfer_inventory(uuid,uuid,uuid,numeric,text,uuid,uuid) to authenticated;
 
@@ -963,7 +963,7 @@ grant execute on function public.transfer_inventory(uuid,uuid,uuid,numeric,text,
 -- Supplier invoice cancellation/reversal must also unwind managerial project costs.
 create or replace function private.sync_supplier_invoice_project_cost_reversal()
 returns trigger language plpgsql security definer set search_path=''
-as $
+as $$
 declare
   actor_role text:=public.current_identity_role();
   cost_row record;
@@ -1008,7 +1008,7 @@ begin
   end loop;
   return new;
 end
-$;
+$$;
 revoke all on function private.sync_supplier_invoice_project_cost_reversal() from public,anon,authenticated;
 
 drop trigger if exists sync_supplier_invoice_project_cost_reversal on public.supplier_invoices;
