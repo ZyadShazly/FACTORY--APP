@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const sql = await readFile(new URL("../supabase/migrations/20261123101500_procurement_inventory_costing_allocations.sql", import.meta.url), "utf8");
+const inventoryUi = await readFile(new URL("../src/operational/InventoryWorkspace.jsx", import.meta.url), "utf8");
 
 test("inventory valuation defaults to moving average and exposes FIFO as an option", () => {
   assert.match(sql, /valuation_method text not null default 'moving_average'/i);
@@ -37,4 +38,11 @@ test("project allocation ledgers reference invoice lines and expenses without cr
   assert.match(sql, /references public\.supplier_invoice_lines\(id\)/i);
   assert.match(sql, /references public\.expenses\(id\)/i);
   assert.doesNotMatch(sql, /create trigger .*accounting_/i);
+});
+
+test("inventory settings UI uses protected valuation RPCs and keeps moving average as default", () => {
+  assert.match(inventoryUi, /get_inventory_valuation_settings/);
+  assert.match(inventoryUi, /set_inventory_valuation_method/);
+  assert.match(inventoryUi, /value="moving_average"/);
+  assert.match(inventoryUi, /value="fifo"/);
 });
