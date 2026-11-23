@@ -466,4 +466,208 @@ revoke all on function public.set_inventory_valuation_method(text) from public,a
 grant execute on function public.get_inventory_valuation_settings() to authenticated;
 grant execute on function public.set_inventory_valuation_method(text) to authenticated;
 
+
+-- Per-project actual-cost workflow links. GL remains posted by the existing
+-- expense / supplier-invoice triggers; these rows feed managerial project cost only.
+alter table public.purchase_line_project_allocations
+  add column if not exists actual_cost_entry_id uuid references public.project_actual_cost_entries(id) on delete restrict,
+  add column if not exists cost_posting_status text not null default 'not_posted'
+    check(cost_posting_status in ('not_posted','submitted','posted','rejected','reversed'));
+alter table public.expense_project_allocations
+  add column if not exists actual_cost_entry_id uuid references public.project_actual_cost_entries(id) on delete restrict,
+  add column if not exists cost_posting_status text not null default 'not_posted'
+    check(cost_posting_status in ('not_posted','submitted','posted','rejected','reversed'));
+
+create unique index if not exists purchase_line_alloc_actual_cost_unique
+  on public.purchase_line_project_allocations(actual_cost_entry_id)
+  where actual_cost_entry_id is not null;
+create unique index if not exists expense_alloc_actual_cost_unique
+  on public.expense_project_allocations(actual_cost_entry_id)
+  where actual_cost_entry_id is not null;
+
+create or replace function public.prepare_allocated_expense_actual_cost(
+  target_expense_id uuid, target_allocations jsonb
+)
+returns jsonb language plpgsql security definer
+set search_path='public','private','pg_temp'
+as $
+declare
+  actor uuid:=auth.uid();
+  source_expense public.expenses%rowtype;
+  allocation jsonb;
+  allocation_id uuid;
+  project_id_value uuid;
+  amount_value numeric(18,2);
+  total_allocated numeric(18,2):=0;
+  entry jsonb;
+  results jsonb:='[]'::jsonb;
+  existing_count integer;
+begin
+  if actor is null or public.current_identity_role() not in ('owner','manager','accountant') then
+    raise exception 'Owner, manager, or accountant role required';
+  end if;
+  select * into source_expense from public.expenses
+  where id=target_expense_id for update;
+  if not found or source_expense.cancelled_at is not null then
+    raise exception 'Active expense not found';
+  end if;
+  if source_expense.project_id is not null then
+    raise exception 'Use the existing direct-project actual-cost workflow for a directly linked expense';
+  end if;
+  if jsonb_typeof(target_allocations)<>'array' or jsonb_array_length(target_allocations)<1 then
+    raise exception 'At least one project allocation is required';
+  end if;
+  select count(*) into existing_count from public.expense_project_allocations
+  where expense_id=target_expense_id and actual_cost_entry_id is not null;
+  if existing_count>0 then raise exception 'Expense allocations already have actual-cost entries'; end if;
+
+  delete from public.expense_project_allocations where expense_id=target_expense_id;
+  for allocation in select * from jsonb_array_elements(target_allocations)
+  loop
+    project_id_value:=(allocation->>'project_id')::uuid;
+    amount_value:=round((allocation->>'allocated_amount')::numeric,2);
+    if amount_value<=0 then raise exception 'Each allocated amount must be positive'; end if;
+    perform 1 from public.projects
+      where id=project_id_value and lifecycle not in ('closed','cancelled') for update;
+    if not found or not private.project_can_view(project_id_value) then
+      raise exception 'Project is unavailable or access denied';
+    end if;
+    insert into public.expense_project_allocations(
+      expense_id,project_id,allocation_method,allocation_value,allocated_amount,created_by
+    ) values(
+      target_expense_id,project_id_value,
+      coalesce(allocation->>'allocation_method','fixed_amount'),
+      coalesce((allocation->>'allocation_value')::numeric,amount_value),
+      amount_value,actor
+    ) returning id into allocation_id;
+    total_allocated:=total_allocated+amount_value;
+  end loop;
+  if round(total_allocated,2)<>round(source_expense.amount,2) then
+    raise exception 'Project allocations must equal the expense gross amount';
+  end if;
+
+  for allocation_id,project_id_value,amount_value in
+    select a.id,a.project_id,a.allocated_amount
+    from public.expense_project_allocations a
+    where a.expense_id=target_expense_id order by a.id
+  loop
+    entry:=public.save_project_actual_cost(jsonb_build_object(
+      'project_id',project_id_value,'cost_category',
+        case when lower(source_expense.category) like '%نقل%' or lower(source_expense.category) like '%transport%' then 'transport' else 'other' end,
+      'source_type','approved_expense_allocation','source_id',target_expense_id,
+      'source_line_reference',allocation_id::text,'source_revision',1,
+      'source_reference_key','approved_expense_allocation:'||allocation_id::text||':1',
+      'description','توزيع مصروف: '||source_expense.category,
+      'quantity',1,'unit','حصة مصروف','unit_cost',amount_value,
+      'cost_date',source_expense.expense_date,
+      'metadata',jsonb_build_object('expense_id',target_expense_id,'allocation_id',allocation_id,
+        'gross_amount',source_expense.amount,'net_amount',source_expense.net_amount,
+        'tax_amount',source_expense.tax_amount)
+    ));
+    perform public.submit_project_actual_cost((entry->>'id')::uuid);
+    update public.expense_project_allocations
+      set actual_cost_entry_id=(entry->>'id')::uuid,cost_posting_status='submitted'
+      where id=allocation_id;
+    results:=results||jsonb_build_array(entry);
+  end loop;
+  return jsonb_build_object('expense_id',target_expense_id,'entries',results,'total_allocated',total_allocated);
+end
+$;
+
+create or replace function public.prepare_purchase_line_project_costs(target_invoice_id uuid)
+returns jsonb language plpgsql security definer
+set search_path='public','private','pg_temp'
+as $
+declare
+  actor uuid:=auth.uid();
+  invoice public.supplier_invoices%rowtype;
+  line record;
+  allocation record;
+  line_base_amount numeric(18,2);
+  total_allocated numeric(18,2);
+  entry jsonb;
+  results jsonb:='[]'::jsonb;
+  created_count integer:=0;
+begin
+  if actor is null or public.current_identity_role() not in ('owner','manager','accountant') then
+    raise exception 'Owner, manager, or accountant role required';
+  end if;
+  select * into invoice from public.supplier_invoices
+  where id=target_invoice_id for update;
+  if not found or invoice.status not in ('approved','paid') then
+    raise exception 'Approved supplier invoice required';
+  end if;
+
+  for line in
+    select sil.* from public.supplier_invoice_lines sil
+    where sil.supplier_invoice_id=target_invoice_id order by sil.id
+  loop
+    if exists(select 1 from public.purchase_line_project_allocations a
+      where a.supplier_invoice_line_id=line.id and a.actual_cost_entry_id is not null) then
+      continue;
+    end if;
+    select coalesce(sum(a.allocated_amount),0) into total_allocated
+    from public.purchase_line_project_allocations a where a.supplier_invoice_line_id=line.id;
+    if total_allocated=0 then continue; end if;
+    line_base_amount:=round(coalesce(line.line_total,
+      (line.quantity*line.unit_price)-line.discount_amount+line.tax_amount)*invoice.exchange_rate,2);
+    if round(total_allocated,2)<>line_base_amount then
+      raise exception 'Project allocations must equal invoice line base-currency total for line %',line.id;
+    end if;
+
+    for allocation in
+      select a.* from public.purchase_line_project_allocations a
+      where a.supplier_invoice_line_id=line.id order by a.id
+    loop
+      entry:=public.save_project_actual_cost(jsonb_build_object(
+        'project_id',allocation.project_id,'cost_category','purchase_invoice',
+        'source_type','purchase_invoice_allocation','source_id',line.id,
+        'source_line_reference',allocation.id::text,'source_revision',1,
+        'source_reference_key','purchase_invoice_allocation:'||allocation.id::text||':1',
+        'description',line.description,'quantity',1,'unit','حصة فاتورة شراء',
+        'unit_cost',allocation.allocated_amount,'cost_date',invoice.invoice_date,
+        'budget_item_id',line.budget_item_id,'milestone_id',line.milestone_id,
+        'metadata',jsonb_build_object('supplier_invoice_id',target_invoice_id,
+          'invoice_line_id',line.id,'allocation_id',allocation.id,
+          'exchange_rate',invoice.exchange_rate,'base_currency',invoice.base_currency)
+      ));
+      perform public.submit_project_actual_cost((entry->>'id')::uuid);
+      update public.purchase_line_project_allocations
+        set actual_cost_entry_id=(entry->>'id')::uuid,cost_posting_status='submitted'
+        where id=allocation.id;
+      results:=results||jsonb_build_array(entry);
+      created_count:=created_count+1;
+    end loop;
+  end loop;
+  return jsonb_build_object('invoice_id',target_invoice_id,'entries',results,'created_count',created_count);
+end
+$;
+
+create or replace function private.sync_project_allocation_actual_cost_status()
+returns trigger language plpgsql security definer set search_path=''
+as $
+begin
+  if new.source_type='approved_expense_allocation' then
+    update public.expense_project_allocations
+    set cost_posting_status=case new.status when 'submitted' then 'submitted' when 'approved' then 'posted' when 'rejected' then 'rejected' when 'reversed' then 'reversed' else 'not_posted' end
+    where id=nullif(new.source_line_reference,'')::uuid and actual_cost_entry_id=new.id;
+  elsif new.source_type='purchase_invoice_allocation' then
+    update public.purchase_line_project_allocations
+    set cost_posting_status=case new.status when 'submitted' then 'submitted' when 'approved' then 'posted' when 'rejected' then 'rejected' when 'reversed' then 'reversed' else 'not_posted' end
+    where id=nullif(new.source_line_reference,'')::uuid and actual_cost_entry_id=new.id;
+  end if;
+  return new;
+end
+$;
+revoke all on function private.sync_project_allocation_actual_cost_status() from public,anon,authenticated;
+drop trigger if exists sync_project_allocation_actual_cost_status on public.project_actual_cost_entries;
+create trigger sync_project_allocation_actual_cost_status
+after insert or update of status on public.project_actual_cost_entries
+for each row execute function private.sync_project_allocation_actual_cost_status();
+
+revoke all on function public.prepare_allocated_expense_actual_cost(uuid,jsonb) from public,anon;
+revoke all on function public.prepare_purchase_line_project_costs(uuid) from public,anon;
+grant execute on function public.prepare_allocated_expense_actual_cost(uuid,jsonb) to authenticated;
+grant execute on function public.prepare_purchase_line_project_costs(uuid) to authenticated;
+
 commit;
