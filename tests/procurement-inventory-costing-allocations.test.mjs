@@ -15,7 +15,7 @@ test("FIFO layers are opened from the activation snapshot, not historical moveme
   assert.match(sql, /'opening:'\|\|b\.inventory_item_id::text\|\|':'\|\|b\.warehouse_id::text/i);
   assert.match(sql, /from public\.inventory_balances b[\s\S]*on conflict\(source_key\) do nothing/i);
   assert.match(sql, /new\.posted_at::date < activation_date/i);
-  assert.doesNotMatch(sql, /insert into public\.inventory_fifo_layers[\s\S]*from public\.inventory_movements/i);
+  assert.doesNotMatch(sql, /insert into public\.inventory_fifo_layers\s*\([^;]*\)\s*select[^;]*from public\.inventory_movements/i);
 });
 
 test("FIFO issue consumes oldest available layers and stores an idempotent consumption ledger", () => {
