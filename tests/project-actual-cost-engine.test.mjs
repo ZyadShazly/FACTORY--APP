@@ -27,3 +27,13 @@ test('project actual cost is updated from approved entries only', () => {
 test('allocations must equal source amount before approval', () => {
   assert.match(sql,/Allocations must equal the source amount/);
 });
+
+test('project actual cost screen supports safe manual draft entry without direct table writes', () => {
+  const ui = fs.readFileSync('src/v22/projectActualCost.jsx','utf8');
+  assert.match(ui,/save_project_actual_cost/);
+  assert.match(ui,/source_type: "manual_adjustment"/);
+  assert.match(ui,/source_reference_key: `manual-cost:/);
+  assert.match(ui,/saveManualEntry/);
+  assert.match(ui,/تم حفظ التكلفة كمسودة/);
+  assert.doesNotMatch(ui,/from\(["']project_actual_cost_entries["']\)\.insert/);
+});
