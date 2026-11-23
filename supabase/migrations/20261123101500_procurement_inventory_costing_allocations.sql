@@ -146,7 +146,7 @@ for each row execute function private.inventory_fifo_receipt_layer_trigger();
 -- RPC manages its own layers atomically and marks that in metadata.
 create or replace function private.inventory_fifo_prepare_outbound_trigger()
 returns trigger language plpgsql security definer set search_path=''
-as $
+as $$
 declare
   activation_date date;
   method text;
@@ -201,7 +201,7 @@ for each row execute function private.inventory_fifo_prepare_outbound_trigger();
 
 create or replace function private.inventory_fifo_record_outbound_trigger()
 returns trigger language plpgsql security definer set search_path=''
-as $
+as $$
 declare allocation jsonb;
 begin
   if new.movement_type not in ('production_issue','adjustment_out','transfer_out','waste_out','damage_out','sale_issue','rental_issue') then
@@ -429,7 +429,7 @@ grant execute on function public.issue_inventory_to_project(uuid,uuid,uuid,numer
 create or replace function public.get_inventory_valuation_settings()
 returns jsonb language sql stable security definer
 set search_path='public','private','pg_temp'
-as $
+as $$
   select case
     when auth.uid() is null or not public.is_current_profile_active() then null
     else coalesce((select to_jsonb(s) from public.inventory_valuation_settings s where s.id=true),
@@ -440,7 +440,7 @@ $;
 create or replace function public.set_inventory_valuation_method(target_method text)
 returns jsonb language plpgsql security definer
 set search_path='public','private','pg_temp'
-as $
+as $$
 declare saved public.inventory_valuation_settings%rowtype;
 begin
   if auth.uid() is null or not public.is_current_profile_active()
