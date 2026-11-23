@@ -179,6 +179,43 @@ function ProjectMaterialsPurchasesTab({ project, data, canViewFinancials }) {
   </div>;
 }
 
+
+function ProjectExpensesTab({ rows, canViewFinancials, refresh }) {
+  const [busyId,setBusyId]=useState("");
+  const [error,setError]=useState("");
+  const [success,setSuccess]=useState("");
+
+  async function sendToActualCost(row) {
+    setBusyId(row.id); setError(""); setSuccess("");
+    const result=await supabase.rpc("prepare_operational_source_actual_cost",{
+      target_source_type:"approved_expense",
+      target_source_id:row.id,
+    });
+    setBusyId("");
+    if(result.error) { setError(friendlyError(result.error)); return; }
+    setSuccess("تم إرسال المصروف إلى قيود التكلفة الفعلية للمراجعة والاعتماد.");
+    await refresh();
+  }
+
+  const statusLabel={not_posted:"غير مُرحّل",submitted:"قيد المراجعة",posted:"مُرحّل",rejected:"مرفوض",reversed:"معكوس"};
+  return <Panel>
+    <div className="workspace-section-head"><div><h3>المصروفات المرتبطة</h3><p>إرسال المصروفات غير المرحلة إلى مسار مراجعة التكلفة الفعلية.</p></div></div>
+    <ErrorState error={error}/>
+    {success && <SuccessState>{success}</SuccessState>}
+    {!rows.length ? <EmptyState title="لا توجد مصروفات مرتبطة" description="ستظهر هنا المصروفات المسجلة على هذا المشروع."/> :
+      <div className="milestone-list">{rows.map(row=><div className="milestone-card" key={row.id}>
+        <div className="milestone-head"><div><h4>{row.category || "مصروف"}</h4><small>{row.expense_date || row.created_at?.slice(0,10) || "—"} · {row.notes || "بدون وصف"}</small></div>
+          <span>{row.cancelled_at ? "ملغي" : (statusLabel[row.cost_posting_status] || row.cost_posting_status || "غير محدد")}</span>
+        </div>
+        <div className="milestone-meta">
+          {canViewFinancials && <strong>{money(row.amount)}</strong>}
+          {row.cost_posting_status==="not_posted" && !row.cancelled_at && <Button disabled={busyId===row.id} onClick={()=>sendToActualCost(row)}>{busyId===row.id ? "جارٍ الإرسال…" : "إرسال للتكلفة الفعلية"}</Button>}
+        </div>
+      </div>)}</div>}
+    <p className="workspace-note">الإرسال ينشئ قيدًا بحالة «قيد المراجعة» فقط؛ لا يدخل ضمن التكلفة المعتمدة إلا بعد اعتماد صاحب الصلاحية. إعادة الإرسال بعد الربط ممنوعة لمنع التكرار.</p>
+  </Panel>;
+}
+
 export function ProjectWorkspace({ project, data, profile, permissions, refresh, onBack, FileUploader, ProjectTimeline }) {
   const [tab, setTab] = useState("overview");
   const [error, setError] = useState(""); const [success, setSuccess] = useState(""); const [busy, setBusy] = useState(false);
@@ -352,7 +389,7 @@ export function ProjectWorkspace({ project, data, profile, permissions, refresh,
     {tab === "materials" && <ProjectMaterialsPurchasesTab project={project} data={data} canViewFinancials={permissions.project_financials_view}/>} 
     {tab === "production" && <LinkedRows title="أوامر الإنتاج" rows={summary.productionOrders} empty="لا توجد أوامر إنتاج مرتبطة" render={(row)=><><span>{data.products.find((p)=>p.id===row.product_id)?.name||"أمر إنتاج"}</span><small>{row.status||"—"} · {number(row.qty)} وحدة</small></>}/>} 
     {tab === "labor" && <div className="workspace-two-columns"><LinkedRows title="العمالة اليومية" rows={summary.labor} empty="لا توجد عمالة يومية مرتبطة" render={(row)=><><span>{row.worker_name}</span><small>{row.work_date} · {permissions.project_financials_view?money(row.total_amount):"التكلفة محجوبة"}</small></>}/><LinkedRows title="سجلات الرواتب المرتبطة حاليًا" rows={summary.payroll} empty="لا توجد سجلات رواتب مرتبطة" render={(row)=><><span>{data.employees.find((e)=>e.id===row.employee_id)?.full_name||"موظف"}</span><small>{row.payroll_month} · {permissions.project_financials_view?money(row.net_salary):"التكلفة محجوبة"}</small></>}/></div>}
-    {tab === "expenses" && <LinkedRows title="المصروفات المرتبطة" rows={summary.expenses} empty="لا توجد مصروفات مرتبطة" render={(row)=><><span>{row.category||"مصروف"}</span><small>{row.expense_date||row.created_at?.slice(0,10)} · {permissions.project_financials_view?money(row.amount):"القيمة محجوبة"}</small></>}/>} 
+    {tab === "expenses" && <ProjectExpensesTab rows={summary.expenses} canViewFinancials={permissions.project_financials_view} refresh={refresh}/>} 
     {tab === "assets" && <LinkedRows title="العُهد والأصول المرتبطة" rows={summary.assignments} empty="لا توجد عهد مفتوحة مرتبطة" render={(row)=><><span>{row.assignment_code||"عهدة"}</span><small>{row.status} · العهدة نفسها ليست تكلفة مشروع</small></>}/>} 
     {tab === "budget" && <ProjectBudgetTab project={project} data={data} permissions={permissions} refresh={refresh}/>}
     {tab === "actualCost" && <PermissionGuard allow={permissions.project_financials_view} fallback={<div className="workspace-no-permission"><ShieldCheck size={24}/>لا تملك صلاحية عرض ماليات المشروع.</div>}><ProjectActualCostTab project={project} profile={profile}/></PermissionGuard>}
