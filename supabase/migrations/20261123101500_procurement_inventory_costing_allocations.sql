@@ -118,20 +118,38 @@ for each row execute function private.inventory_fifo_receipt_layer_trigger();
 create or replace function private.inventory_fifo_restore_reversal_trigger()
 returns trigger language plpgsql security definer set search_path=''
 as $$
-declare original_type text;
+declare
+  original_type text;
+  original_layer public.inventory_fifo_layers%rowtype;
 begin
-  if new.movement_type <> 'project_issue_reversal' or new.reversed_movement_id is null then
-    return new;
-  end if;
+  if new.reversed_movement_id is null then return new; end if;
   select movement_type into original_type
   from public.inventory_movements where id=new.reversed_movement_id;
-  if original_type <> 'project_issue' then return new; end if;
 
-  update public.inventory_fifo_layers l
-  set remaining_quantity=l.remaining_quantity+c.quantity
-  from public.inventory_fifo_consumptions c
-  where c.issue_movement_id=new.reversed_movement_id and l.id=c.layer_id;
+  -- The existing inventory ledger uses receipt_reversal for reversing a project issue.
+  if new.movement_type='receipt_reversal' and original_type='project_issue' then
+    update public.inventory_fifo_layers l
+    set remaining_quantity=l.remaining_quantity+c.quantity
+    from public.inventory_fifo_consumptions c
+    where c.issue_movement_id=new.reversed_movement_id and l.id=c.layer_id;
+    return new;
+  end if;
 
+  -- A receipt may be reversed only while its original FIFO layer is fully available.
+  if new.movement_type='project_issue_reversal' and original_type='receipt' then
+    select * into original_layer
+    from public.inventory_fifo_layers
+    where source_movement_id=new.reversed_movement_id
+    for update;
+    if found then
+      if original_layer.remaining_quantity < original_layer.original_quantity then
+        raise exception 'Reverse project issues before reversing a receipt consumed by FIFO';
+      end if;
+      update public.inventory_fifo_layers
+      set remaining_quantity=remaining_quantity-abs(new.quantity_delta)
+      where id=original_layer.id;
+    end if;
+  end if;
   return new;
 end
 $$;
