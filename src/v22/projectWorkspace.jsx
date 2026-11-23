@@ -119,6 +119,7 @@ function ProjectMaterialsPurchasesTab({ project, data, canViewFinancials }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [stockError, setStockError] = useState("");
+  const [stockLoadError, setStockLoadError] = useState("");
   const [issueBusy, setIssueBusy] = useState(false);
   const [issueSuccess, setIssueSuccess] = useState("");
   const [selectedBalance, setSelectedBalance] = useState("");
@@ -144,10 +145,10 @@ function ProjectMaterialsPurchasesTab({ project, data, canViewFinancials }) {
       });
     }
     if (inventoryResult.error) {
-      setStockError(friendlyError(inventoryResult.error));
+      setStockLoadError(friendlyError(inventoryResult.error));
       setInventory({ items:[], balances:[], warehouses:[], capabilities:{} });
     } else {
-      setStockError("");
+      setStockLoadError("");
       setInventory({
         items:Array.isArray(inventoryResult.data?.items) ? inventoryResult.data.items : [],
         balances:Array.isArray(inventoryResult.data?.balances) ? inventoryResult.data.balances : [],
@@ -234,9 +235,9 @@ function ProjectMaterialsPurchasesTab({ project, data, canViewFinancials }) {
 
     <Panel>
       <div className="workspace-section-head"><div><h3>صرف خامات من المخزون للمشروع</h3><p>اختر الصنف والمخزن والكمية فقط؛ النظام يحسب التكلفة تلقائيًا حسب طريقة تقييم المخزون النشطة.</p></div></div>
-      <ErrorState error={stockError}/>
+      <ErrorState error={stockLoadError || stockError}/>
       {issueSuccess && <SuccessState>{issueSuccess}</SuccessState>}
-      {stockError
+      {stockLoadError
         ? <p className="workspace-note">تعذر تحميل أرصدة المخزون؛ لن نعرض نموذج صرف قبل التأكد من الرصيد المتاح.</p>
         : !canIssueStock
           ? <p className="workspace-note">عرض أرصدة المخزون متاح، لكن صلاحية صرف الخامات للمشروع تقتصر على المالك أو المدير.</p>
