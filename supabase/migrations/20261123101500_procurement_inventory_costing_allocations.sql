@@ -519,7 +519,28 @@ begin
   end if;
   select count(*) into existing_count from public.expense_project_allocations
   where expense_id=target_expense_id and actual_cost_entry_id is not null;
-  if existing_count>0 then raise exception 'Expense allocations already have actual-cost entries'; end if;
+  if existing_count>0 then
+    if existing_count<>jsonb_array_length(target_allocations)
+       or exists(
+         select 1 from jsonb_array_elements(target_allocations) p
+         where not exists(
+           select 1 from public.expense_project_allocations a
+           where a.expense_id=target_expense_id
+             and a.project_id=(p->>'project_id')::uuid
+             and a.allocated_amount=round((p->>'allocated_amount')::numeric,2)
+             and a.actual_cost_entry_id is not null
+         )
+       ) then
+      raise exception 'Expense already has a different submitted allocation; reverse it before changing amounts';
+    end if;
+    select coalesce(jsonb_agg(to_jsonb(cost_entry) order by cost_entry.id),'[]'::jsonb)
+    into results
+    from public.expense_project_allocations a
+    join public.project_actual_cost_entries cost_entry on cost_entry.id=a.actual_cost_entry_id
+    where a.expense_id=target_expense_id;
+    return jsonb_build_object('expense_id',target_expense_id,'entries',results,
+      'total_allocated',source_expense.amount,'idempotent_replay',true);
+  end if;
 
   delete from public.expense_project_allocations where expense_id=target_expense_id;
   for allocation in select * from jsonb_array_elements(target_allocations)
@@ -792,7 +813,34 @@ begin
   if exists(select 1 from public.purchase_line_project_allocations a
     join public.supplier_invoice_lines sil on sil.id=a.supplier_invoice_line_id
     where sil.supplier_invoice_id=target_invoice_id and a.actual_cost_entry_id is not null) then
-    raise exception 'Invoice project costs have already been submitted; reverse them before changing allocations';
+    if (select count(*) from public.purchase_line_project_allocations a
+        join public.supplier_invoice_lines sil on sil.id=a.supplier_invoice_line_id
+        where sil.supplier_invoice_id=target_invoice_id) <>
+       (select coalesce(sum(jsonb_array_length(value->'allocations')),0)
+        from jsonb_array_elements(target_allocations))
+       or exists(
+         select 1 from jsonb_array_elements(target_allocations) item
+         cross join jsonb_array_elements(item->'allocations') expected
+         where not exists(
+           select 1 from public.supplier_invoice_lines sil
+           join public.purchase_line_project_allocations a on a.supplier_invoice_line_id=sil.id
+           where sil.supplier_invoice_id=target_invoice_id
+             and sil.purchase_order_item_id=(item->>'purchase_order_item_id')::uuid
+             and a.project_id=(expected->>'project_id')::uuid
+             and a.allocated_amount=round((expected->>'allocated_amount')::numeric,2)
+             and a.actual_cost_entry_id is not null
+         )
+       ) then
+      raise exception 'Invoice already has different submitted project allocations; reverse them before changing amounts';
+    end if;
+    select coalesce(jsonb_agg(to_jsonb(cost_entry) order by cost_entry.id),'[]'::jsonb)
+    into result
+    from public.purchase_line_project_allocations a
+    join public.supplier_invoice_lines sil on sil.id=a.supplier_invoice_line_id
+    join public.project_actual_cost_entries cost_entry on cost_entry.id=a.actual_cost_entry_id
+    where sil.supplier_invoice_id=target_invoice_id;
+    return jsonb_build_object('invoice_id',target_invoice_id,'entries',result,
+      'created_count',jsonb_array_length(result),'allocations_saved',true,'idempotent_replay',true);
   end if;
   delete from public.purchase_line_project_allocations a
   using public.supplier_invoice_lines sil
