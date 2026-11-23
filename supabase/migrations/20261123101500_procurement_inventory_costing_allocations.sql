@@ -93,7 +93,7 @@ returns trigger language plpgsql security definer set search_path=''
 as $$
 declare activation_date date;
 begin
-  if new.movement_type <> 'receipt' then return new; end if;
+  if new.movement_type not in ('receipt','production_receipt','adjustment_in','transfer_in','production_return','opening_balance') then return new; end if;
   select s.effective_from into activation_date
   from public.inventory_valuation_settings s where s.id=true;
   if activation_date is null or new.posted_at::date < activation_date then return new; end if;
@@ -101,8 +101,9 @@ begin
     inventory_item_id,warehouse_id,source_movement_id,source_key,layer_type,
     received_at,original_quantity,remaining_quantity,unit_cost
   ) values(
-    new.inventory_item_id,new.warehouse_id,new.id,'movement:'||new.id::text,'receipt',
-    new.posted_at,new.quantity_delta,new.quantity_delta,new.unit_cost
+    new.inventory_item_id,new.warehouse_id,new.id,'movement:'||new.id::text,
+    case when new.movement_type='opening_balance' then 'opening_balance' else 'receipt' end,
+    new.posted_at,abs(new.quantity_delta),abs(new.quantity_delta),new.unit_cost
   ) on conflict(source_key) do nothing;
   return new;
 end
@@ -114,36 +115,120 @@ create trigger inventory_fifo_receipt_layer
 after insert on public.inventory_movements
 for each row execute function private.inventory_fifo_receipt_layer_trigger();
 
+-- Consume layers for every other outbound movement (production, transfers,
+-- adjustments, waste, damage, sales and rentals). The canonical project issue
+-- RPC manages its own layers atomically and marks that in metadata.
+create or replace function private.inventory_fifo_prepare_outbound_trigger()
+returns trigger language plpgsql security definer set search_path=''
+as $
+declare
+  activation_date date;
+  method text;
+  layer record;
+  remaining_to_consume numeric;
+  take_quantity numeric;
+  total_value numeric:=0;
+  allocations jsonb:='[]'::jsonb;
+begin
+  if new.movement_type not in ('production_issue','adjustment_out','transfer_out','waste_out','damage_out','sale_issue','rental_issue') then
+    return new;
+  end if;
+  if coalesce(new.metadata->>'fifo_layers_managed','false')='true' then return new; end if;
+  select s.effective_from,s.valuation_method into activation_date,method
+  from public.inventory_valuation_settings s where s.id=true;
+  if activation_date is null or new.posted_at::date<activation_date then return new; end if;
+
+  remaining_to_consume:=abs(new.quantity_delta);
+  for layer in
+    select * from public.inventory_fifo_layers
+    where inventory_item_id=new.inventory_item_id and warehouse_id=new.warehouse_id
+      and remaining_quantity>0
+    order by received_at,id for update
+  loop
+    exit when remaining_to_consume<=0;
+    take_quantity:=least(layer.remaining_quantity,remaining_to_consume);
+    total_value:=total_value+round(take_quantity*layer.unit_cost,2);
+    allocations:=allocations||jsonb_build_array(jsonb_build_object(
+      'layer_id',layer.id,'quantity',take_quantity,'unit_cost',layer.unit_cost,
+      'amount',round(take_quantity*layer.unit_cost,2)
+    ));
+    update public.inventory_fifo_layers
+    set remaining_quantity=remaining_quantity-take_quantity where id=layer.id;
+    remaining_to_consume:=remaining_to_consume-take_quantity;
+  end loop;
+  if remaining_to_consume>0.0001 then
+    raise exception 'Inventory valuation layers are short; reconcile opening stock before outbound movement';
+  end if;
+  if method='fifo' then
+    new.unit_cost:=round(total_value/abs(new.quantity_delta),8);
+  end if;
+  new.metadata:=coalesce(new.metadata,'{}'::jsonb)||jsonb_build_object('_fifo_layer_consumptions',allocations);
+  return new;
+end
+$;
+revoke all on function private.inventory_fifo_prepare_outbound_trigger() from public,anon,authenticated;
+
+drop trigger if exists inventory_fifo_prepare_outbound on public.inventory_movements;
+create trigger inventory_fifo_prepare_outbound
+before insert on public.inventory_movements
+for each row execute function private.inventory_fifo_prepare_outbound_trigger();
+
+create or replace function private.inventory_fifo_record_outbound_trigger()
+returns trigger language plpgsql security definer set search_path=''
+as $
+declare allocation jsonb;
+begin
+  if new.movement_type not in ('production_issue','adjustment_out','transfer_out','waste_out','damage_out','sale_issue','rental_issue') then
+    return new;
+  end if;
+  for allocation in
+    select * from jsonb_array_elements(coalesce(new.metadata->'_fifo_layer_consumptions','[]'::jsonb))
+  loop
+    insert into public.inventory_fifo_consumptions(
+      issue_movement_id,layer_id,quantity,unit_cost,amount
+    ) values(
+      new.id,(allocation->>'layer_id')::uuid,(allocation->>'quantity')::numeric,
+      (allocation->>'unit_cost')::numeric,(allocation->>'amount')::numeric
+    );
+  end loop;
+  return new;
+end
+$;
+revoke all on function private.inventory_fifo_record_outbound_trigger() from public,anon,authenticated;
+
+drop trigger if exists inventory_fifo_record_outbound on public.inventory_movements;
+create trigger inventory_fifo_record_outbound
+after insert on public.inventory_movements
+for each row execute function private.inventory_fifo_record_outbound_trigger();
+
 -- An issue reversal restores precisely the layers consumed by its original issue.
 create or replace function private.inventory_fifo_restore_reversal_trigger()
 returns trigger language plpgsql security definer set search_path=''
 as $$
 declare
-  original_type text;
+  original public.inventory_movements%rowtype;
   original_layer public.inventory_fifo_layers%rowtype;
 begin
   if new.reversed_movement_id is null then return new; end if;
-  select movement_type into original_type
+  select * into original
   from public.inventory_movements where id=new.reversed_movement_id;
 
-  -- The existing inventory ledger uses receipt_reversal for reversing a project issue.
-  if new.movement_type='receipt_reversal' and original_type='project_issue' then
+  if original.movement_type in ('project_issue','production_issue','adjustment_out','transfer_out','waste_out','damage_out','sale_issue','rental_issue') then
     update public.inventory_fifo_layers l
     set remaining_quantity=l.remaining_quantity+c.quantity
     from public.inventory_fifo_consumptions c
-    where c.issue_movement_id=new.reversed_movement_id and l.id=c.layer_id;
+    where c.issue_movement_id=original.id and l.id=c.layer_id;
     return new;
   end if;
 
-  -- A receipt may be reversed only while its original FIFO layer is fully available.
-  if new.movement_type='project_issue_reversal' and original_type='receipt' then
+  if original.movement_type in ('receipt','production_receipt','adjustment_in','transfer_in','production_return','opening_balance') then
     select * into original_layer
     from public.inventory_fifo_layers
-    where source_movement_id=new.reversed_movement_id
+    where source_movement_id=original.id
     for update;
     if found then
-      if original_layer.remaining_quantity < original_layer.original_quantity then
-        raise exception 'Reverse project issues before reversing a receipt consumed by FIFO';
+      if original_layer.remaining_quantity < abs(new.quantity_delta) then
+        raise exception 'Reverse the stock issues consuming this layer before reversing its receipt';
       end if;
       update public.inventory_fifo_layers
       set remaining_quantity=remaining_quantity-abs(new.quantity_delta)
@@ -220,8 +305,8 @@ begin
     raise exception 'Insufficient inventory balance';
   end if;
 
-  select valuation_method into valuation_method
-  from public.inventory_valuation_settings where id=true;
+  select s.valuation_method into valuation_method
+  from public.inventory_valuation_settings s where s.id=true;
   valuation_method:=coalesce(valuation_method,'moving_average');
 
   remaining_to_issue:=issue_quantity;
@@ -261,7 +346,7 @@ begin
   ) values(
     'project_issue',target_inventory_item,target_warehouse,-issue_quantity,
     avg_cost,target_project,description,actor,
-    jsonb_build_object('valuation_method',valuation_method,'fifo_issue_value',case when valuation_method='fifo' then fifo_value else null end)
+    jsonb_build_object('valuation_method',valuation_method,'fifo_issue_value',case when valuation_method='fifo' then fifo_value else null end,'fifo_layers_managed',true)
   ) returning * into movement;
 
   if valuation_method='fifo'
