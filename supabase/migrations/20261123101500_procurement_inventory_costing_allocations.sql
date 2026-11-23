@@ -842,4 +842,69 @@ $;
 revoke all on function public.save_purchase_invoice_project_allocations(uuid,jsonb) from public,anon;
 grant execute on function public.save_purchase_invoice_project_allocations(uuid,jsonb) to authenticated;
 
+
+-- Preserve the actual FIFO issue unit cost across both sides of a warehouse transfer.
+create or replace function public.transfer_inventory(
+  target_inventory_item uuid,
+  source_warehouse uuid,
+  destination_warehouse uuid,
+  transfer_quantity numeric,
+  transfer_reason text,
+  source_location uuid default null,
+  destination_location uuid default null
+)
+returns jsonb language plpgsql security definer
+set search_path='public','private','pg_temp'
+as $
+declare
+  actor uuid:=auth.uid();
+  balance record;
+  average_cost numeric;
+  transfer_key uuid:=gen_random_uuid();
+  out_row public.inventory_movements%rowtype;
+  in_row public.inventory_movements%rowtype;
+begin
+  if not private.inventory_manage_allowed() then
+    raise exception using errcode='42501',message='Owner or manager role required';
+  end if;
+  if source_warehouse=destination_warehouse then raise exception 'Source and destination warehouses must differ'; end if;
+  if transfer_quantity is null or transfer_quantity<=0 then raise exception 'Positive transfer quantity required'; end if;
+  if btrim(coalesce(transfer_reason,''))='' then raise exception 'Transfer reason required'; end if;
+  if source_location is not null and not exists(
+    select 1 from public.inventory_locations where id=source_location and warehouse_id=source_warehouse and active
+  ) then raise exception 'Source location does not belong to source warehouse'; end if;
+  if destination_location is not null and not exists(
+    select 1 from public.inventory_locations where id=destination_location and warehouse_id=destination_warehouse and active
+  ) then raise exception 'Destination location does not belong to destination warehouse'; end if;
+  select quantity_on_hand,inventory_value into balance
+  from public.inventory_balances
+  where inventory_item_id=target_inventory_item and warehouse_id=source_warehouse for update;
+  if not found or balance.quantity_on_hand<transfer_quantity then raise exception 'Insufficient inventory balance'; end if;
+  average_cost:=case when balance.quantity_on_hand=0 then 0
+    else round(balance.inventory_value/balance.quantity_on_hand,4) end;
+
+  insert into public.inventory_movements(
+    movement_type,inventory_item_id,warehouse_id,location_id,quantity_delta,
+    unit_cost,reason,posted_by,metadata
+  ) values(
+    'transfer_out',target_inventory_item,source_warehouse,source_location,-transfer_quantity,
+    average_cost,transfer_reason,actor,
+    jsonb_build_object('transfer_id',transfer_key,'destination_warehouse_id',destination_warehouse)
+  ) returning * into out_row;
+
+  insert into public.inventory_movements(
+    movement_type,inventory_item_id,warehouse_id,location_id,quantity_delta,
+    unit_cost,reason,posted_by,metadata
+  ) values(
+    'transfer_in',target_inventory_item,destination_warehouse,destination_location,transfer_quantity,
+    out_row.unit_cost,transfer_reason,actor,
+    jsonb_build_object('transfer_id',transfer_key,'source_warehouse_id',source_warehouse,'source_movement_id',out_row.id)
+  ) returning * into in_row;
+
+  return jsonb_build_object('transfer_id',transfer_key,'out_movement',to_jsonb(out_row),'in_movement',to_jsonb(in_row));
+end
+$;
+revoke all on function public.transfer_inventory(uuid,uuid,uuid,numeric,text,uuid,uuid) from public,anon;
+grant execute on function public.transfer_inventory(uuid,uuid,uuid,numeric,text,uuid,uuid) to authenticated;
+
 commit;
