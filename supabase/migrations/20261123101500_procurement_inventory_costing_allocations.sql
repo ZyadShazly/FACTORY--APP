@@ -514,7 +514,7 @@ begin
   if source_expense.project_id is not null then
     raise exception 'Use the existing direct-project actual-cost workflow for a directly linked expense';
   end if;
-  if jsonb_typeof(target_allocations)<>'array' or jsonb_array_length(target_allocations)<1 then
+  if coalesce(jsonb_typeof(target_allocations),'')<>'array' or coalesce(jsonb_array_length(target_allocations),0)<1 then
     raise exception 'At least one project allocation is required';
   end if;
   select count(*) into existing_count from public.expense_project_allocations
@@ -773,8 +773,12 @@ begin
   if actor is null or public.current_identity_role() not in ('owner','manager','accountant') then
     raise exception 'Owner, manager, or accountant role required';
   end if;
-  if jsonb_typeof(target_allocations)<>'array' or jsonb_array_length(target_allocations)=0 then
+  if coalesce(jsonb_typeof(target_allocations),'')<>'array' or coalesce(jsonb_array_length(target_allocations),0)=0 then
     raise exception 'Invoice line project allocations are required';
+  end if;
+  if (select count(*) from jsonb_array_elements(target_allocations)) <>
+     (select count(distinct (value->>'purchase_order_item_id')::uuid) from jsonb_array_elements(target_allocations)) then
+    raise exception 'Duplicate purchase order item allocation payload';
   end if;
   select * into invoice from public.supplier_invoices
   where id=target_invoice_id for update;
