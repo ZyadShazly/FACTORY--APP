@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const sql = await readFile(new URL("../supabase/migrations/20261123101500_procurement_inventory_costing_allocations.sql", import.meta.url), "utf8");
+const sql = await readFile(new URL("../supabase/migrations/20261123192012_procurement_inventory_costing_allocations_20261123.sql", import.meta.url), "utf8");
 const inventoryUi = await readFile(new URL("../src/operational/InventoryWorkspace.jsx", import.meta.url), "utf8");
 
 test("inventory valuation defaults to moving average and exposes FIFO as an option", () => {
