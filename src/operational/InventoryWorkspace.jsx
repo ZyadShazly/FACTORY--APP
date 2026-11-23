@@ -35,6 +35,8 @@ export function InventoryWorkspace({canViewFinancials=true,onNavigate,allowedPag
   const[error,setError]=useState("");
   const[ok,setOk]=useState("");
   const[busy,setBusy]=useState(false);
+  const[valuationMethod,setValuationMethod]=useState("moving_average");
+  const[valuationSaving,setValuationSaving]=useState(false);
   const[confirmingPost,setConfirmingPost]=useState(false);
   const[tab,setTab]=useState("items");
   const[operation,setOperation]=useState("receive");
@@ -45,8 +47,12 @@ export function InventoryWorkspace({canViewFinancials=true,onNavigate,allowedPag
 
   async function load(){
     setLoading(true);setError("");
-    const{data,error}=await supabase.rpc("get_inventory_workspace");
+    const[{data,error},{data:valuationData,error:valuationError}]=await Promise.all([
+      supabase.rpc("get_inventory_workspace"),
+      supabase.rpc("get_inventory_valuation_settings"),
+    ]);
     if(error)setError(friendlyError(error));else setWorkspace({...emptyWorkspace,...(data||{})});
+    if(!valuationError&&valuationData?.valuation_method)setValuationMethod(valuationData.valuation_method);
     setLoading(false);
   }
   useEffect(()=>{void load()},[]);
@@ -56,6 +62,16 @@ export function InventoryWorkspace({canViewFinancials=true,onNavigate,allowedPag
     const{data,error}=await supabase.rpc(name,args);
     if(error)setError(friendlyError(error));else{setOk(success);await load()}
     setBusy(false);return data;
+  }
+
+  async function saveValuationMethod(){
+    setValuationSaving(true);setError("");setOk("");
+    const{error}=await supabase.rpc("set_inventory_valuation_method",{target_method:valuationMethod});
+    if(error)setError(friendlyError(error));
+    else setOk(valuationMethod==="fifo"
+      ?"تم تفعيل FIFO. سيُستخدم ترتيب أقدم طبقة متاحة عند الصرف."
+      :"تم تفعيل المتوسط المرجح المتحرك.");
+    setValuationSaving(false);
   }
 
   const totals=useMemo(()=>workspace.balances.reduce((a,r)=>({qty:a.qty+Number(r.quantity_on_hand||0),value:a.value+Number(r.inventory_value||0)}),{qty:0,value:0}),[workspace]);
@@ -217,7 +233,21 @@ export function InventoryWorkspace({canViewFinancials=true,onNavigate,allowedPag
       </Panel>}
 
       {tab==="settings"&&(canManage
-        ?<WarehouseManagementPanel workspace={workspace} onChanged={load} canViewFinancials={canViewFinancials}/>
+        ?<>
+          <Panel title="طريقة تقييم المخزون">
+            <p style={{color:"var(--color-text-muted)",marginTop:0}}>
+              الطريقة الافتراضية هي المتوسط المرجح المتحرك. يمكنك اختيار FIFO؛ وسيُحافظ النظام على طبقات التكلفة وحركات الاستهلاك والعكس من تاريخ تفعيل التقييم، دون إعادة ترحيل القيود التاريخية.
+            </p>
+            <div style={gridStyle}>
+              <SelectField label="طريقة التقييم" value={valuationMethod} onChange={event=>setValuationMethod(event.target.value)}>
+                <option value="moving_average">المتوسط المرجح المتحرك</option>
+                <option value="fifo">FIFO — الوارد أولًا يصرف أولًا</option>
+              </SelectField>
+              <Button disabled={valuationSaving} onClick={saveValuationMethod}>{valuationSaving?"جارٍ الحفظ...":"حفظ طريقة التقييم"}</Button>
+            </div>
+          </Panel>
+          <WarehouseManagementPanel workspace={workspace} onChanged={load} canViewFinancials={canViewFinancials}/>
+        </>
         :<Notice>لا توجد صلاحية لإدارة المخازن ومواقع التخزين.</Notice>)}
     </>}
     <ConfirmDialog open={confirmingPost} title="اعتماد وترحيل الجرد" description="سيتم ترحيل فروقات الجرد إلى دفتر المخزون كحركات غير قابلة للحذف." confirmLabel="ترحيل الفروقات" danger busy={busy} onConfirm={confirmPostCount} onCancel={()=>setConfirmingPost(false)}/>

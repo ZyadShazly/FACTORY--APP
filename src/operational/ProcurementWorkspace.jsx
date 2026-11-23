@@ -118,6 +118,7 @@ export function ProcurementWorkspace({data,onNavigate}){
   const[receipt,setReceipt]=useState({order_id:"",warehouse_id:"",delivery_ref:""});
   const[receiptLines,setReceiptLines]=useState({});
   const[invoice,setInvoice]=useState({order_id:"",invoice_number:"",invoice_date:new Date().toISOString().slice(0,10)});
+  const[invoiceAllocations,setInvoiceAllocations]=useState({});
   const[sendReference,setSendReference]=useState(""),[orderName,setOrderName]=useState("");
 
   const projects=(data.projects||[]).filter(row=>row.lifecycle==="active"),suppliers=data.suppliers||[],activeSuppliers=suppliers.filter(row=>!row.archived_at),materials=data.materials||[];
@@ -219,10 +220,37 @@ export function ProcurementWorkspace({data,onNavigate}){
     const saved=await call("confirm_goods_receipt_to_inventory",{payload:{purchase_order_id:receipt.order_id,supplier_delivery_reference:receipt.delivery_ref,notes:null,items:lines},target_warehouse:receipt.warehouse_id,target_location:null},hasAccepted?"تم تأكيد الاستلام وترحيل الكميات المقبولة للمخزون.":"تم تسجيل الشحنة المرفوضة دون إضافة رصيد للمخزون.");
     if(saved){setReceipt(current=>({...current,order_id:"",delivery_ref:""}));setReceiptLines({})}
   }
+  function chooseInvoiceOrder(orderId){
+    setInvoice(current=>({...current,order_id:orderId}));
+    const next={};
+    ws.order_items.filter(item=>item.purchase_order_id===orderId).forEach(item=>{next[item.id]=[{project_id:"",allocated_amount:""}]});
+    setInvoiceAllocations(next);
+  }
+  function updateInvoiceAllocation(itemId,index,key,value){
+    setInvoiceAllocations(current=>({...current,[itemId]:(current[itemId]||[]).map((row,i)=>i===index?{...row,[key]:value}:row)}));
+  }
   async function approveInvoice(){
     const order=ws.orders.find(item=>item.id===invoice.order_id),items=ws.order_items.filter(item=>item.purchase_order_id===invoice.order_id);
     if(!order||!invoice.invoice_number.trim()||!items.length)return setError("اختر أمر شراء مستلمًا وأدخل رقم الفاتورة.");
-    await call("approve_supplier_invoice",{payload:{invoice_number:invoice.invoice_number,purchase_order_id:invoice.order_id,invoice_date:invoice.invoice_date,due_date:null,notes:null,items:items.map(item=>({purchase_order_item_id:item.id,goods_receipt_item_id:null,description:item.description,quantity:Number(item.quantity),unit_price:Number(item.unit_price),discount_amount:Number(item.discount_amount||0),tax_amount:Number(item.tax_amount||0),budget_item_id:item.budget_item_id||null,milestone_id:item.milestone_id||null}))}},"تم اعتماد فاتورة المورد وتسجيل التكلفة الفعلية مرة واحدة.");
+    const hasAllocations=!order.project_id&&items.some(item=>(invoiceAllocations[item.id]||[]).some(row=>row.project_id||row.allocated_amount));
+    if(hasAllocations){
+      for(const item of items){
+        const rows=invoiceAllocations[item.id]||[];
+        if(!rows.length||rows.some(row=>!row.project_id||Number(row.allocated_amount)<=0))return setError("أكمل توزيع كل بند فاتورة على مشروع أو أكثر.");
+        if(new Set(rows.map(row=>row.project_id)).size!==rows.length)return setError("لا تكرر المشروع في توزيع نفس البند.");
+        const lineBase=Math.round((((Number(item.quantity)*Number(item.unit_price))-Number(item.discount_amount||0)+Number(item.tax_amount||0))*Number(order.exchange_rate||1)+Number.EPSILON)*100)/100;
+        const total=Math.round((rows.reduce((sum,row)=>sum+Number(row.allocated_amount||0),0)+Number.EPSILON)*100)/100;
+        if(total!==lineBase)return setError("مجموع توزيع البند "+item.description+" لازم يساوي "+lineBase+" بعملة الأساس.");
+      }
+    }
+    const saved=await call("approve_supplier_invoice",{payload:{invoice_number:invoice.invoice_number,purchase_order_id:invoice.order_id,invoice_date:invoice.invoice_date,due_date:null,notes:null,items:items.map(item=>({purchase_order_item_id:item.id,goods_receipt_item_id:null,description:item.description,quantity:Number(item.quantity),unit_price:Number(item.unit_price),discount_amount:Number(item.discount_amount||0),tax_amount:Number(item.tax_amount||0),budget_item_id:item.budget_item_id||null,milestone_id:item.milestone_id||null}))}},"تم اعتماد فاتورة المورد وتسجيل التكلفة الفعلية مرة واحدة.");
+    if(saved&&hasAllocations){
+      const allocations=items.map(item=>({purchase_order_item_id:item.id,allocations:(invoiceAllocations[item.id]||[]).map(row=>({project_id:row.project_id,allocated_amount:Number(row.allocated_amount)}))}));
+      const {error}=await supabase.rpc("save_purchase_invoice_project_allocations",{target_invoice_id:saved.id,target_allocations:allocations});
+      if(error){setError("تم اعتماد فاتورة المورد، لكن تعذر إرسال توزيع التكلفة للمشروعات: "+friendlyError(error)+" — لا تعِد اعتماد الفاتورة.");return;}
+      setOk("تم اعتماد الفاتورة وتوزيع تكلفة كل بند على المشروعات المختارة.");
+      await load({preserveFeedback:true});
+    }
   }
   function projectName(id){const project=projects.find(item=>item.id===id);return project?.project_name||project?.name||"بدون مشروع"}
   function supplierName(id){return suppliers.find(item=>item.id===id)?.name||"—"}
@@ -311,11 +339,24 @@ export function ProcurementWorkspace({data,onNavigate}){
       </>}
       {tab==="invoices"&&<>
         {ws.capabilities.invoice&&<Panel title="مراجعة واعتماد فاتورة المورد"><HelpText title="شرط المطابقة">تُعتمد الفاتورة بعد اكتمال استلام كل بنود الأمر. يمنع الخادم فوترة كمية غير مستلمة أو تكرار فاتورة المورد.</HelpText><div style={formStyle}>
-          <Field label="أمر الشراء المستلم بالكامل"><select style={inputStyle} value={invoice.order_id} onChange={event=>setInvoice({...invoice,order_id:event.target.value})}><option value="">اختر</option>{invoiceableOrders.map(row=><option key={row.id} value={row.id}>{recordName(row,"order_number")} · {row.order_number}</option>)}</select></Field>
+          <Field label="أمر الشراء المستلم بالكامل"><select style={inputStyle} value={invoice.order_id} onChange={event=>chooseInvoiceOrder(event.target.value)}><option value="">اختر</option>{invoiceableOrders.map(row=><option key={row.id} value={row.id}>{recordName(row,"order_number")} · {row.order_number}</option>)}</select></Field>
           <Field label="رقم الفاتورة"><input style={inputStyle} value={invoice.invoice_number} onChange={event=>setInvoice({...invoice,invoice_number:event.target.value})}/></Field>
           <Field label="تاريخ الفاتورة"><input type="date" style={inputStyle} value={invoice.invoice_date} onChange={event=>setInvoice({...invoice,invoice_date:event.target.value})}/></Field>
           <Button onClick={approveInvoice}>اعتماد الفاتورة</Button>
-        </div></Panel>}
+        </div>
+        {invoice.order_id&&ws.orders.find(row=>row.id===invoice.order_id)?.project_id==null&&<div style={{marginTop:14,padding:12,border:"1px solid var(--border)",borderRadius:10}}>
+          <HelpText title="توزيع تكلفة المشتريات العامة (اختياري)">لو أمر الشراء عام، وزّع قيمة كل بند بعملة الأساس على مشروع أو أكثر. لازم مجموع كل بند يساوي إجمالي البند شامل الضريبة. لا يتم إنشاء قيد أستاذ إضافي؛ تُرسل حصص المشروعات لمسار اعتماد التكلفة الفعلية.</HelpText>
+          {ws.order_items.filter(item=>item.purchase_order_id===invoice.order_id).map(item=><div key={item.id} style={{padding:"10px 0",borderBottom:"1px solid var(--border)"}}>
+            <div style={{fontWeight:700,marginBottom:6}}>{item.description} · المطلوب توزيعه: {((Number(item.quantity)*Number(item.unit_price)-Number(item.discount_amount||0)+Number(item.tax_amount||0))*Number(ws.orders.find(row=>row.id===invoice.order_id)?.exchange_rate||1)).toFixed(2)} {ws.orders.find(row=>row.id===invoice.order_id)?.base_currency||""}</div>
+            {(invoiceAllocations[item.id]||[{project_id:"",allocated_amount:""}]).map((row,index)=><div key={index} style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:6}}>
+              <Field label="المشروع"><select style={inputStyle} value={row.project_id} onChange={event=>updateInvoiceAllocation(item.id,index,"project_id",event.target.value)}><option value="">اختر مشروعًا</option>{projects.map(project=><option key={project.id} value={project.id}>{project.project_code} · {project.project_name}</option>)}</select></Field>
+              <Field label="المبلغ بعملة الأساس"><input style={inputStyle} type="number" min="0" step="0.01" value={row.allocated_amount} onChange={event=>updateInvoiceAllocation(item.id,index,"allocated_amount",event.target.value)}/></Field>
+              <Button tone="ghost" onClick={()=>setInvoiceAllocations(current=>({...current,[item.id]:(current[item.id]||[]).filter((_,i)=>i!==index)}))} disabled={(invoiceAllocations[item.id]||[]).length<=1}>حذف</Button>
+            </div>)}
+            <Button tone="ghost" onClick={()=>setInvoiceAllocations(current=>({...current,[item.id]:[...(current[item.id]||[]),{project_id:"",allocated_amount:""}]}))}>إضافة مشروع للبند</Button>
+          </div>)}
+        </div>}
+        </Panel>}
         <Panel title="فواتير الموردين"><div className="procurement-record-list">{ws.invoices.map(row=><div key={row.id} style={cardStyle}><DocumentIdentity row={row} serialKey="invoice_number"/><span>{supplierName(row.supplier_id)} · {formatDocumentMoney(row.total_amount,row.currency)}</span><Status value={row.status}/><Button onClick={()=>openDocument("invoice",row)}>معاينة وطباعة</Button></div>)}{!ws.invoices.length&&<Empty title="لا توجد فواتير موردين"/>}</div></Panel>
       </>}
     </>}

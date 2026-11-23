@@ -6,7 +6,7 @@ import "./projectActualCost.css";
 
 const STATUS_LABELS = { draft:"مسودة", submitted:"مرسلة", approved:"معتمدة", rejected:"مرفوضة", reversed:"معكوسة" };
 const CATEGORY_LABELS = { material:"مواد", labor:"عمالة", transport:"نقل", subcontract:"مقاول باطن", rental:"إيجار", asset_consumption:"استهلاك أصول", petty_cash:"مصروفات نثرية", employee_cash_custody:"عهدة نقدية", purchase_invoice:"فاتورة مشتريات", manual_adjustment:"تسوية يدوية", other:"أخرى" };
-const SOURCE_LABELS = { purchase_invoice_line:"فاتورة مشتريات", warehouse_issue_line:"صرف مخزن", asset_consumption_line:"استهلاك أصل", factory_labor_allocation:"عمالة مصنع", employee_cash_custody_settlement_line:"تسوية عهدة موظف", petty_cash_settlement_line:"تسوية مصروفات نثرية", manual_adjustment:"تسوية يدوية", legacy_project_cost:"تكلفة قديمة" };
+const SOURCE_LABELS = { purchase_invoice_line:"فاتورة مشتريات", purchase_invoice_allocation:"توزيع فاتورة مشتريات", approved_expense_allocation:"توزيع مصروف عام", warehouse_issue_line:"صرف مخزن", asset_consumption_line:"استهلاك أصل", factory_labor_allocation:"عمالة مصنع", employee_cash_custody_settlement_line:"تسوية عهدة موظف", petty_cash_settlement_line:"تسوية مصروفات نثرية", manual_adjustment:"تسوية يدوية", legacy_project_cost:"تكلفة قديمة" };
 
 function percent(value) { return value == null ? "—" : `${Number(value || 0).toFixed(1)}%`; }
 function toneForRemaining(value) { return Number(value) < 0 ? "negative" : "positive"; }

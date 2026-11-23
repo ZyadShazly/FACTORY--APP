@@ -1001,7 +1001,6 @@ function SalesTab({ data, refresh, canManage, focusedSaleId = "" }) {
     const unitPrice = form.unitPrice === "" ? Number(selectedProduct.selling_price) : num(form.unitPrice);
     if (!Number.isFinite(unitPrice) || unitPrice <= 0) return setErr("سعر الوحدة يجب أن يكون أكبر من صفر");
     const taxRate = form.taxRate === "" ? 0 : num(form.taxRate);
-    if (!Number.isFinite(taxRate) || taxRate < 0 || taxRate > 100) return setErr("نسبة الضريبة يجب أن تكون بين 0 و100");
     const commandId = form.commandId || globalThis.crypto.randomUUID();
     if (!form.commandId) setForm((current) => ({ ...current, commandId }));
     const result = await runCriticalMutation({
@@ -1510,6 +1509,8 @@ function CustomerLedger({ customerId, data, cashBankAccounts = [] }) {
 function ExpensesTab({ data, profileRole, refresh }) {
   const categories = ["كهرباء", "إيجار", "رواتب", "نقل", "صيانة", "إنترنت", "تسويق", "أخرى"];
   const [form, setForm] = useState({ category: categories[0], amount: "", taxRate: "0", date: todayStr(), notes: "", projectId: "", cashBankAccountId: "", commandId: "" });
+  const [allocationMode,setAllocationMode] = useState(false);
+  const [allocationRows,setAllocationRows] = useState([{projectId:"",amount:""}]);
   const [err, setErr] = useState(""); const [ok, setOk] = useState("");
   const [busyId, setBusyId] = useState(null);
   const [cancellingExpense, setCancellingExpense] = useState(null);
@@ -1530,6 +1531,15 @@ function ExpensesTab({ data, profileRole, refresh }) {
     if (!form.cashBankAccountId) return setErr("اختر حساب السداد (بنك أو خزينة)");
     const taxRate = num(form.taxRate || 0);
     if (!Number.isFinite(taxRate) || taxRate < 0 || taxRate > 100) return setErr("نسبة الضريبة يجب أن تكون بين 0 و100");
+    const grossAmount = Math.round((num(form.amount) + num(form.amount)*taxRate/100 + Number.EPSILON)*100)/100;
+    if (allocationMode) {
+      if (form.projectId) return setErr("امسح المشروع المباشر قبل استخدام توزيع المصروف على عدة مشروعات.");
+      if (!allocationRows.length || allocationRows.some(row=>!row.projectId || num(row.amount)<=0)) return setErr("أكمل المشروع والمبلغ لكل سطر توزيع.");
+      if (new Set(allocationRows.map(row=>row.projectId)).size!==allocationRows.length) return setErr("لا تكرر المشروع في أكثر من سطر.");
+      const allocated=Math.round((allocationRows.reduce((sum,row)=>sum+num(row.amount),0)+Number.EPSILON)*100)/100;
+      if (allocated!==grossAmount) return setErr("مجموع التوزيع يجب أن يساوي إجمالي المصروف شامل الضريبة.");
+    }
+    if (!Number.isFinite(taxRate) || taxRate < 0 || taxRate > 100) return setErr("نسبة الضريبة يجب أن تكون بين 0 و100");
     const commandId = form.commandId || globalThis.crypto.randomUUID();
     if (!form.commandId) setForm((current) => ({ ...current, commandId }));
     const result = await runCriticalMutation({
@@ -1548,8 +1558,18 @@ function ExpensesTab({ data, profileRole, refresh }) {
     if (result.error) return setErr(result.mutationSaved
       ? "تم إرسال المصروف، لكن تعذر التحقق أو تحديث الشاشة. حدّث الصفحة دون إنشاء مصروف جديد."
       : result.error.message);
+    if (allocationMode) {
+      const expenseId=result.mutationResult?.data?.id;
+      if (!expenseId) return setErr("تم تسجيل المصروف، لكن لم أستطع تأكيد رقمه لبدء توزيع التكلفة. حدّث الصفحة ولا تعِد التسجيل.");
+      const allocationResult=await supabase.rpc("prepare_allocated_expense_actual_cost",{
+        target_expense_id:expenseId,
+        target_allocations:allocationRows.map(row=>({project_id:row.projectId,allocation_method:"fixed_amount",allocation_value:num(row.amount),allocated_amount:num(row.amount)})),
+      });
+      if (allocationResult.error) return setErr("تم تسجيل المصروف محاسبيًا، لكن تعذر إنشاء توزيعات التكلفة الفعلية: "+allocationResult.error.message+" — لا تعِد تسجيل المصروف.");
+    }
     setOk(result.refreshError ? "تم تسجيل المصروف، لكن تعذر تحديث الشاشة. حدّث الصفحة بأمان." : "تم تسجيل المصروف بنجاح");
     setForm({ category: categories[0], amount: "", taxRate: "0", date: todayStr(), notes: "", projectId: "", cashBankAccountId: "", commandId: "" });
+    setAllocationMode(false);setAllocationRows([{projectId:"",amount:""}]);
   }
   async function runFinancialAction(name, row, reason = null) {
     setErr(""); setOk(""); setBusyId(row.id);
@@ -1581,7 +1601,18 @@ function ExpensesTab({ data, profileRole, refresh }) {
       <div style={{ fontWeight: 800, marginBottom: 12 }}>مصروف جديد</div>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
         <Field label="البند"><Select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>{categories.map((c) => <option key={c} value={c}>{c}</option>)}</Select></Field>
-        <Field label="المشروع (اختياري للمصروف العام)"><Select value={form.projectId} onChange={(e) => setForm({ ...form, projectId: e.target.value })}><option value="">مصروف عام بدون مشروع</option>{data.projects.filter((p) => !["closed","cancelled"].includes(p.lifecycle)).map((p) => <option key={p.id} value={p.id}>{p.project_code} · {p.project_name}</option>)}</Select></Field>
+        {!allocationMode&&<Field label="المشروع (اختياري للمصروف العام)"><Select value={form.projectId} onChange={(e) => setForm({ ...form, projectId: e.target.value })}><option value="">مصروف عام بدون مشروع</option>{data.projects.filter((p) => !["closed","cancelled"].includes(p.lifecycle)).map((p) => <option key={p.id} value={p.id}>{p.project_code} · {p.project_name}</option>)}</Select></Field>}
+        <Field label="طريقة تحميل التكلفة"><Select value={allocationMode?"allocated":"direct"} onChange={e=>{const enabled=e.target.value==="allocated";setAllocationMode(enabled);if(enabled)setForm(current=>({...current,projectId:""}));setAllocationRows([{projectId:"",amount:""}])}}><option value="direct">مشروع واحد / مصروف عام</option><option value="allocated">توزيع على عدة مشروعات</option></Select></Field>
+        {allocationMode&&<div style={{width:"100%",padding:12,border:"1px solid var(--border)",borderRadius:10}}>
+          <div style={{fontWeight:700,marginBottom:8}}>توزيع إجمالي المصروف شامل الضريبة على المشروعات</div>
+          {allocationRows.map((row,index)=><div key={index} style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:8}}>
+            <Field label="المشروع"><Select value={row.projectId} onChange={e=>setAllocationRows(rows=>rows.map((item,i)=>i===index?{...item,projectId:e.target.value}:item))}><option value="">اختر مشروعًا</option>{data.projects.filter(p=>!["closed","cancelled"].includes(p.lifecycle)).map(p=><option key={p.id} value={p.id}>{p.project_code} · {p.project_name}</option>)}</Select></Field>
+            <Field label="المبلغ المخصص"><Input type="number" min="0" step="0.01" value={row.amount} onChange={e=>setAllocationRows(rows=>rows.map((item,i)=>i===index?{...item,amount:e.target.value}:item))}/></Field>
+            <Btn variant="ghost" onClick={()=>setAllocationRows(rows=>rows.filter((_,i)=>i!==index))} disabled={allocationRows.length===1}>حذف</Btn>
+          </div>)}
+          <Btn variant="secondary" onClick={()=>setAllocationRows(rows=>[...rows,{projectId:"",amount:""}])}>إضافة مشروع</Btn>
+          <div style={{fontSize:12,color:C.muted,marginTop:8}}>لا يتم إنشاء قيد أستاذ عام إضافي؛ كل حصة تدخل دورة اعتماد التكلفة الفعلية للمشروع.</div>
+        </div>}
         <Field label="المبلغ قبل الضريبة"><Input type="number" min="0" step="any" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} /></Field>
         <Field label="حساب السداد"><Select value={form.cashBankAccountId} onChange={(e) => setForm({ ...form, cashBankAccountId: e.target.value, commandId: "" })}><option value="">اختر البنك أو الخزينة</option>{cashBankAccounts.map((account) => <option key={account.id} value={account.id}>{account.root_code === "1.1.01" ? "نقدية" : "بنك"} · {account.account_code} · {account.name_ar || account.name_en}</option>)}</Select></Field>
         <Field label="ضريبة القيمة المضافة %"><Input type="number" min="0" max="100" step="0.01" value={form.taxRate} onChange={(e) => setForm({ ...form, taxRate: e.target.value })} /></Field>
@@ -1595,7 +1626,7 @@ function ExpensesTab({ data, profileRole, refresh }) {
       const project = data.projects.find((p) => p.id === e.project_id);
       const status = e.cancelled_at ? "ملغي" : ({not_posted:"غير مرحّل",submitted:"قيد المراجعة",posted:"مرحّل",rejected:"مرفوض",reversed:"معكوس"}[e.cost_posting_status] || e.cost_posting_status);
       const canCancel = !e.cancelled_at && (profileRole === "owner" || (profileRole === "manager" && e.cost_posting_status !== "posted"));
-      return <tr key={e.id} style={{opacity:e.cancelled_at?0.65:1}}><Td>{e.expense_date}</Td><Td>{e.category}</Td><Td>{project ? `${project.project_code} · ${project.project_name}` : "عام"}</Td><Td>{status}</Td><Td>{e.cancellation_reason || e.notes || "—"}</Td><Td>{formatMoney(e.tax_amount || 0)}{Number(e.tax_rate || 0) > 0 ? ` (${Number(e.tax_rate)}%)` : ""}</Td><Td style={{fontWeight:700,color:C.red}}>{formatMoney(e.amount)}</Td><Td><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{e.project_id && e.cost_posting_status === "not_posted" && !e.cancelled_at && <Btn disabled={busyId===e.id} onClick={() => runFinancialAction("prepare_operational_source_actual_cost", e)}>إرسال للتكلفة</Btn>}{canCancel && <Btn variant="danger" disabled={busyId===e.id} onClick={() => cancel(e)}>إلغاء</Btn>}</div></Td></tr>;
+      return <tr key={e.id} style={{opacity:e.cancelled_at?0.65:1}}><Td>{e.expense_date}</Td><Td>{e.category}</Td><Td>{project ? `${project.project_code} · ${project.project_name}` : (["submitted","posted"].includes(e.cost_posting_status) ? "موزع على مشروعات" : "عام")}</Td><Td>{status}</Td><Td>{e.cancellation_reason || e.notes || "—"}</Td><Td>{formatMoney(e.tax_amount || 0)}{Number(e.tax_rate || 0) > 0 ? ` (${Number(e.tax_rate)}%)` : ""}</Td><Td style={{fontWeight:700,color:C.red}}>{formatMoney(e.amount)}</Td><Td><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{e.project_id && e.cost_posting_status === "not_posted" && !e.cancelled_at && <Btn disabled={busyId===e.id} onClick={() => runFinancialAction("prepare_operational_source_actual_cost", e)}>إرسال للتكلفة</Btn>}{canCancel && <Btn variant="danger" disabled={busyId===e.id} onClick={() => cancel(e)}>إلغاء</Btn>}</div></Td></tr>;
     })}</Table>}</Card>
   </div>;
 }
